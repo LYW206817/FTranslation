@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FastTranslation.App/FastTranslation.App.csproj" />
+    <Project Path="src/FastTranslation.Core/FastTranslation.Core.csproj" />
+    <Project Path="src/FastTranslation.Platform.Windows/FastTranslation.Platform.Windows.csproj" />
+    <Project Path="src/FastTranslation.Providers.QwenMt/FastTranslation.Providers.QwenMt.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FastTranslation.Core.Tests/FastTranslation.Core.Tests.csproj" />
+    <Project Path="tests/FastTranslation.Providers.QwenMt.Tests/FastTranslation.Providers.QwenMt.Tests.csproj" />
+  </Folder>
+</Solution>

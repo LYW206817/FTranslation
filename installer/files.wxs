@@ -1,0 +1,760 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <ComponentGroup Id="AppFiles">
+      <Component Id="c0" Directory="INSTALLFOLDER">
+        <File Id="c0f" Source="D:\FTranslation\publish\ft-folder\Accessibility.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c1" Directory="INSTALLFOLDER">
+        <File Id="c1f" Source="D:\FTranslation\publish\ft-folder\clretwrc.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c2" Directory="INSTALLFOLDER">
+        <File Id="c2f" Source="D:\FTranslation\publish\ft-folder\clrgc.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c3" Directory="INSTALLFOLDER">
+        <File Id="c3f" Source="D:\FTranslation\publish\ft-folder\clrgcexp.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c4" Directory="INSTALLFOLDER">
+        <File Id="c4f" Source="D:\FTranslation\publish\ft-folder\clrjit.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c5" Directory="INSTALLFOLDER">
+        <File Id="c5f" Source="D:\FTranslation\publish\ft-folder\coreclr.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c6" Directory="INSTALLFOLDER">
+        <File Id="c6f" Source="D:\FTranslation\publish\ft-folder\createdump.exe" KeyPath="yes"/>
+      </Component>
+      <Component Id="c7" Directory="INSTALLFOLDER">
+        <File Id="c7f" Source="D:\FTranslation\publish\ft-folder\D3DCompiler_47_cor3.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c8" Directory="INSTALLFOLDER">
+        <File Id="c8f" Source="D:\FTranslation\publish\ft-folder\DirectWriteForwarder.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c9" Directory="INSTALLFOLDER">
+        <File Id="c9f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Core.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c10" Directory="INSTALLFOLDER">
+        <File Id="c10f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Core.pdb" KeyPath="yes"/>
+      </Component>
+      <Component Id="c11" Directory="INSTALLFOLDER">
+        <File Id="c11f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.deps.json" KeyPath="yes"/>
+      </Component>
+      <Component Id="c12" Directory="INSTALLFOLDER">
+        <File Id="c12f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="AppExeComponent" Directory="INSTALLFOLDER">
+        <File Id="FastTranslationExe" Source="D:\FTranslation\publish\ft-folder\FastTranslation.exe" KeyPath="yes"/>
+        <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Fast Translation" Target="[!FastTranslationExe]" WorkingDirectory="INSTALLFOLDER" Advertise="no" />
+        <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Fast Translation" Target="[!FastTranslationExe]" WorkingDirectory="INSTALLFOLDER" Advertise="no" />
+        <RegistryValue Root="HKCU" Key="Software\FastTranslation" Name="Installed" Type="integer" Value="1" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      </Component>
+      <Component Id="c14" Directory="INSTALLFOLDER">
+        <File Id="c14f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.pdb" KeyPath="yes"/>
+      </Component>
+      <Component Id="c15" Directory="INSTALLFOLDER">
+        <File Id="c15f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Platform.Windows.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c16" Directory="INSTALLFOLDER">
+        <File Id="c16f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Platform.Windows.pdb" KeyPath="yes"/>
+      </Component>
+      <Component Id="c17" Directory="INSTALLFOLDER">
+        <File Id="c17f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Providers.QwenMt.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c18" Directory="INSTALLFOLDER">
+        <File Id="c18f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.Providers.QwenMt.pdb" KeyPath="yes"/>
+      </Component>
+      <Component Id="c19" Directory="INSTALLFOLDER">
+        <File Id="c19f" Source="D:\FTranslation\publish\ft-folder\FastTranslation.runtimeconfig.json" KeyPath="yes"/>
+      </Component>
+      <Component Id="c20" Directory="INSTALLFOLDER">
+        <File Id="c20f" Source="D:\FTranslation\publish\ft-folder\hostfxr.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c21" Directory="INSTALLFOLDER">
+        <File Id="c21f" Source="D:\FTranslation\publish\ft-folder\hostpolicy.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c22" Directory="INSTALLFOLDER">
+        <File Id="c22f" Source="D:\FTranslation\publish\ft-folder\Microsoft.CSharp.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c23" Directory="INSTALLFOLDER">
+        <File Id="c23f" Source="D:\FTranslation\publish\ft-folder\Microsoft.DiaSymReader.Native.amd64.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c24" Directory="INSTALLFOLDER">
+        <File Id="c24f" Source="D:\FTranslation\publish\ft-folder\Microsoft.VisualBasic.Core.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c25" Directory="INSTALLFOLDER">
+        <File Id="c25f" Source="D:\FTranslation\publish\ft-folder\Microsoft.VisualBasic.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c26" Directory="INSTALLFOLDER">
+        <File Id="c26f" Source="D:\FTranslation\publish\ft-folder\Microsoft.Win32.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c27" Directory="INSTALLFOLDER">
+        <File Id="c27f" Source="D:\FTranslation\publish\ft-folder\Microsoft.Win32.Registry.AccessControl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c28" Directory="INSTALLFOLDER">
+        <File Id="c28f" Source="D:\FTranslation\publish\ft-folder\Microsoft.Win32.Registry.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c29" Directory="INSTALLFOLDER">
+        <File Id="c29f" Source="D:\FTranslation\publish\ft-folder\Microsoft.Win32.SystemEvents.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c30" Directory="INSTALLFOLDER">
+        <File Id="c30f" Source="D:\FTranslation\publish\ft-folder\mscordaccore.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c31" Directory="INSTALLFOLDER">
+        <File Id="c31f" Source="D:\FTranslation\publish\ft-folder\mscordaccore_amd64_amd64_10.0.1426.52326.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c32" Directory="INSTALLFOLDER">
+        <File Id="c32f" Source="D:\FTranslation\publish\ft-folder\mscordbi.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c33" Directory="INSTALLFOLDER">
+        <File Id="c33f" Source="D:\FTranslation\publish\ft-folder\mscorlib.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c34" Directory="INSTALLFOLDER">
+        <File Id="c34f" Source="D:\FTranslation\publish\ft-folder\mscorrc.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c35" Directory="INSTALLFOLDER">
+        <File Id="c35f" Source="D:\FTranslation\publish\ft-folder\msquic.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c36" Directory="INSTALLFOLDER">
+        <File Id="c36f" Source="D:\FTranslation\publish\ft-folder\netstandard.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c37" Directory="INSTALLFOLDER">
+        <File Id="c37f" Source="D:\FTranslation\publish\ft-folder\PenImc_cor3.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c38" Directory="INSTALLFOLDER">
+        <File Id="c38f" Source="D:\FTranslation\publish\ft-folder\PresentationCore.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c39" Directory="INSTALLFOLDER">
+        <File Id="c39f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Aero.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c40" Directory="INSTALLFOLDER">
+        <File Id="c40f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Aero2.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c41" Directory="INSTALLFOLDER">
+        <File Id="c41f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.AeroLite.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c42" Directory="INSTALLFOLDER">
+        <File Id="c42f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Classic.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c43" Directory="INSTALLFOLDER">
+        <File Id="c43f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c44" Directory="INSTALLFOLDER">
+        <File Id="c44f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Fluent.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c45" Directory="INSTALLFOLDER">
+        <File Id="c45f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Luna.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c46" Directory="INSTALLFOLDER">
+        <File Id="c46f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework.Royale.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c47" Directory="INSTALLFOLDER">
+        <File Id="c47f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework-SystemCore.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c48" Directory="INSTALLFOLDER">
+        <File Id="c48f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework-SystemData.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c49" Directory="INSTALLFOLDER">
+        <File Id="c49f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework-SystemDrawing.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c50" Directory="INSTALLFOLDER">
+        <File Id="c50f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework-SystemXml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c51" Directory="INSTALLFOLDER">
+        <File Id="c51f" Source="D:\FTranslation\publish\ft-folder\PresentationFramework-SystemXmlLinq.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c52" Directory="INSTALLFOLDER">
+        <File Id="c52f" Source="D:\FTranslation\publish\ft-folder\PresentationNative_cor3.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c53" Directory="INSTALLFOLDER">
+        <File Id="c53f" Source="D:\FTranslation\publish\ft-folder\PresentationUI.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c54" Directory="INSTALLFOLDER">
+        <File Id="c54f" Source="D:\FTranslation\publish\ft-folder\ReachFramework.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c55" Directory="INSTALLFOLDER">
+        <File Id="c55f" Source="D:\FTranslation\publish\ft-folder\System.AppContext.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c56" Directory="INSTALLFOLDER">
+        <File Id="c56f" Source="D:\FTranslation\publish\ft-folder\System.Buffers.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c57" Directory="INSTALLFOLDER">
+        <File Id="c57f" Source="D:\FTranslation\publish\ft-folder\System.CodeDom.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c58" Directory="INSTALLFOLDER">
+        <File Id="c58f" Source="D:\FTranslation\publish\ft-folder\System.Collections.Concurrent.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c59" Directory="INSTALLFOLDER">
+        <File Id="c59f" Source="D:\FTranslation\publish\ft-folder\System.Collections.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c60" Directory="INSTALLFOLDER">
+        <File Id="c60f" Source="D:\FTranslation\publish\ft-folder\System.Collections.Immutable.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c61" Directory="INSTALLFOLDER">
+        <File Id="c61f" Source="D:\FTranslation\publish\ft-folder\System.Collections.NonGeneric.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c62" Directory="INSTALLFOLDER">
+        <File Id="c62f" Source="D:\FTranslation\publish\ft-folder\System.Collections.Specialized.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c63" Directory="INSTALLFOLDER">
+        <File Id="c63f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.Annotations.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c64" Directory="INSTALLFOLDER">
+        <File Id="c64f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.DataAnnotations.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c65" Directory="INSTALLFOLDER">
+        <File Id="c65f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c66" Directory="INSTALLFOLDER">
+        <File Id="c66f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.EventBasedAsync.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c67" Directory="INSTALLFOLDER">
+        <File Id="c67f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c68" Directory="INSTALLFOLDER">
+        <File Id="c68f" Source="D:\FTranslation\publish\ft-folder\System.ComponentModel.TypeConverter.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c69" Directory="INSTALLFOLDER">
+        <File Id="c69f" Source="D:\FTranslation\publish\ft-folder\System.Configuration.ConfigurationManager.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c70" Directory="INSTALLFOLDER">
+        <File Id="c70f" Source="D:\FTranslation\publish\ft-folder\System.Configuration.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c71" Directory="INSTALLFOLDER">
+        <File Id="c71f" Source="D:\FTranslation\publish\ft-folder\System.Console.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c72" Directory="INSTALLFOLDER">
+        <File Id="c72f" Source="D:\FTranslation\publish\ft-folder\System.Core.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c73" Directory="INSTALLFOLDER">
+        <File Id="c73f" Source="D:\FTranslation\publish\ft-folder\System.Data.Common.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c74" Directory="INSTALLFOLDER">
+        <File Id="c74f" Source="D:\FTranslation\publish\ft-folder\System.Data.DataSetExtensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c75" Directory="INSTALLFOLDER">
+        <File Id="c75f" Source="D:\FTranslation\publish\ft-folder\System.Data.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c76" Directory="INSTALLFOLDER">
+        <File Id="c76f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.Contracts.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c77" Directory="INSTALLFOLDER">
+        <File Id="c77f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.Debug.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c78" Directory="INSTALLFOLDER">
+        <File Id="c78f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.DiagnosticSource.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c79" Directory="INSTALLFOLDER">
+        <File Id="c79f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.EventLog.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c80" Directory="INSTALLFOLDER">
+        <File Id="c80f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.EventLog.Messages.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c81" Directory="INSTALLFOLDER">
+        <File Id="c81f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.FileVersionInfo.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c82" Directory="INSTALLFOLDER">
+        <File Id="c82f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.PerformanceCounter.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c83" Directory="INSTALLFOLDER">
+        <File Id="c83f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.Process.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c84" Directory="INSTALLFOLDER">
+        <File Id="c84f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.StackTrace.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c85" Directory="INSTALLFOLDER">
+        <File Id="c85f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.TextWriterTraceListener.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c86" Directory="INSTALLFOLDER">
+        <File Id="c86f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.Tools.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c87" Directory="INSTALLFOLDER">
+        <File Id="c87f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.TraceSource.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c88" Directory="INSTALLFOLDER">
+        <File Id="c88f" Source="D:\FTranslation\publish\ft-folder\System.Diagnostics.Tracing.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c89" Directory="INSTALLFOLDER">
+        <File Id="c89f" Source="D:\FTranslation\publish\ft-folder\System.DirectoryServices.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c90" Directory="INSTALLFOLDER">
+        <File Id="c90f" Source="D:\FTranslation\publish\ft-folder\System.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c91" Directory="INSTALLFOLDER">
+        <File Id="c91f" Source="D:\FTranslation\publish\ft-folder\System.Drawing.Common.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c92" Directory="INSTALLFOLDER">
+        <File Id="c92f" Source="D:\FTranslation\publish\ft-folder\System.Drawing.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c93" Directory="INSTALLFOLDER">
+        <File Id="c93f" Source="D:\FTranslation\publish\ft-folder\System.Drawing.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c94" Directory="INSTALLFOLDER">
+        <File Id="c94f" Source="D:\FTranslation\publish\ft-folder\System.Dynamic.Runtime.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c95" Directory="INSTALLFOLDER">
+        <File Id="c95f" Source="D:\FTranslation\publish\ft-folder\System.Formats.Asn1.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c96" Directory="INSTALLFOLDER">
+        <File Id="c96f" Source="D:\FTranslation\publish\ft-folder\System.Formats.Nrbf.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c97" Directory="INSTALLFOLDER">
+        <File Id="c97f" Source="D:\FTranslation\publish\ft-folder\System.Formats.Tar.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c98" Directory="INSTALLFOLDER">
+        <File Id="c98f" Source="D:\FTranslation\publish\ft-folder\System.Globalization.Calendars.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c99" Directory="INSTALLFOLDER">
+        <File Id="c99f" Source="D:\FTranslation\publish\ft-folder\System.Globalization.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c100" Directory="INSTALLFOLDER">
+        <File Id="c100f" Source="D:\FTranslation\publish\ft-folder\System.Globalization.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c101" Directory="INSTALLFOLDER">
+        <File Id="c101f" Source="D:\FTranslation\publish\ft-folder\System.IO.Compression.Brotli.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c102" Directory="INSTALLFOLDER">
+        <File Id="c102f" Source="D:\FTranslation\publish\ft-folder\System.IO.Compression.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c103" Directory="INSTALLFOLDER">
+        <File Id="c103f" Source="D:\FTranslation\publish\ft-folder\System.IO.Compression.FileSystem.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c104" Directory="INSTALLFOLDER">
+        <File Id="c104f" Source="D:\FTranslation\publish\ft-folder\System.IO.Compression.Native.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c105" Directory="INSTALLFOLDER">
+        <File Id="c105f" Source="D:\FTranslation\publish\ft-folder\System.IO.Compression.ZipFile.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c106" Directory="INSTALLFOLDER">
+        <File Id="c106f" Source="D:\FTranslation\publish\ft-folder\System.IO.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c107" Directory="INSTALLFOLDER">
+        <File Id="c107f" Source="D:\FTranslation\publish\ft-folder\System.IO.FileSystem.AccessControl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c108" Directory="INSTALLFOLDER">
+        <File Id="c108f" Source="D:\FTranslation\publish\ft-folder\System.IO.FileSystem.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c109" Directory="INSTALLFOLDER">
+        <File Id="c109f" Source="D:\FTranslation\publish\ft-folder\System.IO.FileSystem.DriveInfo.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c110" Directory="INSTALLFOLDER">
+        <File Id="c110f" Source="D:\FTranslation\publish\ft-folder\System.IO.FileSystem.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c111" Directory="INSTALLFOLDER">
+        <File Id="c111f" Source="D:\FTranslation\publish\ft-folder\System.IO.FileSystem.Watcher.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c112" Directory="INSTALLFOLDER">
+        <File Id="c112f" Source="D:\FTranslation\publish\ft-folder\System.IO.IsolatedStorage.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c113" Directory="INSTALLFOLDER">
+        <File Id="c113f" Source="D:\FTranslation\publish\ft-folder\System.IO.MemoryMappedFiles.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c114" Directory="INSTALLFOLDER">
+        <File Id="c114f" Source="D:\FTranslation\publish\ft-folder\System.IO.Packaging.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c115" Directory="INSTALLFOLDER">
+        <File Id="c115f" Source="D:\FTranslation\publish\ft-folder\System.IO.Pipelines.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c116" Directory="INSTALLFOLDER">
+        <File Id="c116f" Source="D:\FTranslation\publish\ft-folder\System.IO.Pipes.AccessControl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c117" Directory="INSTALLFOLDER">
+        <File Id="c117f" Source="D:\FTranslation\publish\ft-folder\System.IO.Pipes.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c118" Directory="INSTALLFOLDER">
+        <File Id="c118f" Source="D:\FTranslation\publish\ft-folder\System.IO.UnmanagedMemoryStream.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c119" Directory="INSTALLFOLDER">
+        <File Id="c119f" Source="D:\FTranslation\publish\ft-folder\System.Linq.AsyncEnumerable.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c120" Directory="INSTALLFOLDER">
+        <File Id="c120f" Source="D:\FTranslation\publish\ft-folder\System.Linq.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c121" Directory="INSTALLFOLDER">
+        <File Id="c121f" Source="D:\FTranslation\publish\ft-folder\System.Linq.Expressions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c122" Directory="INSTALLFOLDER">
+        <File Id="c122f" Source="D:\FTranslation\publish\ft-folder\System.Linq.Parallel.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c123" Directory="INSTALLFOLDER">
+        <File Id="c123f" Source="D:\FTranslation\publish\ft-folder\System.Linq.Queryable.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c124" Directory="INSTALLFOLDER">
+        <File Id="c124f" Source="D:\FTranslation\publish\ft-folder\System.Memory.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c125" Directory="INSTALLFOLDER">
+        <File Id="c125f" Source="D:\FTranslation\publish\ft-folder\System.Net.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c126" Directory="INSTALLFOLDER">
+        <File Id="c126f" Source="D:\FTranslation\publish\ft-folder\System.Net.Http.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c127" Directory="INSTALLFOLDER">
+        <File Id="c127f" Source="D:\FTranslation\publish\ft-folder\System.Net.Http.Json.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c128" Directory="INSTALLFOLDER">
+        <File Id="c128f" Source="D:\FTranslation\publish\ft-folder\System.Net.HttpListener.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c129" Directory="INSTALLFOLDER">
+        <File Id="c129f" Source="D:\FTranslation\publish\ft-folder\System.Net.Mail.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c130" Directory="INSTALLFOLDER">
+        <File Id="c130f" Source="D:\FTranslation\publish\ft-folder\System.Net.NameResolution.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c131" Directory="INSTALLFOLDER">
+        <File Id="c131f" Source="D:\FTranslation\publish\ft-folder\System.Net.NetworkInformation.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c132" Directory="INSTALLFOLDER">
+        <File Id="c132f" Source="D:\FTranslation\publish\ft-folder\System.Net.Ping.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c133" Directory="INSTALLFOLDER">
+        <File Id="c133f" Source="D:\FTranslation\publish\ft-folder\System.Net.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c134" Directory="INSTALLFOLDER">
+        <File Id="c134f" Source="D:\FTranslation\publish\ft-folder\System.Net.Quic.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c135" Directory="INSTALLFOLDER">
+        <File Id="c135f" Source="D:\FTranslation\publish\ft-folder\System.Net.Requests.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c136" Directory="INSTALLFOLDER">
+        <File Id="c136f" Source="D:\FTranslation\publish\ft-folder\System.Net.Security.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c137" Directory="INSTALLFOLDER">
+        <File Id="c137f" Source="D:\FTranslation\publish\ft-folder\System.Net.ServerSentEvents.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c138" Directory="INSTALLFOLDER">
+        <File Id="c138f" Source="D:\FTranslation\publish\ft-folder\System.Net.ServicePoint.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c139" Directory="INSTALLFOLDER">
+        <File Id="c139f" Source="D:\FTranslation\publish\ft-folder\System.Net.Sockets.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c140" Directory="INSTALLFOLDER">
+        <File Id="c140f" Source="D:\FTranslation\publish\ft-folder\System.Net.WebClient.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c141" Directory="INSTALLFOLDER">
+        <File Id="c141f" Source="D:\FTranslation\publish\ft-folder\System.Net.WebHeaderCollection.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c142" Directory="INSTALLFOLDER">
+        <File Id="c142f" Source="D:\FTranslation\publish\ft-folder\System.Net.WebProxy.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c143" Directory="INSTALLFOLDER">
+        <File Id="c143f" Source="D:\FTranslation\publish\ft-folder\System.Net.WebSockets.Client.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c144" Directory="INSTALLFOLDER">
+        <File Id="c144f" Source="D:\FTranslation\publish\ft-folder\System.Net.WebSockets.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c145" Directory="INSTALLFOLDER">
+        <File Id="c145f" Source="D:\FTranslation\publish\ft-folder\System.Numerics.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c146" Directory="INSTALLFOLDER">
+        <File Id="c146f" Source="D:\FTranslation\publish\ft-folder\System.Numerics.Vectors.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c147" Directory="INSTALLFOLDER">
+        <File Id="c147f" Source="D:\FTranslation\publish\ft-folder\System.ObjectModel.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c148" Directory="INSTALLFOLDER">
+        <File Id="c148f" Source="D:\FTranslation\publish\ft-folder\System.Printing.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c149" Directory="INSTALLFOLDER">
+        <File Id="c149f" Source="D:\FTranslation\publish\ft-folder\System.Private.CoreLib.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c150" Directory="INSTALLFOLDER">
+        <File Id="c150f" Source="D:\FTranslation\publish\ft-folder\System.Private.DataContractSerialization.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c151" Directory="INSTALLFOLDER">
+        <File Id="c151f" Source="D:\FTranslation\publish\ft-folder\System.Private.Uri.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c152" Directory="INSTALLFOLDER">
+        <File Id="c152f" Source="D:\FTranslation\publish\ft-folder\System.Private.Windows.Core.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c153" Directory="INSTALLFOLDER">
+        <File Id="c153f" Source="D:\FTranslation\publish\ft-folder\System.Private.Windows.GdiPlus.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c154" Directory="INSTALLFOLDER">
+        <File Id="c154f" Source="D:\FTranslation\publish\ft-folder\System.Private.Xml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c155" Directory="INSTALLFOLDER">
+        <File Id="c155f" Source="D:\FTranslation\publish\ft-folder\System.Private.Xml.Linq.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c156" Directory="INSTALLFOLDER">
+        <File Id="c156f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.DispatchProxy.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c157" Directory="INSTALLFOLDER">
+        <File Id="c157f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c158" Directory="INSTALLFOLDER">
+        <File Id="c158f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Emit.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c159" Directory="INSTALLFOLDER">
+        <File Id="c159f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Emit.ILGeneration.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c160" Directory="INSTALLFOLDER">
+        <File Id="c160f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Emit.Lightweight.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c161" Directory="INSTALLFOLDER">
+        <File Id="c161f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c162" Directory="INSTALLFOLDER">
+        <File Id="c162f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Metadata.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c163" Directory="INSTALLFOLDER">
+        <File Id="c163f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c164" Directory="INSTALLFOLDER">
+        <File Id="c164f" Source="D:\FTranslation\publish\ft-folder\System.Reflection.TypeExtensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c165" Directory="INSTALLFOLDER">
+        <File Id="c165f" Source="D:\FTranslation\publish\ft-folder\System.Resources.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c166" Directory="INSTALLFOLDER">
+        <File Id="c166f" Source="D:\FTranslation\publish\ft-folder\System.Resources.Reader.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c167" Directory="INSTALLFOLDER">
+        <File Id="c167f" Source="D:\FTranslation\publish\ft-folder\System.Resources.ResourceManager.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c168" Directory="INSTALLFOLDER">
+        <File Id="c168f" Source="D:\FTranslation\publish\ft-folder\System.Resources.Writer.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c169" Directory="INSTALLFOLDER">
+        <File Id="c169f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.CompilerServices.Unsafe.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c170" Directory="INSTALLFOLDER">
+        <File Id="c170f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.CompilerServices.VisualC.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c171" Directory="INSTALLFOLDER">
+        <File Id="c171f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c172" Directory="INSTALLFOLDER">
+        <File Id="c172f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c173" Directory="INSTALLFOLDER">
+        <File Id="c173f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Handles.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c174" Directory="INSTALLFOLDER">
+        <File Id="c174f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.InteropServices.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c175" Directory="INSTALLFOLDER">
+        <File Id="c175f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.InteropServices.JavaScript.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c176" Directory="INSTALLFOLDER">
+        <File Id="c176f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.InteropServices.RuntimeInformation.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c177" Directory="INSTALLFOLDER">
+        <File Id="c177f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Intrinsics.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c178" Directory="INSTALLFOLDER">
+        <File Id="c178f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Loader.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c179" Directory="INSTALLFOLDER">
+        <File Id="c179f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Numerics.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c180" Directory="INSTALLFOLDER">
+        <File Id="c180f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Serialization.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c181" Directory="INSTALLFOLDER">
+        <File Id="c181f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Serialization.Formatters.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c182" Directory="INSTALLFOLDER">
+        <File Id="c182f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Serialization.Json.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c183" Directory="INSTALLFOLDER">
+        <File Id="c183f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Serialization.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c184" Directory="INSTALLFOLDER">
+        <File Id="c184f" Source="D:\FTranslation\publish\ft-folder\System.Runtime.Serialization.Xml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c185" Directory="INSTALLFOLDER">
+        <File Id="c185f" Source="D:\FTranslation\publish\ft-folder\System.Security.AccessControl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c186" Directory="INSTALLFOLDER">
+        <File Id="c186f" Source="D:\FTranslation\publish\ft-folder\System.Security.Claims.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c187" Directory="INSTALLFOLDER">
+        <File Id="c187f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Algorithms.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c188" Directory="INSTALLFOLDER">
+        <File Id="c188f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Cng.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c189" Directory="INSTALLFOLDER">
+        <File Id="c189f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Csp.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c190" Directory="INSTALLFOLDER">
+        <File Id="c190f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c191" Directory="INSTALLFOLDER">
+        <File Id="c191f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Encoding.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c192" Directory="INSTALLFOLDER">
+        <File Id="c192f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.OpenSsl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c193" Directory="INSTALLFOLDER">
+        <File Id="c193f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Pkcs.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c194" Directory="INSTALLFOLDER">
+        <File Id="c194f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c195" Directory="INSTALLFOLDER">
+        <File Id="c195f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.ProtectedData.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c196" Directory="INSTALLFOLDER">
+        <File Id="c196f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.X509Certificates.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c197" Directory="INSTALLFOLDER">
+        <File Id="c197f" Source="D:\FTranslation\publish\ft-folder\System.Security.Cryptography.Xml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c198" Directory="INSTALLFOLDER">
+        <File Id="c198f" Source="D:\FTranslation\publish\ft-folder\System.Security.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c199" Directory="INSTALLFOLDER">
+        <File Id="c199f" Source="D:\FTranslation\publish\ft-folder\System.Security.Permissions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c200" Directory="INSTALLFOLDER">
+        <File Id="c200f" Source="D:\FTranslation\publish\ft-folder\System.Security.Principal.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c201" Directory="INSTALLFOLDER">
+        <File Id="c201f" Source="D:\FTranslation\publish\ft-folder\System.Security.Principal.Windows.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c202" Directory="INSTALLFOLDER">
+        <File Id="c202f" Source="D:\FTranslation\publish\ft-folder\System.Security.SecureString.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c203" Directory="INSTALLFOLDER">
+        <File Id="c203f" Source="D:\FTranslation\publish\ft-folder\System.ServiceModel.Web.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c204" Directory="INSTALLFOLDER">
+        <File Id="c204f" Source="D:\FTranslation\publish\ft-folder\System.ServiceProcess.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c205" Directory="INSTALLFOLDER">
+        <File Id="c205f" Source="D:\FTranslation\publish\ft-folder\System.Text.Encoding.CodePages.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c206" Directory="INSTALLFOLDER">
+        <File Id="c206f" Source="D:\FTranslation\publish\ft-folder\System.Text.Encoding.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c207" Directory="INSTALLFOLDER">
+        <File Id="c207f" Source="D:\FTranslation\publish\ft-folder\System.Text.Encoding.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c208" Directory="INSTALLFOLDER">
+        <File Id="c208f" Source="D:\FTranslation\publish\ft-folder\System.Text.Encodings.Web.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c209" Directory="INSTALLFOLDER">
+        <File Id="c209f" Source="D:\FTranslation\publish\ft-folder\System.Text.Json.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c210" Directory="INSTALLFOLDER">
+        <File Id="c210f" Source="D:\FTranslation\publish\ft-folder\System.Text.RegularExpressions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c211" Directory="INSTALLFOLDER">
+        <File Id="c211f" Source="D:\FTranslation\publish\ft-folder\System.Threading.AccessControl.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c212" Directory="INSTALLFOLDER">
+        <File Id="c212f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Channels.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c213" Directory="INSTALLFOLDER">
+        <File Id="c213f" Source="D:\FTranslation\publish\ft-folder\System.Threading.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c214" Directory="INSTALLFOLDER">
+        <File Id="c214f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Overlapped.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c215" Directory="INSTALLFOLDER">
+        <File Id="c215f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Tasks.Dataflow.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c216" Directory="INSTALLFOLDER">
+        <File Id="c216f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Tasks.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c217" Directory="INSTALLFOLDER">
+        <File Id="c217f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Tasks.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c218" Directory="INSTALLFOLDER">
+        <File Id="c218f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Tasks.Parallel.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c219" Directory="INSTALLFOLDER">
+        <File Id="c219f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Thread.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c220" Directory="INSTALLFOLDER">
+        <File Id="c220f" Source="D:\FTranslation\publish\ft-folder\System.Threading.ThreadPool.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c221" Directory="INSTALLFOLDER">
+        <File Id="c221f" Source="D:\FTranslation\publish\ft-folder\System.Threading.Timer.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c222" Directory="INSTALLFOLDER">
+        <File Id="c222f" Source="D:\FTranslation\publish\ft-folder\System.Transactions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c223" Directory="INSTALLFOLDER">
+        <File Id="c223f" Source="D:\FTranslation\publish\ft-folder\System.Transactions.Local.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c224" Directory="INSTALLFOLDER">
+        <File Id="c224f" Source="D:\FTranslation\publish\ft-folder\System.ValueTuple.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c225" Directory="INSTALLFOLDER">
+        <File Id="c225f" Source="D:\FTranslation\publish\ft-folder\System.Web.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c226" Directory="INSTALLFOLDER">
+        <File Id="c226f" Source="D:\FTranslation\publish\ft-folder\System.Web.HttpUtility.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c227" Directory="INSTALLFOLDER">
+        <File Id="c227f" Source="D:\FTranslation\publish\ft-folder\System.Windows.Controls.Ribbon.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c228" Directory="INSTALLFOLDER">
+        <File Id="c228f" Source="D:\FTranslation\publish\ft-folder\System.Windows.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c229" Directory="INSTALLFOLDER">
+        <File Id="c229f" Source="D:\FTranslation\publish\ft-folder\System.Windows.Extensions.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c230" Directory="INSTALLFOLDER">
+        <File Id="c230f" Source="D:\FTranslation\publish\ft-folder\System.Windows.Input.Manipulations.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c231" Directory="INSTALLFOLDER">
+        <File Id="c231f" Source="D:\FTranslation\publish\ft-folder\System.Windows.Presentation.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c232" Directory="INSTALLFOLDER">
+        <File Id="c232f" Source="D:\FTranslation\publish\ft-folder\System.Windows.Primitives.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c233" Directory="INSTALLFOLDER">
+        <File Id="c233f" Source="D:\FTranslation\publish\ft-folder\System.Xaml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c234" Directory="INSTALLFOLDER">
+        <File Id="c234f" Source="D:\FTranslation\publish\ft-folder\System.Xml.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c235" Directory="INSTALLFOLDER">
+        <File Id="c235f" Source="D:\FTranslation\publish\ft-folder\System.Xml.Linq.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c236" Directory="INSTALLFOLDER">
+        <File Id="c236f" Source="D:\FTranslation\publish\ft-folder\System.Xml.ReaderWriter.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c237" Directory="INSTALLFOLDER">
+        <File Id="c237f" Source="D:\FTranslation\publish\ft-folder\System.Xml.Serialization.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c238" Directory="INSTALLFOLDER">
+        <File Id="c238f" Source="D:\FTranslation\publish\ft-folder\System.Xml.XDocument.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c239" Directory="INSTALLFOLDER">
+        <File Id="c239f" Source="D:\FTranslation\publish\ft-folder\System.Xml.XmlDocument.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c240" Directory="INSTALLFOLDER">
+        <File Id="c240f" Source="D:\FTranslation\publish\ft-folder\System.Xml.XmlSerializer.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c241" Directory="INSTALLFOLDER">
+        <File Id="c241f" Source="D:\FTranslation\publish\ft-folder\System.Xml.XPath.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c242" Directory="INSTALLFOLDER">
+        <File Id="c242f" Source="D:\FTranslation\publish\ft-folder\System.Xml.XPath.XDocument.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c243" Directory="INSTALLFOLDER">
+        <File Id="c243f" Source="D:\FTranslation\publish\ft-folder\UIAutomationClient.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c244" Directory="INSTALLFOLDER">
+        <File Id="c244f" Source="D:\FTranslation\publish\ft-folder\UIAutomationClientSideProviders.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c245" Directory="INSTALLFOLDER">
+        <File Id="c245f" Source="D:\FTranslation\publish\ft-folder\UIAutomationProvider.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c246" Directory="INSTALLFOLDER">
+        <File Id="c246f" Source="D:\FTranslation\publish\ft-folder\UIAutomationTypes.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c247" Directory="INSTALLFOLDER">
+        <File Id="c247f" Source="D:\FTranslation\publish\ft-folder\vcruntime140_cor3.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c248" Directory="INSTALLFOLDER">
+        <File Id="c248f" Source="D:\FTranslation\publish\ft-folder\WindowsBase.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c249" Directory="INSTALLFOLDER">
+        <File Id="c249f" Source="D:\FTranslation\publish\ft-folder\wpfgfx_cor3.dll" KeyPath="yes"/>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

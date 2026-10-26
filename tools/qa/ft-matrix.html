@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>FT Matrix</title>
+<style>
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; margin: 24px; background: #fff; }
+  section { margin-bottom: 28px; }
+  h3 { margin: 0 0 6px; font-size: 14px; color: #666; }
+  p, code, textarea { font-size: 17px; line-height: 1.7; }
+  .nopaste { user-select: none; -webkit-user-select: none; }
+  textarea { width: 640px; height: 70px; display: block; }
+  input { width: 640px; font-size: 17px; padding: 6px; }
+  code { display: block; background: #f4f4f4; padding: 10px; white-space: pre; }
+</style>
+</head>
+<body>
+<section>
+  <h3>A. plain CJK paragraph</h3>
+  <p id="cjk">那只敏捷的棕色狐狸跳过了那只懒惰的狗,然后继续在草地上奔跑,越过山丘与河流。</p>
+</section>
+<section>
+  <h3>B. plain english paragraph</h3>
+  <p id="en">The quick brown fox jumps over the lazy dog and keeps running through the wide open meadow beyond the hills.</p>
+</section>
+<section>
+  <h3>C. user-select:none text (site blocks copying)</h3>
+  <p id="nopaste" class="nopaste">这段文字被 CSS 禁止选择,拖选会失败,应当由兜底路径处理。</p>
+</section>
+<section>
+  <h3>D. code block (mixed cjk + symbols)</h3>
+  <code id="code">var greeting = "你好,世界"; // 注释 mixed 中文 English</code>
+</section>
+<section>
+  <h3>E. textarea (editable, for replace/insert)</h3>
+  <textarea id="ta">这是初始文本,用于测试替换与插入功能。</textarea>
+</section>
+<section>
+  <h3>F. single-line input</h3>
+  <input id="inp" value="单行输入框里的初始内容 ABC123">
+</section>
+<section>
+  <h3>G. empty area (no text — must stay silent)</h3>
+  <p style="height: 60px;"></p>
+</section>
+</body>
+</html>

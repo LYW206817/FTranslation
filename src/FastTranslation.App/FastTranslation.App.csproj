@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FastTranslation</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\icon\FastTranslation.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="..\..\assets\icon\FastTranslation.ico">
+      <Link>FastTranslation.ico</Link>
+    </Resource>
+    <Resource Include="..\..\assets\icon\master-alpha.png">
+      <Link>icon-master.png</Link>
+    </Resource>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FastTranslation.Platform.Windows\FastTranslation.Platform.Windows.csproj" />
+    <ProjectReference Include="..\FastTranslation.Providers.QwenMt\FastTranslation.Providers.QwenMt.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- cap GC heap: keeps private working set tight for a tray utility -->
+    <RuntimeHostConfigurationOption Include="System.GC.HeapHardLimitPercent" Value="20" />
+  </ItemGroup>
+</Project>

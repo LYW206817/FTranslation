@@ -1,0 +1,100 @@
+<Window x:Class="FastTranslation.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FastTranslation.App"
+        Title="Fast Translation" Width="560" Height="540" Icon="/FastTranslation.ico"
+        WindowStartupLocation="CenterScreen" MinWidth="440" MinHeight="440"
+        Background="{StaticResource WindowBgBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
+        TextOptions.TextRenderingMode="ClearType">
+  <Window.Resources>
+    <!-- the one accent: lightning-gradient quote rule for the translation -->
+    <LinearGradientBrush x:Key="BoltRule" StartPoint="0,0" EndPoint="0.35,1">
+      <GradientStop Offset="0" Color="#40A9FF"/>
+      <GradientStop Offset="1" Color="#2562FF"/>
+    </LinearGradientBrush>
+  </Window.Resources>
+  <Grid Margin="24,18,24,14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- header -->
+    <DockPanel Grid.Row="0" Margin="0,0,0,16">
+      <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+        <Image Source="/icon-master.png" Width="24" Height="24" VerticalAlignment="Center"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
+        <TextBlock Text="Fast Translation" FontSize="16" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextPrimaryBrush}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
+                  IsChecked="True" Margin="0,0,16,0"
+                  Checked="CaptureToggle_Changed" Unchecked="CaptureToggle_Changed"/>
+        <Button x:Name="SettingsButton" Content="设置" Padding="12,5" Margin="0" Click="Settings_Click"/>
+      </StackPanel>
+    </DockPanel>
+
+    <!-- input sheet: a quiet piece of paper, nothing else inside -->
+    <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="10"
+            BorderBrush="{StaticResource HairBrush}" BorderThickness="1" Padding="4">
+      <Grid MinHeight="96">
+        <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0"
+                 Padding="14,12,14,10" FontSize="14.5" AcceptsReturn="True" TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                 TextChanged="InputBox_TextChanged" KeyDown="InputBox_KeyDown"/>
+        <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="14.5"
+                   Foreground="{StaticResource TextMutedBrush}"
+                   Margin="15,13,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
+                   Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
+      </Grid>
+    </Border>
+
+    <!-- toolbar floats on the desk, clear of the sheet -->
+    <DockPanel Grid.Row="2" Margin="2,12,2,0">
+      <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+        <local:FtComboBox x:Name="TargetCombo" Width="180"
+                          SelectionChanged="TargetCombo_SelectionChanged"/>
+        <Border Margin="10,0,0,0" VerticalAlignment="Center"
+                Background="{StaticResource BrandFillBrush}" CornerRadius="9" Padding="10,3">
+          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{StaticResource BrandBrush}"/>
+        </Border>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="CopyResultButton" Content="复制译文" Padding="12,5"
+                Click="CopyResult_Click" IsEnabled="False"/>
+        <Button x:Name="TranslateButton" Style="{StaticResource PrimaryButton}"
+                Content="翻译" Padding="24,6" Margin="0" Click="Translate_Click"/>
+      </StackPanel>
+    </DockPanel>
+
+    <!-- the translation: a quote written on the desk -->
+    <ScrollViewer Grid.Row="3" Margin="2,18,2,0" VerticalScrollBarVisibility="Auto">
+      <Grid VerticalAlignment="Top">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
+                   Fill="{StaticResource BoltRule}" Margin="0,5,16,5" VerticalAlignment="Stretch"/>
+        <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="14.5" LineHeight="26"
+                   Foreground="{StaticResource TextPrimaryBrush}"
+                   Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
+      </Grid>
+    </ScrollViewer>
+
+    <!-- footer -->
+    <DockPanel Grid.Row="4" Margin="2,12,2,0">
+      <Button x:Name="KeyButton" Content="配置 Key" DockPanel.Dock="Right" HorizontalAlignment="Right"
+              Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>
+      <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Right" VerticalAlignment="Center"
+                 Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
+      <TextBlock x:Name="KeyStatus" VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+    </DockPanel>
+  </Grid>
+</Window>

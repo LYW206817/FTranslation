@@ -1,0 +1,28 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="FastTranslation"
+           Manufacturer="FastTranslation Project"
+           Version="1.0.0"
+           UpgradeCode="CFF7EA90-6515-4CAA-AD10-A7C621203C44"
+           Scope="perUser"
+           Compressed="yes"
+           Language="2052"
+           InstallerVersion="500">
+    <SummaryInformation Description="划词翻译桌面工具(Qwen-MT)" />
+    <Icon Id="AppIcon" SourceFile="D:\FTranslation\publish\ft-folder\FastTranslation.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 FastTranslation。" AllowSameVersionUpgrades="yes" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- per-user install, no elevation required (VS Code user-setup style location);
+         folder layout (not single-file) keeps private working set ~40MB vs ~125MB -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="InstallRoot" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="FastTranslation" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="FastTranslation" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+  </Package>
+</Wix>

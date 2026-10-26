@@ -1,0 +1,23 @@
+<Window x:Class="Probe.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fast Translation Probe" Width="760" Height="520">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <StackPanel Orientation="Horizontal" Grid.Row="0">
+      <Button x:Name="StartButton" Content="Start hook" Padding="12,6" Click="StartButton_Click"/>
+      <Button x:Name="MeasureButton" Content="Measure memory" Padding="12,6" Margin="8,0,0,0" Click="MeasureButton_Click"/>
+      <Button x:Name="ReplaceButton" Content="Replace selection" Padding="12,6" Margin="8,0,0,0" Click="ReplaceButton_Click"/>
+      <CheckBox x:Name="CaptureOnClickCheck" Content="Capture on click only (STranslate-style)"
+                Margin="16,0,0,0" VerticalAlignment="Center"/>
+      <TextBlock x:Name="MemoryText" Margin="16,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+    </StackPanel>
+    <TextBlock Grid.Row="1" Margin="0,8,0,4" Text="Log (this probe is throwaway; do not merge into product):"/>
+    <TextBox x:Name="LogBox" Grid.Row="2" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" IsReadOnly="True"/>
+  </Grid>
+</Window>

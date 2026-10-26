@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>preview</LangVersion>
+    <!-- InvariantGlobalization MUST stay false: invariant mode breaks WPF binding culture
+         resolution (Popup.IsOpen etc. throw XamlParseException and silently kill dropdowns
+         in EVERY ComboBox template, Fluent or Aero2). v15 root cause. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>

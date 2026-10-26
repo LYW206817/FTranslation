@@ -1,0 +1,52 @@
+<Window x:Class="FastTranslation.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FastTranslation.App"
+        Title="设置" Width="500" SizeToContent="Height" Icon="/FastTranslation.ico"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="{StaticResource WindowBgBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
+  <Grid Margin="24,20,24,18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Text="设置" FontSize="16" FontWeight="SemiBold"
+               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4"/>
+
+    <StackPanel Grid.Row="1">
+      <TextBlock Text="目标语言" Style="{StaticResource FieldLabel}" Margin="0,10,0,6"/>
+      <local:FtComboBox x:Name="TargetCombo" SelectionChanged="TargetCombo_SelectionChanged"/>
+
+      <TextBlock Text="模型" Style="{StaticResource FieldLabel}"/>
+      <local:FtComboBox x:Name="ModelCombo">
+        <ComboBoxItem Content="qwen-mt-flash(快速,默认)"/>
+        <ComboBoxItem Content="qwen-mt-plus(更高质量)"/>
+      </local:FtComboBox>
+
+      <TextBlock Text="划词热键" Style="{StaticResource FieldLabel}"/>
+      <TextBox x:Name="HotkeyBox" Text="Ctrl+Alt+T"/>
+      <TextBlock x:Name="HotkeyError" Text="" FontSize="12" Foreground="{StaticResource DangerBrush}"
+                 Margin="0,5,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+
+      <CheckBox x:Name="ClipboardFallbackCheck" Content="取词失败时使用剪贴板兜底(Ctrl+C)"
+                Margin="0,16,0,0"/>
+      <CheckBox x:Name="WriteBackCheck" Content="启用替换原文(仅在可写文本框)" Margin="0,10,0,0"/>
+
+      <TextBlock Text="API Key" Style="{StaticResource FieldLabel}"/>
+      <PasswordBox x:Name="KeyBox"/>
+      <TextBlock Text="保存在本机,使用 Windows DPAPI 加密" FontSize="11"
+                 Foreground="{StaticResource TextMutedBrush}" Margin="0,5,0,0"/>
+
+      <TextBlock Text="自定义服务地址(可选,默认 DashScope)" Style="{StaticResource FieldLabel}"/>
+      <TextBox x:Name="BaseUrlBox"/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+      <Button Content="取消" Click="Cancel_Click"/>
+      <Button Content="保存" Style="{StaticResource PrimaryButton}" Margin="0" Click="Save_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

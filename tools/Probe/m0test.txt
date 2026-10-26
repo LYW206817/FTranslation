@@ -1,0 +1,4 @@
+The quick brown fox jumps over the lazy dog while the calm river flows beneath the old stone bridge in the quiet village
+Second line for selection testing with several common words arranged plainly
+Third line ends here with more words to drag across for measurement
+这是一段中文测试文本,用于验证划词翻译的端到端流程。
