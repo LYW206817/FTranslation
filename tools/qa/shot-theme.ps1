@@ -5,6 +5,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+if (-not ('TopMostWin' -as [type])) {
+  Add-Type -Namespace '' -Name 'TopMostWin' -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool SetWindowPos(System.IntPtr hWnd, System.IntPtr after, int x, int y, int cx, int cy, uint flags);
+'@
+}
 
 $wSettings = [string][char]0x8BBE + [char]0x7F6E   # she-zhi
 $wCancel   = [string][char]0x53D6 + [char]0x6D88   # qu-xiao
@@ -15,6 +21,10 @@ $backup = $null
 if (Test-Path $settingsPath) { $backup = Get-Content $settingsPath -Raw -Encoding UTF8 }
 
 function Capture-Window($win, $out) {
+  # another app can steal the foreground between open and capture; pin ours on top for the shot
+  $hwnd = [System.IntPtr]$win.Current.NativeWindowHandle
+  [TopMostWin]::SetWindowPos($hwnd, [System.IntPtr](-1), 0, 0, 0, 0, 0x0013) | Out-Null
+  Start-Sleep -Milliseconds 400
   $r = $win.Current.BoundingRectangle
   if ($r.Width -le 0 -or $r.Height -le 0) { Write-Host "empty rect for $out"; return }
   $bmp = New-Object System.Drawing.Bitmap([int][math]::Round($r.Width), [int][math]::Round($r.Height))
@@ -22,6 +32,7 @@ function Capture-Window($win, $out) {
   $g.CopyFromScreen([int][math]::Round($r.X), [int][math]::Round($r.Y), 0, 0, $bmp.Size)
   $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
   $g.Dispose(); $bmp.Dispose()
+  [TopMostWin]::SetWindowPos($hwnd, [System.IntPtr](-2), 0, 0, 0, 0, 0x0013) | Out-Null
   Write-Host "saved $out ($([int]$r.Width)x$([int]$r.Height))"
 }
 
