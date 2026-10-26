@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:FastTranslation.App"
         Title="Fast Translation" Width="560" Height="540" Icon="/FastTranslation.ico"
         WindowStartupLocation="CenterScreen" MinWidth="440" MinHeight="440"
-        Background="{StaticResource WindowBgBrush}"
+        Background="{DynamicResource WindowBgBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType">
   <Window.Resources>
@@ -29,7 +29,7 @@
         <Image Source="/icon-master.png" Width="24" Height="24" VerticalAlignment="Center"
                RenderOptions.BitmapScalingMode="HighQuality"/>
         <TextBlock Text="Fast Translation" FontSize="16" FontWeight="SemiBold"
-                   Foreground="{StaticResource TextPrimaryBrush}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="10,0,0,0" VerticalAlignment="Center"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
         <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
@@ -40,15 +40,15 @@
     </DockPanel>
 
     <!-- input sheet: a quiet piece of paper, nothing else inside -->
-    <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="10"
-            BorderBrush="{StaticResource HairBrush}" BorderThickness="1" Padding="4">
+    <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
+            BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="4">
       <Grid MinHeight="96">
         <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0"
                  Padding="14,12,14,10" FontSize="14.5" AcceptsReturn="True" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                  TextChanged="InputBox_TextChanged" KeyDown="InputBox_KeyDown"/>
         <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="14.5"
-                   Foreground="{StaticResource TextMutedBrush}"
+                   Foreground="{DynamicResource TextMutedBrush}"
                    Margin="15,13,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
                    Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
       </Grid>
@@ -60,8 +60,8 @@
         <local:FtComboBox x:Name="TargetCombo" Width="180"
                           SelectionChanged="TargetCombo_SelectionChanged"/>
         <Border Margin="10,0,0,0" VerticalAlignment="Center"
-                Background="{StaticResource BrandFillBrush}" CornerRadius="9" Padding="10,3">
-          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{StaticResource BrandBrush}"/>
+                Background="{DynamicResource BrandFillBrush}" CornerRadius="9" Padding="10,3">
+          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{DynamicResource BrandBrush}"/>
         </Border>
       </StackPanel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -82,7 +82,7 @@
         <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
                    Fill="{StaticResource BoltRule}" Margin="0,5,16,5" VerticalAlignment="Stretch"/>
         <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="14.5" LineHeight="26"
-                   Foreground="{StaticResource TextPrimaryBrush}"
+                   Foreground="{DynamicResource TextPrimaryBrush}"
                    Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
       </Grid>
     </ScrollViewer>
@@ -92,9 +92,9 @@
       <Button x:Name="KeyButton" Content="配置 Key" DockPanel.Dock="Right" HorizontalAlignment="Right"
               Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>
       <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Right" VerticalAlignment="Center"
-                 Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
+                 Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
       <TextBlock x:Name="KeyStatus" VerticalAlignment="Center"
-                 Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                 Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
     </DockPanel>
   </Grid>
 </Window>

@@ -15,29 +15,39 @@ namespace FastTranslation.Platform.Windows;
 /// <summary>Design tokens shared by the overlay surfaces (matches App.xaml palette).</summary>
 internal static class FtTheme
 {
-    internal static readonly SolidColorBrush Brand = Freeze("#2562FF");
-    internal static readonly SolidColorBrush BrandHover = Freeze("#1D4FE0");
-    internal static readonly SolidColorBrush BrandPressed = Freeze("#1A45C4");
-    internal static readonly SolidColorBrush BrandFill = Freeze("#EDF2FF");
-    internal static readonly SolidColorBrush Accent = Freeze("#40A9FF");
-    internal static readonly SolidColorBrush Bg = Freeze("#F7F9FC");
-    internal static readonly SolidColorBrush Surface = Freeze("#FFFFFF");
-    internal static readonly SolidColorBrush Hair = Freeze("#E4EAF3");
-    internal static readonly SolidColorBrush HairStrong = Freeze("#D9E3F1");
-    internal static readonly SolidColorBrush BorderStrong = Freeze("#CFD9EA");
-    internal static readonly SolidColorBrush Hover = Freeze("#F0F4FA");
-    internal static readonly SolidColorBrush TextPrimary = Freeze("#1B2536");
-    internal static readonly SolidColorBrush TextSecondary = Freeze("#5C6B82");
-    internal static readonly SolidColorBrush TextMuted = Freeze("#8B97A9");
-    internal static readonly SolidColorBrush Danger = Freeze("#DC2626");
-    internal static readonly SolidColorBrush Notice = Freeze("#C2410C");
+    // The overlay surfaces are built in code, so they cannot use the XAML brushes in App.xaml.
+    // They read the same hex values from ThemePalette instead (one palette for the whole app),
+    // and resolve them lazily so a palette picked at startup applies to every surface.
+    private static readonly Dictionary<string, SolidColorBrush> Cache = new(StringComparer.Ordinal);
+
+    internal static SolidColorBrush Brand => Freeze(ThemePalette.Active.Brand);
+    internal static SolidColorBrush BrandHover => Freeze(ThemePalette.Active.BrandHover);
+    internal static SolidColorBrush BrandPressed => Freeze(ThemePalette.Active.BrandPressed);
+    internal static SolidColorBrush BrandFill => Freeze(ThemePalette.Active.BrandFill);
+    internal static SolidColorBrush Accent => Freeze(ThemePalette.Active.Accent);
+    internal static SolidColorBrush Bg => Freeze(ThemePalette.Active.WindowBg);
+    internal static SolidColorBrush Surface => Freeze(ThemePalette.Active.Surface);
+    internal static SolidColorBrush Hair => Freeze(ThemePalette.Active.Hair);
+    internal static SolidColorBrush HairStrong => Freeze(ThemePalette.Active.HairStrong);
+    internal static SolidColorBrush BorderStrong => Freeze(ThemePalette.Active.BorderStrong);
+    internal static SolidColorBrush Hover => Freeze(ThemePalette.Active.Hover);
+    internal static SolidColorBrush TextPrimary => Freeze(ThemePalette.Active.TextPrimary);
+    internal static SolidColorBrush TextSecondary => Freeze(ThemePalette.Active.TextSecondary);
+    internal static SolidColorBrush TextMuted => Freeze(ThemePalette.Active.TextMuted);
+    internal static SolidColorBrush Danger => Freeze(ThemePalette.Active.Danger);
+    internal static SolidColorBrush Notice => Freeze(ThemePalette.Active.Notice);
     internal static readonly FontFamily UiFont = new("Segoe UI, Microsoft YaHei UI");
 
     private static SolidColorBrush Freeze(string hex)
     {
-        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-        b.Freeze();
-        return b;
+        lock (Cache)
+        {
+            if (Cache.TryGetValue(hex, out var cached)) return cached;
+            var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            b.Freeze();
+            Cache[hex] = b;
+            return b;
+        }
     }
 
     private static ControlTemplate ButtonTemplate(CornerRadius corner)

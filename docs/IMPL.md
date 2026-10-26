@@ -341,3 +341,21 @@
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 24 + 36 + 6 = **66/66**;MSI 装后 250 文件、exe SHA256 与构建产物一致、桌面与开始菜单快捷方式存在、卸载项为 `Fast Translation`;便携包 263 条目 61.6MB
 - **内存 5 分钟浸泡**(新增 `tools/qa/mem-soak.ps1`,每 15s 采 `Win32_PerfRawData_PerfProc_Process`):装在 `%LOCALAPPDATA%` 的 MSI 版 PrivateWS 全程 **37.6–38.6MB**(t=16s 37.9 → t=307s 38.6,handle 556→586),WS 120.4–125.4MB,红线 50MB 有余量。注意 `Start-Process` 后立刻单点采样的 50.8MB 是 GC 未收敛的启动瞬时值,不是稳态 —— 判断红线必须看浸泡曲线
 - **UIA 脚本化交互验证**(新增 `tools/qa/` 下四支):`settings-verify.ps1` 校验窗口内按钮/关于文本/截图;`settings-dump.ps1` 全后代元素转储;`settings-interact.ps1` **点击级**验证排除应用增删 + 开机启动开关(读写 `HKCU Run` 与 `settings.json` 双向核对,结束时备份还原);`verify-install.ps1` 校验安装态。脚本必须 ASCII-only(中文用 `[char]0xXXXX` 拼),否则无 BOM 的 PS1 在 GBK 下乱码
+
+## v24 开源前补齐:主题跟随系统 / 许可证 / 根 README(2026-10-26)✅
+
+**背景**:决定推 GitHub 私有仓库前先把「对外可见」的三件事补齐 —— LICENSE、根 README、主题跟随系统(spec §3.1 承诺但代码里 `Theme` 字段一直没人读)。
+
+- **许可证**:新增 `LICENSE`(MIT,FastTranslation Project)与 `THIRD_PARTY_NOTICES.md`。后者声明 v1.0.0 不含任何第三方源代码;构建期依赖 .NET 10/WPF(MIT)、`ProtectedData`(MIT)、WiX v4(MSL,仅构建)、xunit 系(Apache-2.0,仅测试);参考过的 STranslate / Text-Grab(MIT)只借鉴思路未复制代码,Pot / Crow / CopyTranslator(GPL)同样只学思路 —— 对应 spec §19.3 的 license 红线
+- **根 README**:替换掉原先只有一句 v1.0.0 的占位内容,写成 118 行完整文档 —— 功能介绍、环境要求、安装(MSI/便携/未签名提示/卸载)、首次使用、隐私(只出网到 dashscope.aliyuncs.com、零遥测、不落盘文本)、已知限制、从源码构建(含 WiX 打包命令链)、项目结构、架构硬约束(Core 零 Win32/WPF 引用)、许可指引。配图放 `assets/screenshots/`(浅/深 × 主窗/设置 四张),因为 `assets/qa/` 在 .gitignore 内
+- **主题方案(选 A:启动时定调色板,不做实时换肤)**:spec 只要求「跟随系统深浅色」,启动时读一次注册表就能拿到完全一致的可见结果;实时切换要把 94 处 `StaticResource` 全改 `DynamicResource` + 调色板可变 + 窗口重建,代价是整轮 UI 回归。故 `ThemeMode`/`AppTheme` 一律不做运行时热切换,设置页明确标注「下次启动生效」
+- **新增 `ThemePalette`**(src/FastTranslation.Platform.Windows/ThemePalette.cs):`AppTheme { Light, Dark }`;`ThemeColors` record 17 个 hex 令牌(Brand/BrandHover/BrandPressed/BrandFill/BrandFillHover/Accent/WindowBg/Surface/Hair/HairStrong/BorderStrong/Hover/TextPrimary/TextSecondary/TextMuted/Danger/Notice);`Resolve(setting, systemPrefersDark)` 认 `system`/`light`/`dark`(trim + 小写,null/未知回落系统偏好);`SystemPrefersDark()` 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme`(缺失/异常按浅色,即最保守)。深色主色 #4A82FF、窗底 #16191F、Surface #1F242C、正文 #E8ECF3
+- **新增 `ThemeBridge`**(src/FastTranslation.App/ThemeBridge.cs):`Apply(theme)` 先 `ThemePalette.Use` 再把 App.xaml 里 15 个 brush 的 `Color` **就地改**。**不能换字典条目** —— 隐式 Style/ControlTemplate 解析时已把 StaticResource 解析成同一个 brush 实例,替换 key 指向的对象对已解析模板无效
+- **真根因教训(花了三轮截图才定位)**:只改 brush 颜色后,深色下**所有输入框/文本框底色仍然是 #FFFFFF**。因为 App.xaml 的模板里用的是 `{StaticResource …Brush}`,解析即固定。最终把 4 个 XAML 的 brush 引用批量改 `{DynamicResource …}`(App.xaml 52、MainWindow 10、SettingsWindow 11、OnboardingWindow 10,共 83 处),同时给 15 个 SolidColorBrush 加 `po:Freeze="False"`(冻结的 brush 不能改色,`po` 命名空间=`http://schemas.microsoft.com/winfx/2006/xaml/presentation/options`)。改完深色实测:窗底 #16191F / 输入框 #1F242C / 边框 #3A424F / 主按钮 #4A82FF / 文字 #E8ECF3;浅色 #F7F9FC / #FFFFFF / #CFD9EA / #2562FF
+- **浮层窗口同步**:overlay 是纯代码构造,吃不到 XAML 资源。`OverlayWindows` 里的 `FtTheme` 由 16 个 `readonly SolidColorBrush` 改成属性 `=> Freeze(ThemePalette.Active.X)`,Freeze 用带锁的 `Dictionary<string, SolidColorBrush>` 缓存复用(每帧新建 brush 会拖慢浮层)
+- **顺手清掉剩余硬编码色**:禁用按钮态 #A9C0F2/#E9EEFB → `HairStrongBrush`/`TextMutedBrush`;两处 `SelectionBrush` #BBD2FF → `BrandFillBrush`。仍保留硬编码的三处是有意的:#402562FF 焦点环(品牌色半透明)、#1B2536 DropShadowEffect、MainWindow 的 BoltRule 品牌渐变
+- **设置页**:加「主题」`FtComboBox`(跟随系统/浅色/深色)+ 一行「下次启动生效」提示;读写 `AppSettings.Theme`
+- **测试**:新增 `ThemePaletteTests`(12 例):9 组 `Resolve` 的 InlineData(含 `"  DARK  "`、null、`""`、乱字符串回落系统偏好)、`Active` 跟随 `Current`、两套调色板 17 项全非空且以 # 开头、深色必须在 WindowBg/Surface/TextPrimary 上与浅色不同。平台层测试 36 → **48**
+- **截图验证陷阱(重要,曾误判成 bug)**:屏幕 1440×960,主窗 980×945 居中后 rect=(770,326),底部 311px 在屏幕外,`CopyFromScreen` 抓到的桌面空白 #FFFFFF 会被当成「深色没生效」。新增 `tools/qa/shot-main-theme.ps1` 先 `SetWindowPos(hwnd, 0, 0,0,0,0, SWP_NOSIZE|SWP_NOZORDER)` 把窗口挪到 (0,0) 再抓
+- **新增 QA 脚本**(tools/qa/):`shot-theme.ps1`(注入 Theme → 重启 → UIA 抓主窗与设置窗 → finally 还原 settings.json)、`shot-main-theme.ps1`、`hist-all.ps1`(3px 网格全图直方图 top10)、`row-hist.ps1`/`row-probe.ps1`/`col-run.ps1`(按行/列的近白与深色像素统计,用来定位「哪一行为什么还是白的」)、`pixel-probe.ps1`/`pt-probe.ps1`、`dump-windows.ps1`、`screen-info.ps1`
+- **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 24 + 48 + 6 = **78/78**

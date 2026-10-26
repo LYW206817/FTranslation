@@ -72,6 +72,10 @@ public partial class App : Application, IResultPresenter
 
         _settings = _settingsService.Load();
 
+        // palette before any window exists: the XAML brushes are mutable (po:Freeze="False") and
+        // ThemeBridge recolors them in place, so every style and template picks up the theme (v24)
+        ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme));
+
         var provider = new QwenMtProvider(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName),
             new QwenMtOptions

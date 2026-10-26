@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:FastTranslation.App"
         Title="设置" Width="500" Icon="/FastTranslation.ico"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResize" MinHeight="420"
-        Background="{StaticResource WindowBgBrush}"
+        Background="{DynamicResource WindowBgBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <Grid Margin="24,20,24,18">
     <Grid.RowDefinitions>
@@ -14,7 +14,7 @@
     </Grid.RowDefinitions>
 
     <TextBlock Grid.Row="0" Text="设置" FontSize="16" FontWeight="SemiBold"
-               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4"/>
+               Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,4"/>
 
     <!-- the settings list outgrew a 900px-tall screen once exclusions/about were added;
          scroll it so 保存/取消 never fall off-screen -->
@@ -29,9 +29,18 @@
         <ComboBoxItem Content="qwen-mt-plus(更高质量)"/>
       </local:FtComboBox>
 
+      <TextBlock Text="主题" Style="{StaticResource FieldLabel}"/>
+      <local:FtComboBox x:Name="ThemeCombo">
+        <ComboBoxItem Content="跟随系统"/>
+        <ComboBoxItem Content="浅色"/>
+        <ComboBoxItem Content="深色"/>
+      </local:FtComboBox>
+      <TextBlock Text="下次启动生效" FontSize="11"
+                 Foreground="{DynamicResource TextMutedBrush}" Margin="0,5,0,0"/>
+
       <TextBlock Text="划词热键" Style="{StaticResource FieldLabel}"/>
       <TextBox x:Name="HotkeyBox" Text="Ctrl+Alt+T"/>
-      <TextBlock x:Name="HotkeyError" Text="" FontSize="12" Foreground="{StaticResource DangerBrush}"
+      <TextBlock x:Name="HotkeyError" Text="" FontSize="12" Foreground="{DynamicResource DangerBrush}"
                  Margin="0,5,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
 
       <CheckBox x:Name="ClipboardFallbackCheck" Content="取词失败时使用剪贴板兜底(Ctrl+C)"
@@ -41,16 +50,16 @@
       <TextBlock Text="API Key" Style="{StaticResource FieldLabel}"/>
       <PasswordBox x:Name="KeyBox"/>
       <TextBlock Text="保存在本机,使用 Windows DPAPI 加密" FontSize="11"
-                 Foreground="{StaticResource TextMutedBrush}" Margin="0,5,0,0"/>
+                 Foreground="{DynamicResource TextMutedBrush}" Margin="0,5,0,0"/>
 
       <TextBlock Text="自定义服务地址(可选,默认 DashScope)" Style="{StaticResource FieldLabel}"/>
       <TextBox x:Name="BaseUrlBox"/>
 
       <TextBlock Text="排除应用" Style="{StaticResource FieldLabel}" Margin="0,18,0,6"/>
-      <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderStrongBrush}"
+      <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderStrongBrush}"
               BorderThickness="1" CornerRadius="6" Padding="2">
         <ListBox x:Name="ExcludedList" Height="86" BorderThickness="0" Background="Transparent"
-                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"/>
+                 Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13"/>
       </Border>
       <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
         <TextBox x:Name="ExclusionInput" Width="180" Margin="0,0,8,0"/>
@@ -59,14 +68,14 @@
         <Button Content="移除选中" Click="RemoveExclusion_Click"/>
       </StackPanel>
       <TextBlock x:Name="ExclusionHint" Text="" FontSize="11" Visibility="Collapsed"
-                 Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                 Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
       <TextBlock Text="名称按进程名匹配(如 chrome、Code),不区分大小写。列出的应用里划词与写回都不会触发。"
-                 FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                 FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
       <CheckBox x:Name="AutoStartCheck" Content="开机时自动启动(当前用户)" Margin="0,18,0,0"/>
 
       <TextBlock Text="关于" Style="{StaticResource FieldLabel}" Margin="0,18,0,4"/>
-      <TextBlock x:Name="AboutText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+      <TextBlock x:Name="AboutText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                  TextWrapping="Wrap"/>
     </StackPanel>
     </ScrollViewer>

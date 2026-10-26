@@ -1,5 +1,9 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Directory Id="dir0" Name="zh-Hans">
+      </Directory>
+    </DirectoryRef>
     <ComponentGroup Id="AppFiles">
       <Component Id="c0" Directory="INSTALLFOLDER">
         <File Id="c0f" Source="D:\FTranslation\publish\ft-folder\Accessibility.dll" KeyPath="yes"/>
@@ -754,6 +758,42 @@
       </Component>
       <Component Id="c249" Directory="INSTALLFOLDER">
         <File Id="c249f" Source="D:\FTranslation\publish\ft-folder\wpfgfx_cor3.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c250" Directory="dir0">
+        <File Id="c250f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\PresentationCore.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c251" Directory="dir0">
+        <File Id="c251f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\PresentationFramework.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c252" Directory="dir0">
+        <File Id="c252f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\PresentationUI.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c253" Directory="dir0">
+        <File Id="c253f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\ReachFramework.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c254" Directory="dir0">
+        <File Id="c254f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\System.Windows.Controls.Ribbon.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c255" Directory="dir0">
+        <File Id="c255f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\System.Windows.Input.Manipulations.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c256" Directory="dir0">
+        <File Id="c256f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\System.Xaml.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c257" Directory="dir0">
+        <File Id="c257f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\UIAutomationClient.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c258" Directory="dir0">
+        <File Id="c258f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\UIAutomationClientSideProviders.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c259" Directory="dir0">
+        <File Id="c259f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\UIAutomationProvider.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c260" Directory="dir0">
+        <File Id="c260f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\UIAutomationTypes.resources.dll" KeyPath="yes"/>
+      </Component>
+      <Component Id="c261" Directory="dir0">
+        <File Id="c261f" Source="D:\FTranslation\publish\ft-folder\zh-Hans\WindowsBase.resources.dll" KeyPath="yes"/>
       </Component>
     </ComponentGroup>
   </Fragment>

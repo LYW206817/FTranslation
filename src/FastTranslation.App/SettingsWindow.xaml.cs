@@ -30,6 +30,12 @@ public partial class SettingsWindow : Window
         SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
 
         ModelCombo.SelectedIndex = _settings.Model.Contains("plus") ? 1 : 0;
+        ThemeCombo.SelectedIndex = _settings.Theme?.Trim().ToLowerInvariant() switch
+        {
+            ThemePalette.LightSetting => 1,
+            ThemePalette.DarkSetting => 2,
+            _ => 0,
+        };
         HotkeyBox.Text = _settings.Hotkey;
         ClipboardFallbackCheck.IsChecked = _settings.ClipboardFallbackEnabled;
         WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
@@ -133,6 +139,13 @@ public partial class SettingsWindow : Window
     {
         _settings.TargetLanguage = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
         _settings.Model = ModelCombo.SelectedIndex == 1 ? "qwen-mt-plus" : "qwen-mt-flash";
+        // the palette is applied once at startup (App.OnStartup) — no live re-theme by design
+        _settings.Theme = ThemeCombo.SelectedIndex switch
+        {
+            1 => ThemePalette.LightSetting,
+            2 => ThemePalette.DarkSetting,
+            _ => ThemePalette.SystemSetting,
+        };
 
         var newHotkey = HotkeyBox.Text.Trim();
         if (!string.Equals(newHotkey, _settings.Hotkey, System.StringComparison.OrdinalIgnoreCase))
