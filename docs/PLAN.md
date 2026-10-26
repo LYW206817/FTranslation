@@ -1,8 +1,9 @@
-﻿# Fast Translation v1.0 执行计划(PLAN)
+# Fast Translation v1.0 执行计划(PLAN)
 
 - 版本:2026-10-25(基于 M0 实测修订;原始蓝图见 `superpowers/plans/2026-10-23-fast-translation-v1.md`,以其为底本,M0 结论覆盖冲突项)
 - M0 结论:**PASS_WITH_SCOPE**(详见 `tools/Probe/RESULTS.md`)
 - 状态基线:产品代码 0 行;本文档是唯一执行依据;实施日志见 `IMPL.md`
+- 2026-10-26 更新:用户明确要求启用 git(基线提交 `a10fd00`),原「不自行 git」红线作废;T15 的安装器实际用 WiX v4 MSI(非 Inno Setup)
 
 ## 1. 产品定义(不变)
 
@@ -57,7 +58,8 @@ FastTranslation.sln
 
 ## 5. 红线(继承交接文档,仍然有效)
 
-不静默放宽 50MB;不向终端做兜底/写回;写回三重校验;不记录选中文本/Key/剪贴板(遥测为零);GPL 不抄;不自行 git;M0 缺陷清单(RESULTS.md §2)逐条在对应任务落实。
+不静默放宽 50MB;不向终端做兜底/写回;写回三重校验;不记录选中文本/Key/剪贴板(遥测为零);GPL 不抄;M0 缺陷清单(RESULTS.md §2)逐条在对应任务落实。
+(原「不自行 git」条已于 2026-10-26 按用户指令解除,见 §头部更新说明。)
 
 ## 6. 本次会话执行说明(用户已授权)
 
