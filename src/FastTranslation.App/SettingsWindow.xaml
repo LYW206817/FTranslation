@@ -87,7 +87,7 @@
          control is ever sliced in half by the viewport ===== -->
     <ScrollViewer x:Name="Body" Grid.Row="1"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                  Focusable="False">
+                  Focusable="False" PreviewMouseWheel="Body_PreviewMouseWheel">
       <StackPanel x:Name="BodyStack" Margin="24,14,18,6">
 
         <TextBlock Text="翻译与外观" Style="{StaticResource GroupLabel}"/>
@@ -173,8 +173,7 @@
                          BorderThickness="0" Background="Transparent" Padding="0"
                          ItemContainerStyle="{StaticResource ExclusionItem}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         AutomationProperties.Name="已排除的应用"
-                         PreviewMouseWheel="ExcludedList_PreviewMouseWheel"/>
+                         AutomationProperties.Name="已排除的应用"/>
               </Grid>
             </Border>
 

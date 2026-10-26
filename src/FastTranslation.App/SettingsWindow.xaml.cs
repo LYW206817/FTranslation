@@ -82,33 +82,34 @@ public partial class SettingsWindow : Window
         ExclusionEmpty.Visibility = ExcludedList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // The list is a scroller nested in the page scroller: while the pointer is over it the wheel
-    // is consumed by the inner one, so the page "sticks" mid-scroll. Forward the wheel to the page
-    // once the list cannot move any further in that direction.
-    private void ExcludedList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    // Every text box and the excluded-app list carry their own ScrollViewer inside the page's one.
+    // A nested one marks the wheel handled even when it cannot move any further, so with the pointer
+    // over an input the page stops dead — the "gets stuck, recovers later" report. Tunnel the wheel
+    // at the page and forward it whenever the nested scroller cannot use it in that direction.
+    private void Body_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        var inner = FindScrollViewer(ExcludedList);
-        var scrollable = inner is not null && inner.ScrollableHeight > 0.5;
-        var atTop = inner is null || inner.VerticalOffset <= 0.5;
-        var atBottom = inner is null || inner.VerticalOffset >= inner.ScrollableHeight - 0.5;
-        var wheelUp = e.Delta > 0;
+        if (e.Handled) return;
 
-        if (scrollable && !(wheelUp ? atTop : atBottom)) return; // the list can still move: let it
+        var inner = FindInnerScrollViewer(e.OriginalSource as DependencyObject);
+        if (inner is not null && CanScroll(inner, e.Delta)) return; // let the nested scroller have it
+
+        var lines = SystemParameters.WheelScrollLines;
+        var step = lines > 0 ? lines * 16.0 : lines == -1 ? Body.ViewportHeight * 0.9 : 0.0;
+        if (step <= 0) return;
 
         e.Handled = true;
-        var step = e.Delta / 120.0 * 48.0;
-        Body.ScrollToVerticalOffset(Math.Clamp(Body.VerticalOffset - step, 0, Body.ScrollableHeight));
+        var target = Body.VerticalOffset - Math.Sign(e.Delta) * step;
+        Body.ScrollToVerticalOffset(Math.Clamp(target, 0, Body.ScrollableHeight));
     }
 
-    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    private static bool CanScroll(ScrollViewer viewer, int delta) =>
+        delta > 0 ? viewer.VerticalOffset > 0.5 : viewer.VerticalOffset < viewer.ScrollableHeight - 0.5;
+
+    private ScrollViewer? FindInnerScrollViewer(DependencyObject? node)
     {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
+        for (var current = node; current is not null && !ReferenceEquals(current, Body); current = VisualTreeHelper.GetParent(current))
         {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is ScrollViewer viewer) return viewer;
-            var nested = FindScrollViewer(child);
-            if (nested is not null) return nested;
+            if (current is ScrollViewer viewer) return viewer;
         }
         return null;
     }
