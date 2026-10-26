@@ -393,3 +393,17 @@
 - **效果(同坐标、同探针、同格数)**:修复前 10 → 49.9 后卡死 5 格;修复后连续 10 → 23.3 → 36.6 → 49.9 → 63.2 → 76.5 → 89.7 → 100,向上方向 90 → 76.7 → 63.4 → 50.1 → 36.8 → 23.5 → 10.3 → 0 同样连续,每格 `cpu` 16–203ms(整窗重光栅化的固有成本,与 v26 的测量一致)。
 - **副产品**:滚动链(内层到边后交给外层)现在对 `ListBox`/`TextBox`/`PasswordBox`/`ComboBox` 一律生效,不再只有排除列表。
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 24 + 48 + 6 = **78/78**。
+
+## v29 「装不上,闪一下就消失」:Windows Installer 修复源陷阱 + 1.0.1(2026-10-26)✅
+
+**背景**:用户把 `publish/dist` 里的 MSI 经微信转给自己后双击,现象是「装不上,闪了一下就消失了」。
+
+- **证据链(先看日志再动手)**:`Get-WinEvent -ProviderName MsiInstaller` 显示 **15:13、15:19、15:20 三次安装全部 status 1603**,来源都是 `C:\Users\<user>\xwechat_files\wxid_*\msg\file\2026-10\FastTranslation-1.0.0-Setup(2).msi` 与 `(3).msi`。同时 ARP 里 `{666548C4-B2CB-4B0F-9743-2F158CA845F4}` 仍在,但 `%LOCALAPPDATA%\Programs\FastTranslation` **整个目录没了**,开始菜单快捷方式指向不存在的 exe —— 用户看到的「闪一下」就是 msiexec 起来又立刻回滚
+- **排除「文件坏了」**:微信那份 MSI 与本地产物 **SHA256 完全一致**(都是 `CEE76CB6…C999250AAA`,53079165 字节),所以不是传输损坏
+- **真根因(`/l*v` 日志逐行确认)**:同一 ProductCode 已装过、又拿**改了名的同一份包**去双击时,Windows Installer 走「从新源修复」路径:它按**原包名** `FastTranslation-1.0.0-Setup.msi` 去新目录里找文件 → `Note: 1: 2203 … FastTranslation-1.0.0-Setup.msi 3: -2147287038` + `Note: 1: 1316` → `SECREPAIR: Error determining package source type` → `SECUREREPAIR: SecureRepair Failed` → **1603**,且修复流程先删后拷,回滚后旧装的文件也没了(所以「连原来的也没了」)
+- **反证两例**:①先 `msiexec /x` 卸载、再用**同一份微信文件**全新安装 → **exit 0,262 文件**;②装好之后**再点同一份、同一路径**的文件 → **exit 0**(源与记录一致时 SecureRepair 通过)。⇒ 陷阱只在「同版本 + 换了路径/文件名」时触发,朋友首次安装不受影响
+- **加固(本版实际改动)**:`installer/Product.wxs` 增加 `<Property Id="MsiLogging" Value="voicewarmupx" />` —— 实测把改名副本再装一次(仍 1603)时,`%TEMP%\MSI85990.LOG` 自动落盘 214KB / 1074 行,失败原因一行就能读出来;版本升 **1.0.1**(`Product.wxs` 的 `Version` + `Directory.Build.props` 新增 `<Version>1.0.1</Version>`,About 显示 `1.0.1+1a218f5`),新版本号让微信转发的那份变成**正常升级**而不是同版本修复
+- **脚本去硬编码版本**:`tools/qa/make-portable.ps1`、`install-msi.ps1` 改 1.0.1;`hash-dist.ps1` 过滤器改 `FastTranslation-*`;`portable-selftest.ps1`、`zip-inspect.ps1` 改成取 `dist` 里最新的 `*-portable.zip`
+- **新增 QA**:`install-state.ps1`(安装目录/快捷方式/ARP/临时日志一览)、`msi-events.ps1`(MsiInstaller 事件)、`post-install-check.ps1`(ProductVersion + MsiLogging 日志 + 启动存活)、`integrity-check.ps1`(262 文件 + exe 哈希 + 日志摘录)、`trap-test.ps1`(改名副本复现 1603 并检查是否自动落日志)、`launch-check.ps1`
+- **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 24 + 48 + 6 = **78/78**;1.0.1 MSI **53070995 字节** `sha256 378ED782…A2600D`;`msiexec /i` 覆盖升级 1.0.0(源为微信路径)→ **exit 0**;ARP 单条 `{E66C09F4-7E13-41E2-9EBB-E43327542FD1}` `Fast Translation 1.0.1`;installed files=262、exe hash matches build=True、satellite resources installed=12、`ProductVersion = 1.0.1+1a218f56ba6e38e4b0b0800276e8d28a114ca7d9`;便携包 **61621089 字节** `sha256 880597BA…CE67C4`(263 条目)
+- **对外发放策略**:朋友首选 **portable zip**(解压即用,不经 Windows Installer,零安装风险);MSI 作备选,并在 `publish/dist/README.txt` 增加「安装窗口闪一下就不见了怎么办」三条(已装同版本 / 先卸载再装 / 把 `%TEMP%\MSI*.log` 发我)

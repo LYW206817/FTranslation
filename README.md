@@ -30,9 +30,9 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `FastTranslation-1.0.0-Setup.msi` 双击安装，装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限。
+从 [Releases](../../releases) 下载 `FastTranslation-1.0.1-Setup.msi` 双击安装，装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限。
 
-喜欢绿色版就下 `FastTranslation-1.0.0-portable.zip`，解压即用。
+喜欢绿色版就下 `FastTranslation-1.0.1-portable.zip`，解压即用。
 
 > **当前构建未签名。** Windows SmartScreen 会拦一次，点「更多信息」→「仍要运行」。安装包请只从本仓库 Releases 获取。
 
@@ -83,7 +83,7 @@ dotnet run --project src/FastTranslation.App
 ```powershell
 dotnet publish src/FastTranslation.App -c Release -r win-x64 --self-contained true -o publish/ft-folder
 powershell -File tools/qa/gen-files-wxs.ps1
-wix build installer/Product.wxs installer/files.wxs -o publish/dist/FastTranslation-1.0.0-Setup.msi
+wix build installer/Product.wxs installer/files.wxs -o publish/dist/FastTranslation-1.0.1-Setup.msi
 ```
 
 ## 项目结构

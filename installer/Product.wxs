@@ -1,7 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Fast Translation"
            Manufacturer="FastTranslation Project"
-           Version="1.0.0"
+           Version="1.0.1"
            UpgradeCode="CFF7EA90-6515-4CAA-AD10-A7C621203C44"
            Scope="perUser"
            Compressed="yes"
@@ -10,6 +10,9 @@
     <SummaryInformation Description="划词翻译桌面工具(Qwen-MT)" />
     <Icon Id="AppIcon" SourceFile="D:\FTranslation\publish\ft-folder\FastTranslation.exe" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <!-- a failed install must leave evidence in %TEMP%: without this, a report like
+         "a window flashed and vanished" gives us nothing to diagnose -->
+    <Property Id="MsiLogging" Value="voicewarmupx" />
     <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 FastTranslation。" AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
