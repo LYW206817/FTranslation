@@ -4,8 +4,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # D:\FTranslation
 $src  = Join-Path $root 'publish\ft-folder'
 $dist = Join-Path $root 'publish\dist'
-$stage = Join-Path $root 'publish\FastTranslation-1.0.0-portable'
-$zip = Join-Path $dist 'FastTranslation-1.0.0-portable.zip'
+$stage = Join-Path $root 'publish\FastTranslation-1.0.1-portable'
+$zip = Join-Path $dist 'FastTranslation-1.0.1-portable.zip'
 
 if (-not (Test-Path $src)) { throw "missing publish output: $src" }
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
