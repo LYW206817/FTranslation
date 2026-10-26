@@ -388,3 +388,12 @@
 - **新增 QA 脚本**:`tools/qa/scroll-bench.ps1`(UIA 找 `IsScrollPatternAvailable` 元素、40 步 `SetScrollPercent` 计 wall/cpu/step + privateWS;**注意 `ScrollPattern.Scroll(LargeIncrement)` 会抛 InvalidOperationException,只能用 SetScrollPercent**)、`tools/qa/idle-cpu.ps1`(分阶段采样:启动后 / 主窗 / 打开设置 / 设置停留 / 关闭后)、`tools/qa/shot-settings-bottom.ps1`(滚到底截图)
 - **截图踩坑(第二次)**:抓图前必须 `SetWindowPos(hwnd, HWND_TOPMOST, …)`,否则微信之类的窗口会在 `Start-Process` 与 `CopyFromScreen` 之间抢到前台,截出来的图一半是别人的聊天列表。`shot-theme.ps1` 与 `shot-settings-bottom.ps1` 都已加这段(抓完再 `HWND_NOTOPMOST` 复原)
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 24 + 48 + 6 = **78/78**;浅色/深色 x 顶部/底部四张截图在 `assets/qa/ui-v26/`(该目录在 .gitignore 内):页头页脚 hairline 正常、无控件被切半、排除应用三个动作按钮全在窗口内、深色下卡片 #1F242C / 窗底 #16191F / 页脚按钮 #4A82FF 一致
+
+## v27 发布 GitHub Release v1.0.0(2026-10-26)✅
+
+**背景**:README 里的 `../../releases` 链接一直是空的;v26 重打发布物后决定把首个版本正式挂到 GitHub Release。
+
+- **凭据路数**:本机无 `gh` CLI(未安装),GCM 里也没有可直接复用的 GitHub 凭据;而 `github.com:443` 不通意味着网页端自动化不可行。最终由用户签发 classic PAT(scope:`repo, workflow, delete:packages, write:packages`),全程走 `api.github.com`。`uploads.github.com` 的 443 **是通的**(HEAD 返回 302),所以上传资源不受 `github.com` 被墙影响
+- **发布物**:Release id `423931837`,tag `v1.0.0` → commit `f879743`,`https://github.com/LYW206817/FTranslation/releases/tag/v1.0.0`。上传 `FastTranslation-1.0.0-Setup.msi`(53079165 字节,digest `sha256:ab49d62f…ebff1a` 与本地 `Get-FileHash` 逐字符一致)与 `FastTranslation-1.0.0-portable.zip`(61620667 字节)
+- **API 细节**:创建 Release 用 `POST /repos/:o/:r/releases`(`tag_name` + `target_commitish: main`,远端会自动打 tag);传资源用 `POST https://uploads.github.com/repos/:o/:r/releases/:id/assets?name=…` 带 `Content-Type: application/octet-stream --data-binary`。MSI 上传 16.5s、zip 21.6s。**真踩坑**:61MB 的 zip 第一次上传被 `run_code` 的 120s 执行上限打断,资源记录留在 `state: "starter"` —— 但它**仍然显示 `size: 61620667`**(那是请求头声明的 Content-Length,不是已收字节),下载时返回 404。所以判断资源是否传成功**只能看 `state == "uploaded"` + `digest`**,不能看 size。修复:先 `DELETE /releases/assets/{id}` 删掉 starter 残留,再重传 —— 这次 `state: uploaded`、`digest: sha256:b3206321…54b311a` 与本地 `Get-FileHash` 一致。大文件上传一律 `run_in_background` + `job_output` 收集,别占前台 120s
+- **`shell` 踩坑**:heredoc 里出现反引号会提前结束 TS 模板字符串(报 `Expected ',', got 'ident'`);release 正文改由 `printf` + `sed` 转义后拼 JSON,中文不转义直接 UTF-8 提交(API 返回 201 且 body 原样保留)
