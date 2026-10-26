@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using FastTranslation.Core;
 using FastTranslation.Platform.Windows;
 
@@ -49,6 +51,7 @@ public partial class SettingsWindow : Window
         // pushed 保存/取消 off the bottom. Size manually against the live work area instead.
         var work = SystemParameters.WorkArea;
         Height = Math.Min(720, Math.Max(360, work.Height - 80));
+
     }
 
     private static string AboutLine()
@@ -58,6 +61,10 @@ public partial class SettingsWindow : Window
             ?.InformationalVersion;
         if (string.IsNullOrWhiteSpace(version))
             version = asm.GetName().Version?.ToString() ?? "1.0.0";
+        // 1.0.0+<40 hex> tells the user nothing; keep the short commit id only
+        var plus = version.IndexOf('+');
+        if (plus > 0 && version.Length - plus > 8)
+            version = version[..(plus + 8)];
         var build = asm.Location is { Length: > 0 } location
             ? System.IO.File.GetLastWriteTime(location).ToString("yyyy-MM-dd")
             : "unknown";
@@ -71,6 +78,39 @@ public partial class SettingsWindow : Window
         {
             ExcludedList.Items.Add(name);
         }
+        // an empty bordered list reads as a broken control; say why it is empty instead
+        ExclusionEmpty.Visibility = ExcludedList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The list is a scroller nested in the page scroller: while the pointer is over it the wheel
+    // is consumed by the inner one, so the page "sticks" mid-scroll. Forward the wheel to the page
+    // once the list cannot move any further in that direction.
+    private void ExcludedList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var inner = FindScrollViewer(ExcludedList);
+        var scrollable = inner is not null && inner.ScrollableHeight > 0.5;
+        var atTop = inner is null || inner.VerticalOffset <= 0.5;
+        var atBottom = inner is null || inner.VerticalOffset >= inner.ScrollableHeight - 0.5;
+        var wheelUp = e.Delta > 0;
+
+        if (scrollable && !(wheelUp ? atTop : atBottom)) return; // the list can still move: let it
+
+        e.Handled = true;
+        var step = e.Delta / 120.0 * 48.0;
+        Body.ScrollToVerticalOffset(Math.Clamp(Body.VerticalOffset - step, 0, Body.ScrollableHeight));
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollViewer viewer) return viewer;
+            var nested = FindScrollViewer(child);
+            if (nested is not null) return nested;
+        }
+        return null;
     }
 
     private void FillForeground_Click(object sender, RoutedEventArgs e)
