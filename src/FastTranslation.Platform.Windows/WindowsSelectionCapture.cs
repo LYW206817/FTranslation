@@ -16,6 +16,7 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
     private readonly ClipboardService _clipboard;
 
     private readonly Func<bool> _fallbackEnabled;
+    private readonly Func<string, bool> _isExcluded;
     private readonly Dispatcher _dispatcher;
     private readonly Action<string>? _log;
     private CapturedSelection _cached = CapturedSelection.Empty(default);
@@ -34,10 +35,12 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
     public WindowsSelectionCapture(
         Dispatcher dispatcher,
         Func<bool>? fallbackEnabled = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<string, bool>? isExcluded = null)
     {
         _dispatcher = dispatcher;
         _fallbackEnabled = fallbackEnabled ?? (() => true);
+        _isExcluded = isExcluded ?? (_ => false);
         _log = log;
         _monitor = new LowLevelMouseMonitor();
         _reader = new UiaSelectionReader();
@@ -69,6 +72,13 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         var cursorPass = s.IBeamAtUp || (s.IBeamAtDown && drag);
         var (kind, order) = Classify(s, drag);
         var processName = GetProcessName(s.SourceWindowHandle);
+        // excluded apps must not even reach the toolbar — rejecting here also skips the
+        // expensive UIA gate, and the coordinator's own check stays as the second line
+        if (_isExcluded(processName))
+        {
+            Diag($"gate reject kind={kind} proc={processName} reason=excluded");
+            return;
+        }
         if (!cursorPass && !UiaSelectionReader.LooksTextual(s.UpPoint))
         {
             Diag($"gate reject kind={kind} proc={processName} hwnd=0x{s.SourceWindowHandle:X}");

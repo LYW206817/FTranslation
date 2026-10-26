@@ -114,8 +114,7 @@ public sealed class HotkeyService : IDisposable
         }
         if (part.Length == 2 && (part[0] == 'd' || part[0] == 'D') && char.IsDigit(part[1]))
         {
-            var d = part[1] == '0' ? '9' : (char)(part[1] - 1);
-            return d; // VK_D0..VK_D9 map to '9'..'0'
+            return part[1]; // VK_D0..VK_D9 are just the ASCII digit keys
         }
         if (part.Length == 1 && char.IsDigit(part[0])) return part[0];
         return 0;

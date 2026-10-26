@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FastTranslation.Core.Tests/FastTranslation.Core.Tests.csproj" />
+    <Project Path="tests/FastTranslation.Platform.Windows.Tests/FastTranslation.Platform.Windows.Tests.csproj" />
     <Project Path="tests/FastTranslation.Providers.QwenMt.Tests/FastTranslation.Providers.QwenMt.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,4 +1,4 @@
-﻿using System.Windows.Automation;
+using System.Windows.Automation;
 using FastTranslation.Core;
 
 namespace FastTranslation.Platform.Windows;
@@ -226,6 +226,35 @@ public sealed class UiaSelectionReader
     /// text: slice each visible line's readable text by the x-range the selection covers.
     /// Line-based, so a few boundary characters may be off — still far better than nothing.
     /// </summary>
+    /// <summary>
+    /// The part of one rendered line that the selection rects cover, or null when the line is
+    /// not selected at all. Rect y-overlap is judged at 40% of the smaller height so a rect
+    /// bleeding into an adjacent line does not claim it; x is intersected against the line box
+    /// and then mapped to a character index proportionally (CJK glyphs are near-uniform, so
+    /// the error stays within a character or two).
+    /// </summary>
+    internal static string? SliceLine(System.Windows.Rect lineRect, string lineText, IReadOnlyList<System.Windows.Rect> selRects)
+    {
+        if (string.IsNullOrEmpty(lineText) || lineRect.Width <= 0) return null;
+
+        double covL = double.MaxValue, covR = double.MinValue;
+        foreach (var sr in selRects)
+        {
+            var yOverlap = Math.Min(sr.Bottom, lineRect.Bottom) - Math.Max(sr.Y, lineRect.Y);
+            if (yOverlap <= Math.Min(sr.Height, lineRect.Height) * 0.4) continue;
+            covL = Math.Min(covL, Math.Max(sr.X, lineRect.X));
+            covR = Math.Max(covR, Math.Min(sr.Right, lineRect.Right));
+        }
+        if (covL >= covR) return null; // line not selected
+
+        var start = (int)Math.Round((covL - lineRect.X) / lineRect.Width * lineText.Length);
+        var end = (int)Math.Ceiling((covR - lineRect.X) / lineRect.Width * lineText.Length);
+        start = Math.Clamp(start, 0, lineText.Length);
+        end = Math.Clamp(end, 0, lineText.Length);
+        if (end <= start) return null;
+        return lineText.Substring(start, end - start);
+    }
+
     private static string RebuildFromVisibleLines(TextPattern pattern, List<System.Windows.Rect> selRects)
     {
         try
@@ -242,24 +271,9 @@ public sealed class UiaSelectionReader
                 var lr = lineRects[0];
                 if (lr.IsEmpty || lr.Width <= 0) continue;
 
-                // the x-interval any selection rect covers on this line
-                double covL = double.MaxValue, covR = double.MinValue;
-                foreach (var sr in selRects)
-                {
-                    var yOverlap = Math.Min(sr.Bottom, lr.Bottom) - Math.Max(sr.Y, lr.Y);
-                    if (yOverlap <= Math.Min(sr.Height, lr.Height) * 0.4) continue;
-                    covL = Math.Min(covL, Math.Max(sr.X, lr.X));
-                    covR = Math.Max(covR, Math.Min(sr.Right, lr.Right));
-                }
-                if (covL >= covR) continue; // line not selected
-
-                // proportional slicing: CJK glyphs are near-uniform; latin error stays small
-                var start = (int)Math.Round((covL - lr.X) / lr.Width * lineText.Length);
-                var end = (int)Math.Ceiling((covR - lr.X) / lr.Width * lineText.Length);
-                start = Math.Clamp(start, 0, lineText.Length);
-                end = Math.Clamp(end, 0, lineText.Length);
-                if (end <= start) continue;
-                pieces.Add((lr.Y, lineText.Substring(start, end - start)));
+                var slice = SliceLine(lr, lineText, selRects);
+                if (string.IsNullOrEmpty(slice)) continue;
+                pieces.Add((lr.Y, slice));
             }
             if (pieces.Count == 0) return string.Empty;
             if (WindowsSelectionCapture.DebugEnabled)

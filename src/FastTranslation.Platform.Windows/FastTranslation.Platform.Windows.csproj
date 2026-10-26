@@ -6,4 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FastTranslation.Core\FastTranslation.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FastTranslation.Platform.Windows.Tests" />
+  </ItemGroup>
 </Project>

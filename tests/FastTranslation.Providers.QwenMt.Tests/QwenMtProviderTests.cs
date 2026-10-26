@@ -15,14 +15,40 @@ public sealed class FakeQwenServer : IDisposable
     public List<string> Bodies = new();
     public List<string> AuthHeaders = new();
 
-    public string Url { get; }
+    public string Url { get; } = "";
+    public HttpListenerException? ListenerException { get; private set; }
 
     public FakeQwenServer()
     {
-        var port = 18500 + new Random().Next(2000);
-        Url = $"http://127.0.0.1:{port}/v1";
-        _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _listener.Start();
+        // Bind by retry: a random port can already be taken by another test run or a stray
+        // process, and HttpListener.Start throws rather than picking a free one on its own.
+        var started = false;
+        ListenerException = null;
+        for (var attempt = 0; attempt < 20 && !started; attempt++)
+        {
+            var port = 18500 + Random.Shared.Next(2000);
+            var candidate = $"http://127.0.0.1:{port}/";
+            _listener.Prefixes.Clear();
+            _listener.Prefixes.Add(candidate);
+            try
+            {
+                _listener.Start();
+                Url = candidate + "v1";
+                started = true;
+            }
+            catch (HttpListenerException ex)
+            {
+                ListenerException = ex;
+            }
+        }
+
+        if (!started)
+        {
+            throw new InvalidOperationException(
+                $"could not bind a local HttpListener port after 20 attempts: {ListenerException?.Message}",
+                ListenerException);
+        }
+
         _ = Task.Run(async () =>
         {
             while (_listener.IsListening)

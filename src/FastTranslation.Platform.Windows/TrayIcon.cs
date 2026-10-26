@@ -199,6 +199,39 @@ public sealed class TrayIconService : IDisposable
         }
     }
 
+    /// <summary>One entry of an ICO container's directory, resolved to its in-buffer payload.</summary>
+    internal readonly record struct IcoEntry(int Index, int Width, int DataOffset, int DataLength);
+
+    /// <summary>
+    /// Pick the directory entry whose width is closest to <paramref name="targetSize"/>
+    /// (a 0 width byte means 256). Returns null for a container that is truncated or whose
+    /// chosen payload lies outside the buffer — both used to reach CreateIconFromResourceEx
+    /// as garbage, which returns 0 and left the tray with no icon at all.
+    /// </summary>
+    internal static IcoEntry? PickIcoEntry(byte[] ico, int targetSize)
+    {
+        if (ico is null || ico.Length < 6 + 16) return null;
+        int count = BitConverter.ToUInt16(ico, 4);
+        if (count < 1) return null;
+
+        var wanted = targetSize > 0 ? targetSize : 16;
+        int best = -1, bestDiff = int.MaxValue;
+        for (int i = 0; i < count && 6 + 16 * (i + 1) <= ico.Length; i++)
+        {
+            int e = 6 + 16 * i;
+            int w = ico[e] == 0 ? 256 : ico[e];
+            int diff = Math.Abs(w - wanted);
+            if (diff < bestDiff) { bestDiff = diff; best = i; }
+        }
+        if (best < 0) return null;
+
+        int entry = 6 + 16 * best;
+        int dataLen = (int)BitConverter.ToUInt32(ico, entry + 8);
+        int dataOff = (int)BitConverter.ToUInt32(ico, entry + 12);
+        if (dataLen <= 0 || dataOff < 6 + 16 * count || dataOff + dataLen > ico.Length) return null;
+        return new IcoEntry(best, ico[entry] == 0 ? 256 : ico[entry], dataOff, dataLen);
+    }
+
     private static IntPtr IconFromIcoBytes(byte[] ico)
     {
         // Parse the ICO container manually: pick the directory entry closest to the tray
@@ -208,30 +241,13 @@ public sealed class TrayIconService : IDisposable
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
         try
         {
-            if (ico.Length < 6 + 16) return IntPtr.Zero;
-            int count = BitConverter.ToUInt16(ico, 4);
-            if (count < 1) return IntPtr.Zero;
-
             int cx = GetSystemMetrics(49); // SM_CXSMICON
             if (cx <= 0) cx = 16;
 
-            int best = -1, bestDiff = int.MaxValue;
-            for (int i = 0; i < count && 6 + 16 * (i + 1) <= ico.Length; i++)
-            {
-                int e = 6 + 16 * i;
-                int w = ico[e] == 0 ? 256 : ico[e]; // 0 means 256
-                int diff = Math.Abs(w - cx);
-                if (diff < bestDiff) { bestDiff = diff; best = i; }
-            }
-            if (best < 0) return IntPtr.Zero;
+            if (PickIcoEntry(ico, cx) is not { } picked) return IntPtr.Zero;
 
-            int entry = 6 + 16 * best;
-            int dataLen = (int)BitConverter.ToUInt32(ico, entry + 8);
-            int dataOff = (int)BitConverter.ToUInt32(ico, entry + 12);
-            if (dataLen <= 0 || dataOff < 6 + 16 * count || dataOff + dataLen > ico.Length) return IntPtr.Zero;
-
-            var payload = new byte[dataLen];
-            Array.Copy(ico, dataOff, payload, 0, dataLen);
+            var payload = new byte[picked.DataLength];
+            Array.Copy(ico, picked.DataOffset, payload, 0, picked.DataLength);
             return CreateIconFromResourceEx(payload, payload.Length, true, 0x00030000, cx, cx, 0);
         }
         catch { return IntPtr.Zero; }

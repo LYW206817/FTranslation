@@ -94,7 +94,9 @@ public partial class App : Application, IResultPresenter
         _capture = new WindowsSelectionCapture(
             Dispatcher,
             fallbackEnabled: () => _settings.ClipboardFallbackEnabled && _captureEnabled,
-            log: m => System.Diagnostics.Debug.WriteLine(m));
+            log: m => System.Diagnostics.Debug.WriteLine(m),
+            isExcluded: processName => _settings.ExcludedProcesses
+                .Any(n => string.Equals(n, processName, StringComparison.OrdinalIgnoreCase)));
         _writeBack = new WriteBackService(_capture.Reader);
         _coordinator = new SelectionCoordinator(_capture, this, _translation, () => _settings);
         _capture.SelectionToolbarRequested += captured =>

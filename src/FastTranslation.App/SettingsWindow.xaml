@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:FastTranslation.App"
-        Title="设置" Width="500" SizeToContent="Height" Icon="/FastTranslation.ico"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Title="设置" Width="500" Icon="/FastTranslation.ico"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize" MinHeight="420"
         Background="{StaticResource WindowBgBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <Grid Margin="24,20,24,18">
@@ -16,7 +16,10 @@
     <TextBlock Grid.Row="0" Text="设置" FontSize="16" FontWeight="SemiBold"
                Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4"/>
 
-    <StackPanel Grid.Row="1">
+    <!-- the settings list outgrew a 900px-tall screen once exclusions/about were added;
+         scroll it so 保存/取消 never fall off-screen -->
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel>
       <TextBlock Text="目标语言" Style="{StaticResource FieldLabel}" Margin="0,10,0,6"/>
       <local:FtComboBox x:Name="TargetCombo" SelectionChanged="TargetCombo_SelectionChanged"/>
 
@@ -42,7 +45,31 @@
 
       <TextBlock Text="自定义服务地址(可选,默认 DashScope)" Style="{StaticResource FieldLabel}"/>
       <TextBox x:Name="BaseUrlBox"/>
+
+      <TextBlock Text="排除应用" Style="{StaticResource FieldLabel}" Margin="0,18,0,6"/>
+      <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderStrongBrush}"
+              BorderThickness="1" CornerRadius="6" Padding="2">
+        <ListBox x:Name="ExcludedList" Height="86" BorderThickness="0" Background="Transparent"
+                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"/>
+      </Border>
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <TextBox x:Name="ExclusionInput" Width="180" Margin="0,0,8,0"/>
+        <Button Content="填入前台应用" Click="FillForeground_Click"/>
+        <Button Content="添加" Click="AddExclusion_Click"/>
+        <Button Content="移除选中" Click="RemoveExclusion_Click"/>
+      </StackPanel>
+      <TextBlock x:Name="ExclusionHint" Text="" FontSize="11" Visibility="Collapsed"
+                 Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+      <TextBlock Text="名称按进程名匹配(如 chrome、Code),不区分大小写。列出的应用里划词与写回都不会触发。"
+                 FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+
+      <CheckBox x:Name="AutoStartCheck" Content="开机时自动启动(当前用户)" Margin="0,18,0,0"/>
+
+      <TextBlock Text="关于" Style="{StaticResource FieldLabel}" Margin="0,18,0,4"/>
+      <TextBlock x:Name="AboutText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                 TextWrapping="Wrap"/>
     </StackPanel>
+    </ScrollViewer>
 
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
       <Button Content="取消" Click="Cancel_Click"/>

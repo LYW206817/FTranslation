@@ -259,7 +259,7 @@ public sealed class WriteBackService : IWriteBack
         u = new NativeMethods.INPUTUNION { ki = new NativeMethods.KEYBDINPUT { wVk = vk, dwFlags = down ? 0u : NativeMethods.KEYEVENTF_KEYUP } },
     };
 
-    private static bool RuntimeIdEquals(int[] a, int[] b)
+    internal static bool RuntimeIdEquals(int[] a, int[] b)
     {
         if (a.Length != b.Length) return false;
         for (var i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;

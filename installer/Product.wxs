@@ -1,5 +1,5 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="FastTranslation"
+  <Package Name="Fast Translation"
            Manufacturer="FastTranslation Project"
            Version="1.0.0"
            UpgradeCode="CFF7EA90-6515-4CAA-AD10-A7C621203C44"
