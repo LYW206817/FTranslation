@@ -1,8 +1,12 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using FastTranslation.Core;
+using Microsoft.Win32.SafeHandles;
 
 namespace FastTranslation.Platform.Windows;
 
@@ -17,20 +21,38 @@ namespace FastTranslation.Platform.Windows;
 /// </summary>
 public static class UpdateInstaller
 {
-    /// <summary>Public GitHub release downloads are routed through these when the direct host stalls.</summary>
     private const string GitHubHost = "github.com";
 
     /// <summary>
-    /// Proxies for github.com release downloads, in the order they are tried. Both answered with
-    /// real bytes from a mainland network when measured, and both were tested repeatedly: the rate
-    /// swings by an order of magnitude between runs, so the second one is a genuine fallback rather
-    /// than decoration. A proxy that has gone dark simply loses its turn, the direct host stays last.
+    /// Proxies for github.com release downloads, in the order they are tried. ghfast.top was
+    /// measured dead (connection never established, 5 s timeout) and was removed: a candidate that
+    /// cannot answer only costs the user another timeout before the direct host gets its turn.
     /// </summary>
     private static readonly string[] ProxyPrefixes =
     {
         "https://gh-proxy.com/",
-        "https://ghfast.top/",
     };
+
+    // 8 MiB: below this the extra TLS+request round trips per segment cost more than the
+    // concurrency buys, and the only file this ever fetches is the ~46 MB installer.
+    private const long SegmentThresholdBytes = 8L * 1024 * 1024;
+
+    // Measured on the target link: 32 sockets gave 1.09 MB/s against 22-35 KB/s on one, while 64
+    // gave 1.65 MB/s — 1.5x is not worth 32 more sockets against a shared per-client limit.
+    private const int MaxSegments = 32;
+
+    // 1 MiB keeps the 46.7 MB installer at the full 32 connections, and a single throttled socket
+    // strands at most this much of the file at the end of the run.
+    private const long SegmentSizeBytes = 1L * 1024 * 1024;
+
+    // Four attempts per segment, each resuming where the last one stopped, so an attempt costs no
+    // bytes: a link that loses the same range four times is not carrying the file at all.
+    private const int SegmentAttempts = 4;
+
+    // Above the 22 KB/s single-socket floor this link shows, below the few KB/s a throttled socket
+    // decays to: such a socket strands the whole run at 97%, so it is dropped and asked again.
+    private static readonly TimeSpan StallWindow = TimeSpan.FromSeconds(10);
+    private const long StallFloorBytes = 60L * 1024;
 
     public static string UpdatesDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastTranslation", "updates");
@@ -68,6 +90,33 @@ public static class UpdateInstaller
         if (!candidates.Contains(candidate, StringComparer.OrdinalIgnoreCase)) candidates.Add(candidate);
     }
 
+    /// <summary>
+    /// Byte ranges to fetch in parallel for a file of this length, in order and end to end.
+    /// A length under the threshold yields a single segment, which is how the caller recognises
+    /// "do not segment this" — the plan itself never returns an empty list for a real file.
+    /// </summary>
+    internal static IReadOnlyList<(long Start, long Length)> PlanSegments(long totalLength)
+    {
+        if (totalLength <= 0) return Array.Empty<(long, long)>();
+        if (totalLength < SegmentThresholdBytes) return new[] { (0L, totalLength) };
+
+        var wanted = totalLength / SegmentSizeBytes + (totalLength % SegmentSizeBytes == 0 ? 0 : 1);
+        var count = (int)Math.Min(MaxSegments, wanted);
+        var perSegment = totalLength / count;
+
+        // the first 'extra' segments carry one more byte, so no byte is lost to the division
+        var extra = totalLength % count;
+        var segments = new List<(long Start, long Length)>(count);
+        long start = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var length = perSegment + (i < extra ? 1 : 0);
+            segments.Add((start, length));
+            start += length;
+        }
+        return segments;
+    }
+
     public static string Sha256OfFile(string path)
     {
         using var stream = File.OpenRead(path);
@@ -97,9 +146,12 @@ public static class UpdateInstaller
     public sealed record DownloadResult(bool Success, string? Path, string Detail);
 
     /// <summary>
-    /// Downloads and verifies the installer, trying each mirror in turn. A candidate that
-    /// fails verification is discarded rather than trusted — a proxy that rewrites bytes
-    /// must not be able to hand us an executable.
+    /// Downloads and verifies the installer. The manifest URL is tried first as parallel byte
+    /// ranges, because one mainland TCP connection to github.com is throttled far below what the
+    /// same link carries over many sockets; if ranging is unavailable or does not converge, the
+    /// mirrors are then tried one after another exactly as before. A candidate that fails
+    /// verification is discarded rather than trusted — a proxy that rewrites bytes must not be
+    /// able to hand us an executable.
     /// </summary>
     public static async Task<DownloadResult> DownloadAsync(
         HttpClient http,
@@ -108,7 +160,20 @@ public static class UpdateInstaller
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(UpdatesDirectory);
+
+        var fileName = FileNameFor(manifest);
+        var partPath = Path.Combine(UpdatesDirectory, fileName + ".part");
+        var finalPath = Path.Combine(UpdatesDirectory, fileName);
         var failures = new List<string>();
+
+        // Segmented first, and only against the manifest's own URL: the recorded throughput was
+        // measured on the direct host, and re-probing a proxy would add a hop nobody measured.
+        if (await TrySegmentedAsync(http, manifest, partPath, finalPath, progress, failures, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            progress?.Report(1);
+            return new DownloadResult(true, finalPath, $"{manifest.DownloadUrl} (segmented)");
+        }
 
         // MirrorCandidates already hands back proxies before the direct hosts for github.com, and
         // nothing else is proxied. Reordering here would drag a non-GitHub URL through a proxy that
@@ -117,9 +182,6 @@ public static class UpdateInstaller
 
         foreach (var candidate in candidates)
         {
-            var fileName = FileNameFor(manifest);
-            var partPath = Path.Combine(UpdatesDirectory, fileName + ".part");
-            var finalPath = Path.Combine(UpdatesDirectory, fileName);
             try
             {
                 if (File.Exists(finalPath)) File.Delete(finalPath);
@@ -174,6 +236,214 @@ public static class UpdateInstaller
         }
 
         return new DownloadResult(false, null, string.Join(" | ", failures));
+    }
+
+    /// <summary>
+    /// Range-downloads the installer in parallel and leaves a verified file at
+    /// <paramref name="finalPath"/>. Returns false — with the reason appended to
+    /// <paramref name="failures"/> — without throwing whenever the server or the link simply does
+    /// not support this route, so the caller can fall back to the sequential candidates.
+    /// </summary>
+    private static async Task<bool> TrySegmentedAsync(
+        HttpClient http,
+        UpdateManifest manifest,
+        string partPath,
+        string finalPath,
+        IProgress<double>? progress,
+        List<string> failures,
+        CancellationToken cancellationToken)
+    {
+        var plan = PlanSegments(manifest.SizeBytes);
+        if (plan.Count < 2) return false;
+
+        try
+        {
+            // A one-byte probe answers two questions at once: a server or proxy that ignores Range
+            // replies 200 here, and Content-Range carries the length the segments must add up to.
+            // That length is also the measured Content-Length the manifest size must agree with, so
+            // a stale manifest cannot be spliced into a mismatched file.
+            using (var probeRequest = new HttpRequestMessage(HttpMethod.Get, manifest.DownloadUrl))
+            {
+                probeRequest.Headers.Range = new RangeHeaderValue(0, 0);
+                using var probe = await http
+                    .SendAsync(probeRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                    .ConfigureAwait(false);
+                if (probe.StatusCode != HttpStatusCode.PartialContent)
+                    return AbandonSegmented(failures, manifest.DownloadUrl, partPath,
+                        $"probe HTTP {(int)probe.StatusCode} instead of 206");
+
+                var serverLength = probe.Content.Headers.ContentRange?.Length;
+                if (serverLength != manifest.SizeBytes)
+                    return AbandonSegmented(failures, manifest.DownloadUrl, partPath,
+                        $"probe length {serverLength?.ToString() ?? "unknown"} != manifest {manifest.SizeBytes}");
+            }
+
+            if (File.Exists(finalPath)) File.Delete(finalPath);
+
+            // SetLength up front so every segment writes into an already-sized file and the file
+            // only ever holds the final byte count — no append bookkeeping, bounded memory.
+            var aggregated = new ProgressAggregator(manifest.SizeBytes, progress);
+            var segmentFailures = new ConcurrentBag<string>();
+            // One handle for both sizing and writing, and closed again before the file is read back:
+            // a write handle left open makes the SHA256 pass and the final move fail on sharing.
+            using (var handle = File.OpenHandle(
+                partPath, FileMode.Create, FileAccess.Write, FileShare.Read, FileOptions.Asynchronous))
+            {
+                // Writing the last byte is the preallocation; the segment covering it overwrites it, so
+                // the file only ever holds the final byte count and no append bookkeeping is needed.
+                await RandomAccess
+                    .WriteAsync(handle, new byte[1], manifest.SizeBytes - 1, cancellationToken)
+                    .ConfigureAwait(false);
+
+                var segments = new Task[plan.Count];
+                for (var i = 0; i < plan.Count; i++)
+                {
+                    var segment = plan[i];
+                    segments[i] = Task.Run(
+                        () => DownloadSegmentAsync(http, manifest.DownloadUrl, handle, segment, aggregated, segmentFailures, cancellationToken),
+                        cancellationToken);
+                }
+                await Task.WhenAll(segments).ConfigureAwait(false);
+            }
+
+            if (!segmentFailures.IsEmpty)
+                return AbandonSegmented(failures, manifest.DownloadUrl, partPath, string.Join(", ", segmentFailures));
+
+            if (!VerifyDownload(partPath, manifest.Sha256, manifest.SizeBytes, out var reason))
+                return AbandonSegmented(failures, manifest.DownloadUrl, partPath, reason);
+
+            File.Move(partPath, finalPath, overwrite: true);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryDelete(partPath);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return AbandonSegmented(failures, manifest.DownloadUrl, partPath, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Gives up on the segmented route: records why, cleans the partial file up, and leaves a trace
+    /// in update.log — the fallback costs roughly twenty times the download time, so a user whose
+    /// update crawled needs to be able to see which condition sent it down the slow path.
+    /// </summary>
+    private static bool AbandonSegmented(List<string> failures, string url, string partPath, string detail)
+    {
+        failures.Add($"{url} -> segmented {detail}");
+        UpdateLog.Write($"segmented download abandoned ({detail})");
+        TryDelete(partPath);
+        return false;
+    }
+
+    private static async Task DownloadSegmentAsync(
+        HttpClient http,
+        string url,
+        SafeFileHandle handle,
+        (long Start, long Length) segment,
+        ProgressAggregator progress,
+        ConcurrentBag<string> failures,
+        CancellationToken cancellationToken)
+    {
+        long written = 0;
+        string lastError = "no attempt made";
+        for (var attempt = 0; attempt < SegmentAttempts; attempt++)
+        {
+            try
+            {
+                // a retry resumes at the byte it stopped on, so a reset socket costs one short
+                // request instead of the whole segment again
+                written += await ReadSegmentAsync(http, url, handle, segment, written, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastError = $"{ex.GetType().Name}: {ex.Message}";
+            }
+        }
+        failures.Add($"range {segment.Start}+{segment.Length}: {lastError}");
+    }
+
+    private static async Task<long> ReadSegmentAsync(
+        HttpClient http,
+        string url,
+        SafeFileHandle handle,
+        (long Start, long Length) segment,
+        long alreadyWritten,
+        ProgressAggregator progress,
+        CancellationToken cancellationToken)
+    {
+        var from = segment.Start + alreadyWritten;
+        var to = segment.Start + segment.Length - 1;
+        if (from > to) return 0;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Range = new RangeHeaderValue(from, to);
+        using var response = await http
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.PartialContent)
+            throw new HttpRequestException($"range {from}-{to} -> HTTP {(int)response.StatusCode}");
+
+        var expected = to - from + 1;
+        var buffer = new byte[81920];
+        long written = 0;
+        long windowBytes = 0;
+        var windowStart = Stopwatch.GetTimestamp();
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        while (written < expected)
+        {
+            var wanted = (int)Math.Min(buffer.Length, expected - written);
+            var read = await source.ReadAsync(buffer.AsMemory(0, wanted), cancellationToken).ConfigureAwait(false);
+            if (read == 0) throw new EndOfStreamException($"range {from}-{to} ended at {written}");
+
+            await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, read), from + written, cancellationToken)
+                .ConfigureAwait(false);
+            written += read;
+            windowBytes += read;
+            progress.Advance(read);
+
+            // A connection that is alive but has crawled is worth far less than a fresh one: drop it
+            // and resume from this byte on a new connection instead of waiting it out.
+            if (Stopwatch.GetElapsedTime(windowStart) < StallWindow) continue;
+            if (windowBytes < StallFloorBytes)
+                throw new IOException(
+                    $"range {from}-{to} stalled at {written} ({windowBytes} B in {StallWindow.TotalSeconds:F0} s)");
+
+            windowStart = Stopwatch.GetTimestamp();
+            windowBytes = 0;
+        }
+        return written;
+    }
+
+    /// <summary>Aggregates every segment's byte count into one monotonic 0..1 report.</summary>
+    private sealed class ProgressAggregator(long totalLength, IProgress<double>? progress)
+    {
+        private readonly object _gate = new();
+        private long _received;
+        private double _reported;
+
+        public void Advance(long bytes)
+        {
+            var done = Interlocked.Add(ref _received, bytes);
+            if (progress is null) return;
+
+            var value = Math.Clamp(done / (double)totalLength, 0, 1);
+            lock (_gate)
+            {
+                if (value <= _reported) return;
+                _reported = value;
+            }
+            progress.Report(value);
+        }
     }
 
     private static string FileNameFor(UpdateManifest manifest)
