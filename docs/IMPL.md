@@ -476,3 +476,19 @@
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` **62 + 58 + 6 = 126/126**(Platform.Windows.Tests 由 57 增至 58)。
 - **Gitee 待办已查清,但仍不迁**:官方帮助页写明发行版**单附件 ≤100MB、单仓库附件总量 ≤1GB**(46.6MB 的 Setup.exe 完全挂得下,账号 `lyw206817` 也存在,id 17012524)。但 ①Gitee 不支持 GitHub 风格的 `/releases/download/{tag}/{file}`;②附件直链带**不稳定数字 id**(形如 `/attach_files/{id}/download/{name}`),无法模板化,每次发布只能手填;③匿名 API 拿不到附件列表(对 RuoYi/Sa-Token/JeecgBoot 等公开仓库 `grep attach_files` 计数一律 0),页面又是前端渲染;④实测大文件吞吐极不稳定(同一条 archive 一次 2.8 MB/s、重测 73 KB/s)。⇒ 走 Gitee 每次发布都要手工上传 46MB 并手填清单,运维成本换来的是并不保证的速度,本轮不做;真要更进一步,应评估国内的 OSS/R2 而不是第 4 次搬仓库。
 
+
+## v34 安装向导排版修复 + 徽标换真图标,1.1.2 发布(2026-10-27)✅
+
+**背景**:1.1.1 发出后用户看图指出两处缺陷 ——「字体排版重叠」和「右上角那个蓝环不应该是我们的 logo 吗?」。
+
+- **缺陷 1 根因(实测,不是猜)**:`InitializeWizard` 把 WelcomeLabel1 放大到 22pt bold、PageNameLabel 15pt、FinishedHeadingLabel 20pt,但 `TNewStaticText` 的矩形**不会跟着变**。探针 probe-t4/x2–x6 实测原始几何:WelcomeLabel1 `top=30 h=91`、WelcomeLabel2 `top=121`(30+91=121,零间距);PageNameLabel `top=15 h=29`、PageDescriptionLabel `top=48`。字号一放大,两行标题就压到下一行说明文字上。
+- **修法**:新增 `procedure FitStackedLabels()`,用 `TNewStaticText.AdjustHeight`(函数式,调用后立即改写 Height 并返回新值)重排后续 label 的 `Top`:`AdjustHeight` 实测 W1 91→137、PN 29→47、PD 58→36、FH 91→125、FL 99→36、W2 458→141;``WelcomeLabel2.Top := WelcomeLabel1.Top + WelcomeLabel1.Height + ScaleY(8)``,`PageDescriptionLabel` 用 `ScaleY(2)`,`FinishedLabel` 用 `ScaleY(6)`。**只在 `if not HighContrastActive then` 分支里调用** —— 高对比度模式没改字号,不能重排。FinishedLabel 的 Caption 是进页时才填的,所以 `CurPageChanged` 里补一句 `if CurPageID = wpFinished then WizardForm.FinishedLabel.AdjustHeight;`。
+- **缺陷 2 根因**:`tools/qa/make-installer-art.py` 的旧 `badge()` 拿图标自身的 alpha 当遮罩去铺奶白,而图标 alpha 恰好是那个圆角方块 ⇒ 得到一块白圆角方块套在蓝底里。**修法**:直接把 `assets/icon/icon-256.png` 的 artwork 合成上去(4 倍超采样后 LANCZOS 缩回),再描 1px `#D6DDE8` 圆角描边,让它在 `#F7F9FC` 页面上有边界。`wizard_strip()` 的水印分支未动。
+- **中文断行**:`installer/Languages/ChineseSimplified.isl:125` 的 `WelcomeLabel1` 改为 `欢迎使用 [name]%n安装向导`;22pt 下否则会断成「欢迎使用 Fast Translation 安 / 装向导」。
+- **截图取证工具换了**:`publish/shot-pages2.ps1`(PostMessage ENTER 翻页)在旧进程残留/焦点漂移时会**跳过页面甚至跨页**,旧输出只有「欢迎→目标位置→附加任务」的部分。新写 `publish/shot-pages4.ps1`:每页先读第一个 `TNewStaticText` 的标题、再 GetWindowRect+CopyFromScreen,翻页用 `[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')` + `SetForegroundWindow` 重试。实测一次拿到五页且标题正确:欢迎 / 选择目标位置 / 选择附加任务 / 准备安装 / 正在安装。`shot-pages2.ps1` 的 `$w + 'x' + $h` 会抛 `Cannot convert value "x" to type "System.Int32"`(字符串+变量被当成算术),已改成 `[string]$w`。
+- **截图的坑**:本机把显示缩放调过之后,`GetWindowRect` 返回的矩形比实际绘制区域大,截出来的 PNG 四周会带一圈桌面。**验证版面以内容为准,不要以像素坐标为准**;要坐标就用 `geo-dump.ps1` / `wiz-dump2.ps1` 读 UIA `BoundingRectangle`。
+- **安装残留**:截图脚本在取消确认框上退出会留下 `is-XXXX.tmp`(本次 6 个,合计约 40MB)。它们不是安装器 bug,`Get-ChildItem <installdir> -File -Filter 'is-*.tmp' | Remove-Item -Force` 即可。**装好的标准文件数是 262 + unins000.exe + unins000.dat = 264**。
+- **1.1.2 产物**:`FastTranslation-1.1.2-Setup.exe` **46696599 字节** `sha256 258045ca45e55f2545ecf159ac138b65a9e013e3bc30c8a0cf509d1c866e9afd`;`FastTranslation-1.1.2-portable.zip` **61672258 字节** `sha256 076a5464eb9759be8716fc872edbf846de03b381fbe4618e67cfa68f2f9f211d`(263 条目)。`dotnet build` 0 警告 0 错误;`dotnet test` **62 + 58 + 6 = 126/126**。
+- **静默升级验证**:应用在托盘里时 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` → exit 0,264 文件,`ProductVersion 1.1.2+2565d299…`,三个二进制与 `publish/ft-folder` SHA256 全一致,`[Run]` 把应用重新拉起。
+- **发布**:主仓库 commit `4b8727c262f3270995fa388048a20b084bab076e`;Release id **425380700**,tag `v1.1.2`,资产 Setup `681423290` / portable `681423826`,两者 `state: uploaded` 且 digest 与本地一致。更新通道 `FTranslation-Updates` Release id **425381763**,资产 `681425525`;manifest 由 blob `42bcf59b…` 更新为 commit `031cd4cea4d79c191b21e2ba0718b25c0f1b2c74`,内容 version=1.1.2 / size 46696599 / sha256 `258045ca…`。
+- **本轮通道可达性实测(与 v33 不同,务必按次测)**:`github.com` 直连 `http=000`(拉 0 字节);`gh-proxy.com` **206 / 1.32 MB/s**;`ghfast.top` 206 / 141 KB/s;**`lyw206817.github.io`(Pages)与 `fastly.jsdelivr.net` 本轮都是 `http=000`**。清单三顺位里前两条都断,实际由第 3、4 顺位的 raw 代理供上 —— 这正是 v33 把清单通道补到四顺位的原因。
