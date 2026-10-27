@@ -537,3 +537,13 @@
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` **75 + 68 + 40 = 183 全绿**;真机 E2E(脚本 `publish/e2e-shot.ps1`,DPI-aware)拿到工具条三键与译图浮窗(截图 `assets/qa/ui-shot/e2e-toolbar.png`、`e2e-result.png`,`2609 ms` 出图);UIA 点击 `复制图片` → 剪贴板得到 **1580x620** 图,`关闭` → 只剩主窗口。
 - **订正 v35 末条**:图像翻译这批单测**不打真实 API** —— `QwenMtImageTranslatorTests` 与 `QwenMtProviderTests` 一样走本地 `HttpListener` 假上游(`FakeQwenServer`),无网络、无真实 Key,所以 183 个测试可以离线跑。PowerShell 探针里 DPI-unaware 进程的 `CopyFromScreen` 只抓物理屏左上角,`[Dpi]::SetProcessDPIAware()` 后坐标才与截图一致。
 
+
+### 1.2.0 发布记录(2026-10-27 深夜)
+
+- **主仓库 Release** id `425707722`,tag `v1.2.0` → commit `0e2c29581bb560e6309c076fddf9c0ff7eac55c6`。资产:`FastTranslation-1.2.0-Setup.exe` id 682156700 /46752995 B / `sha256:7b033f18…57b403`;`FastTranslation-1.2.0-portable.zip` 最终 id 682177881 /61744153 B / `sha256:a3ae5d59…af4e63`(第一版 zip 里的 README 还写着 1.1.3,修好后删资产 682157279 重传)。
+- **更新通道** `LYW206817/FTranslation-Updates` Release id `425708667`(tag v1.2.0)、资产 682159085;清单 `version.json` commit `07654029`(version 1.2.0 / size 46752995 / sha256 7b033f18…)。实测两条源都返回 1.2.0(Pages 与 `gh-proxy + github.com/.../raw/main`),资产走 gh-proxy `http=206`。
+- **打包顺序坑(代价是白打了一次 81 秒的包)**:`installer/FastTranslation.iss` 的 `[Files]` 读的是 `publish/ft-folder\*` 这个**发布快照**,只改 `Directory.Build.props` 的 `<Version>` 再编译,会得到一个「ARP 写着 1.2.0、实际文件还是 1.1.2」的包里外不一的安装包(实测已装 exe 仍是 `1.1.2+2565d29`)。正确顺序:改版本 → `dotnet publish -o publish/ft-folder` → ISCC → `make-portable.ps1`。
+- **便携包 README 的源文件搬到 `docs/portable-readme.txt`**(受版本控制):之前只有 `publish/dist/README.txt`,而 `publish/` 在 .gitignore 里,全新 clone 的仓库根本生不出便携包。`make-portable.ps1` 现在从 docs 读、并同步写回 dist。
+- **安装验证**:`publish/inno-install.ps1` 静默安装 exit 0,ARP `{8B1F2C34-…}_is1` DisplayVersion **1.2.0**、安装目录 exe `1.2.0+fcf15d6`(264 文件),拉起后 `update.log` 记 `up to date (1.2.0)`。
+- **探针假超时**:`Start-Process -Wait` 装完后 `[Run]` 拉起的 GUI 进程继承了 stdout 管道,bash 侧 `| tail` 一直等 EOF ⇒ 命令看起来挂住 240 s,其实安装早已 `Installation process succeeded`。以后装完要么重定向输出到文件,要么别接管道。
+
