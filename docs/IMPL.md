@@ -429,3 +429,21 @@
 
 - **1.1.0 发布**:主仓库 Release id `425206694`,tag `v1.1.0` → commit `528d4f27ad5aa387fbfa68db1e5453645f7437f9`,https://github.com/LYW206817/FTranslation/releases/tag/v1.1.0 ;两个资产均 `state: uploaded`:`FastTranslation-1.1.0-Setup.exe`(id 680982868,**46305182 字节** `sha256 8bb256d0c07fdfa87b4617c4759a19589276abf4af6a31ae94a92c131d709a09`)、`FastTranslation-1.1.0-portable.zip`(id 680983576,**61672161 字节** `sha256 2567d8b3f86e3fc9550b6a09664139c778d7770baa68b72d0273309524cbd2b4`)。更新通道仓库 `FTranslation-Updates` 的 v1.1.0 资产 id `680940805`,清单 `version.json` 已指回 1.1.0。
 - **发布 API 坑**:`POST /releases` 的 `target_commitish` 传短 sha(`528d4f2`)会被拒 `422 tag_name is not a valid tag`,必须传完整 40 位 sha;`body` 含中文时用 `curl --data-binary @file`(JSON 由脚本生成,别让 PowerShell 拼 —— 在 win_bash 里 `@{}` 的 `$` 会被吞掉)。
+
+## v31 安装向导中文化与奶白泛蓝外观(2026-10-27)✅
+
+**背景**:用户三条诉求 —— ①安装界面能说中文;②升级时能改安装路径(当前改不了);③按奶白泛蓝的品牌风格美化安装器并加一点动效。
+
+- **路径改不了的根因**:Inno 的 `DisableDirPage` 默认值是 `auto`,同一 AppId 已注册时会**自动隐藏「选择目标位置」页**,于是覆盖升级时用户根本没机会改目录。改成 `DisableDirPage=no`(永远显示)+ `UsePreviousAppDir=yes`(静默升级仍沿用原目录),两者缺一不可:只想改路径就变成每次升级都要手点目录,只想静默就仍然看不到页。
+- **中文语言包**:本机 Inno 6.7.3 的 `Languages` 目录里没有 `ChineseSimplified.isl`(Inno 7 的发行目录里有,417 行,UTF-8,`LanguageID=$0804`/`LanguageCodePage=936`)。把 Inno 7 那份复制到 `installer/Languages/ChineseSimplified.isl` 即可被 Inno 6 直接编译。`[Languages]` 里写相对路径 `Languages\ChineseSimplified.isl`(相对 .iss 所在目录);`ShowLanguageDialog=no`,只有一种语言就不用选。
+- **外观指令**:`WizardStyle=modern polar hidebevels` —— 逐个值实测过「下一步」按钮底色:`modern light`/`classic` 全是 #FDFDFD,`windows11` #E1EDF6,`zircon` #A0D4DE,**只有 `polar` 给出蓝色系(#A2D0FE)**;`WizardBackColor=#F7F9FC`(= 应用 WindowBg);`WizardImageFile` 三个 DPI 尺寸(宽高比 164:314)、`WizardSmallImageFile` 三个方形;`DefaultDialogFontName=Microsoft YaHei UI`(与应用窗口同一族)。
+- **刻意不要 `dynamic`**:`dynamic` 会跟随系统深浅色,但它的深色调色板**只重绘窗体和面板,不重绘 notebook 页面底面** —— 实测深色 Windows 下得到「深色边框 + 白色页 + 近白文字」的割裂画面。一份恒定的奶白向导在两种模式下都诚实可读,半吊子的深色化不可读。改后 `WizardBackColorDynamicDark` 一并删除。
+- **inno 的 TColor 是 $BBGGRR**:写 `$FF6225` 才显示成 #2562FF,`$36251B` 才显示成 #1B2536。调色板常量(`LightBrand`/`LightPrimary`/`LightSecondary`/`LightHair`)在 `[Code]` 顶部集中定义。
+- **改色必须先 `StyleElements := []`**:只赋值 `Font.Color` / `Panel.Color` 会被 VCL 主题整个覆盖,肉眼看不到任何变化。`Paint()` 的顺序是 **先 `StyleElements := []` → 再 `BevelOuter := bvNone` → 再 `Color` → 最后 `SetBounds`**。
+- **副作用(踩过一次)**:清掉 `StyleElements` 也丢掉了主题给的透明背景,TNewStaticText 会给自己铺一块**白底方块**压在页面上(实测欢迎页出现 339234 个纯白像素)。所以 `ColorText()` 必须同时把 `Text.Color` 设成页面底色(`LightBack = $FCF9F7` = #F7F9FC)。改完白色像素归零。
+- **动效**:Pascal Script 里**没有 TTimer、没有过渡动画 API**;`CreateCallback(@Proc)` + `SetTimer(0, 0, 20, CreateCallback(@AnimTick))` 可用(`CallbackAddr` 和 `TTimer` 都不存在)。做的是底部一条 3px 的步进进度条:`PageStep()` 把六页映射成 1..6,`AnimTick` 每次走剩余距离的 1/4(线性步进在 20ms 定时器上像卡顿),`HighContrastActive` 时直接跳过动画。实测四页进度条右端依次 196 / 382 / 568 / 753 px(1138 宽窗口的 1/6…4/6)。
+- **按钮改不了**:`TNewButton` **没有 Color 属性**(CHM 里只有 Font/Enabled/ModalResult/Style 等);`StyleElements := []` + `Font.Color := $FF0000` 截图里搜不到一个红像素 —— polar 的按钮面与文字都由主题自绘。能动的只有 `Font.Size` 与 `Font.Style := [fsBold]`。
+- **父级挂载**:TPanel 挂 `WizardForm.MainPanel` **完全不渲染**,挂具体 Page 只在该页渲染;常驻元素(页脚 hair、进度条)一律挂 `WizardForm`。布局坐标必须过 `ScaleX()/ScaleY()`(本机 1.75 DPI 下 `ScaleX(100)=187`)。
+- **美术资源**:`tools/qa/make-installer-art.py`(PIL)生成 `assets/installer/` —— 横幅是奶白→淡蓝竖向渐变 + 底部品牌蓝柔光 + 图标 alpha 0.16 水印;页头小图不是透明图标(透明 PNG 在 #F7F9FC 上几乎看不见),而是品牌蓝渐变圆角方里挖出奶白水滴。
+- **自动更新兼容性**:静默升级带着 `/UPDATEPID=<pid>` 进来,安装器先等那个进程退出再覆盖文件(60s 上限),`[Run]` 不带 `skipifsilent` 所以装完会把应用重新拉起来。实测:应用运行中启动 Setup → 等 PID → 覆盖 264 文件 → 拉起新进程,exit 0;若应用一直不退则 60s 后放弃并回滚(exit 5,日志 `DeleteFile 失败;错误代码 5`),这是预期行为。
+- **仍未落地**:用户早前提的「GitHub 国内不友好是否迁 Gitee」还挂在待办 —— 需要先核实 Gitee 发行版附件的单文件上限、配额与实名要求(46MB 的 Setup.exe 能不能直接挂)。
