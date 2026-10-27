@@ -122,7 +122,7 @@ BrowseDialogLabel=在下面的列表中选择一个文件夹，然后点击“�
 NewFolderName=新建文件夹
 
 ; *** "Welcome" wizard page
-WelcomeLabel1=欢迎使用 [name] 安装向导
+WelcomeLabel1=欢迎使用 [name]%n安装向导
 WelcomeLabel2=即将在您的计算机上安装 [name/ver]。%n%n建议您在继续安装前关闭所有其他应用程序。
 
 ; *** "Password" wizard page
