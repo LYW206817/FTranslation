@@ -57,7 +57,6 @@ public sealed class ImageResultWindow : IDisposable
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(14, 12, 14, 14),
-            Effect = FtTheme.CardShadow(),
             Child = new StackPanel { Children = { header, _image } },
         };
         // 无边框窗口没有标题栏可抓：标题条和图片区的空白处都用来拖动

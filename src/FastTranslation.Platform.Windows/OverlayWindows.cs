@@ -131,14 +131,6 @@ internal static class FtTheme
         return s;
     }
 
-    internal static DropShadowEffect PillShadow() => new()
-    {
-        Color = Color.FromRgb(0x1B, 0x25, 0x36),
-        BlurRadius = 18,
-        ShadowDepth = 3,
-        Direction = 270,
-        Opacity = 0.26,
-    };
 
     /// <summary>16-unit linear icon geometry (Lucide style, 1.5px round strokes).</summary>
     internal static class Icons
@@ -171,15 +163,6 @@ internal static class FtTheme
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    internal static DropShadowEffect CardShadow() => new()
-    {
-        Color = Color.FromRgb(0x1B, 0x25, 0x36),
-        BlurRadius = 32,
-        ShadowDepth = 8,
-        Direction = 270,
-        Opacity = 0.20,
-        RenderingBias = RenderingBias.Performance,
-    };
 }
 
 /// <summary>
@@ -414,9 +397,14 @@ public sealed class ResultCardWindow : IDisposable
     private readonly Button _insertButton;
     private readonly Button _closeButton;
     private readonly Ellipse _spinner;
+    private readonly DockPanel _header;
+    private readonly DockPanel _footer;
     private readonly RotateTransform _spinnerRotate = new();
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
     private System.Windows.DpiScale _dpi = new(1.0, 1.0);
+    private ScreenPoint _lastAnchor;
+    private ScreenRect? _lastRect;
+    private bool _hasPosition;
 
     public event Action? CopyRequested;
     public event Action? ReplaceRequested;
@@ -481,7 +469,7 @@ public sealed class ResultCardWindow : IDisposable
         _closeButton.Click += (_, _) => { Hide(); Dismissed?.Invoke(); };
 
         // header: source snippet + close
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var header = _header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(_closeButton, Dock.Right);
         _closeButton.Margin = new Thickness(10, -4, -4, 0);
         header.Children.Add(_closeButton);
@@ -501,7 +489,7 @@ public sealed class ResultCardWindow : IDisposable
         actions.Children.Add(_insertButton);
         actions.Children.Add(_replaceButton);
         actions.Children.Add(_copyButton);
-        var footer = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
+        var footer = _footer = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
         footer.Children.Add(actions);
         footer.Children.Add(_statusBlock);
 
@@ -514,7 +502,6 @@ public sealed class ResultCardWindow : IDisposable
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(18, 16, 18, 16),
-            Effect = FtTheme.CardShadow(),
             Child = content,
         };
         root.MouseLeftButtonDown += (_, e) =>
@@ -586,6 +573,7 @@ public sealed class ResultCardWindow : IDisposable
 
     public void ShowLoading(string previewText, CapturedSelection selection)
     {
+        RestoreFullChrome();
         _sourceBlock.Text = TrimForDisplay(previewText, 120);
         _targetBlock.Text = "正在翻译…";
         _targetBlock.Foreground = FtTheme.TextSecondary;
@@ -600,6 +588,7 @@ public sealed class ResultCardWindow : IDisposable
     public void ShowResult(TranslationResult result, CapturedSelection selection)
     {
         StopSpinner();
+        RestoreFullChrome();
         // a failed translation must not offer 复制 for the red error text
         _copyButton.IsEnabled = result.Succeeded;
         _sourceBlock.Text = TrimForDisplay(result.RequestText, 160);
@@ -651,6 +640,9 @@ public sealed class ResultCardWindow : IDisposable
         if (x * _dpi.DpiScaleX + cardW * _dpi.DpiScaleX > vx + vw) x = (vx + vw - cardW * _dpi.DpiScaleX) / _dpi.DpiScaleX;
         if (y * _dpi.DpiScaleY + 160 * _dpi.DpiScaleY > vy + vh) y = Math.Max(vy / _dpi.DpiScaleY, y - 180 / _dpi.DpiScaleY);
 
+        _lastAnchor = anchor;
+        _lastRect = selectionRect;
+        _hasPosition = true;
         _window.Left = Math.Max(0, x);
         _window.Top = Math.Max(0, y);
         if (!_window.IsVisible) _window.Show();
@@ -672,7 +664,12 @@ public sealed class ResultCardWindow : IDisposable
     public void ShowNotice(string message)
     {
         StopSpinner();
+        // 提示卡只留一行字：清空源片段后还把 header/footer 的外边距收掉，
+        // 否则空出来的那两段间距会让卡片看起来莫名很高。
         _sourceBlock.Text = string.Empty;
+        _sourceBlock.Visibility = Visibility.Collapsed;
+        _header.Margin = new Thickness(0);
+        _footer.Margin = new Thickness(0);
         _targetBlock.Foreground = FtTheme.Notice;
         _targetBlock.Text = message;
         _statusBlock.Text = string.Empty;
@@ -680,7 +677,10 @@ public sealed class ResultCardWindow : IDisposable
         _copyButton.Visibility = Visibility.Collapsed;
         _replaceButton.Visibility = Visibility.Collapsed;
         _insertButton.Visibility = Visibility.Collapsed;
-        if (!_window.IsVisible) ShowAt(new ScreenPoint(80, 80), null);
+        // 插入失败时卡片刚在 WriteBackAsync 里被 Hide()，这里必须回到原来的划词位置；
+        // 固定 (80,80) 会让提示凭空出现在屏幕左上角。
+        if (!_window.IsVisible)
+            ShowAt(_hasPosition ? _lastAnchor : WindowsSelectionCapture.CurrentCursorPoint(), _lastRect);
         _noticeTimer.Stop();
         _noticeTimer.Start();
     }
@@ -689,6 +689,14 @@ public sealed class ResultCardWindow : IDisposable
     {
         StopSpinner();
         if (_window.IsVisible) _window.Hide();
+    }
+
+    /// <summary>ShowNotice 会把卡片压成一行提示，这里把正常卡片的间距还原。</summary>
+    private void RestoreFullChrome()
+    {
+        _sourceBlock.Visibility = Visibility.Visible;
+        _header.Margin = new Thickness(0, 0, 0, 8);
+        _footer.Margin = new Thickness(0, 14, 0, 0);
     }
 
     private static string TrimForDisplay(string text, int max) =>
