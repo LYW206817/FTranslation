@@ -12,18 +12,38 @@ public enum UpdateCheckStatus
     Failed,
 }
 
-public sealed record UpdateCheckResult(UpdateCheckStatus Status, UpdateManifest? Manifest, string Detail)
+public sealed record UpdateCheckResult(
+    UpdateCheckStatus Status,
+    UpdateManifest? Manifest,
+    string Detail,
+    string? SourceUrl = null)
 {
     public bool HasUpdate => Status == UpdateCheckStatus.Available && Manifest is not null;
 }
 
 /// <summary>
-/// Where the updater looks for the manifest. The project repository is private, so the
-/// manifest lives in a separate public repository and is read through four endpoints:
-/// GitHub Pages (canonical), the jsDelivr mirror and two raw proxies — on mainland networks
-/// raw.githubusercontent.com is unreachable while Pages and the proxies answer. The proxies are
-/// listed twice because they fail independently: when one goes dark the other still serves the
-/// file, and a manifest that cannot be read means the user never hears about an update at all.
+/// What an interactive check says to the user. The wording lives here because a check reported
+/// only through a tray balloon is indistinguishable from one that never ran; Core keeps the text
+/// so a test can pin it while the App only decides how to show it.
+/// </summary>
+public readonly record struct UpdateCheckNotice(string Title, string Body)
+{
+    public static UpdateCheckNotice UpToDate(ReleaseVersion current) =>
+        new("Fast Translation", "已经是最新版本 " + current + "。");
+
+    public static UpdateCheckNotice Failed(string releasesPageUrl) =>
+        new("检查更新失败",
+            "连不上更新服务器。可以到下载页手动获取最新版本:" + Environment.NewLine + releasesPageUrl +
+            Environment.NewLine + Environment.NewLine + "失败原因已记录到 update.log。");
+}
+
+/// <summary>
+/// Where the updater looks for the manifest. The project repository is private, so the manifest
+/// lives in a separate public repository and is read from two endpoints raced in parallel: GitHub
+/// Pages (canonical) and gh-proxy over the github.com raw route. Both were measured from a mainland
+/// network. raw.githubusercontent.com is unreachable there (connection reset) and the jsDelivr
+/// mirror served a months-old manifest because it caches @main - a stale manifest is worse than a
+/// dead one: it turns "an update exists" into "you are already current" for good.
 /// </summary>
 public static class UpdateChannel
 {
@@ -33,22 +53,26 @@ public static class UpdateChannel
 
     public static IReadOnlyList<string> ManifestUrls { get; } = new[]
     {
-        $"https://{Owner.ToLowerInvariant()}.github.io/{Repository}/{ManifestFile}",
-        $"https://fastly.jsdelivr.net/gh/{Owner}/{Repository}@main/{ManifestFile}",
-        $"https://gh-proxy.com/https://raw.githubusercontent.com/{Owner}/{Repository}/main/{ManifestFile}",
-        $"https://ghfast.top/https://raw.githubusercontent.com/{Owner}/{Repository}/main/{ManifestFile}",
+        "https://" + Owner.ToLowerInvariant() + ".github.io/" + Repository + "/" + ManifestFile,
+        "https://gh-proxy.com/https://github.com/" + Owner + "/" + Repository + "/raw/main/" + ManifestFile,
     };
 
     /// <summary>Human-facing download page, used by portable copies that cannot self-install.</summary>
-    public static string ReleasesPageUrl => $"https://github.com/{Owner}/{Repository}/releases/latest";
+    public static string ReleasesPageUrl => "https://github.com/" + Owner + "/" + Repository + "/releases/latest";
 }
 
 /// <summary>
-/// Reads the update manifest, trying each channel URL until one answers with a valid manifest.
-/// Never throws for network or format problems: a failed check is silent by design.
+/// Reads the update manifest, asking every channel URL at once and stopping at the first usable
+/// answer. Never throws for network or format problems: a failed check is silent by design.
 /// </summary>
 public sealed class UpdateChecker
 {
+    /// <summary>
+    /// An "up to date" answer is held open this long so a slower source can still contradict it:
+    /// a stale mirror answering first must not be the last word on whether an update exists.
+    /// </summary>
+    private static readonly TimeSpan StaleConfirmWindow = TimeSpan.FromMilliseconds(1500);
+
     private readonly HttpClient _http;
     private readonly IReadOnlyList<string> _manifestUrls;
     private readonly ReleaseVersion _currentVersion;
@@ -62,45 +86,131 @@ public sealed class UpdateChecker
 
     public async Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken)
     {
-        var failures = new List<string>();
-
-        foreach (var url in _manifestUrls)
+        if (_manifestUrls.Count == 0)
         {
-            string json;
-            try
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode)
-                {
-                    failures.Add($"{url} -> HTTP {(int)response.StatusCode}");
-                    continue;
-                }
-                json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"{url} -> {ex.GetType().Name}");
-                continue;
-            }
-
-            if (!UpdateManifest.TryParse(json, out var manifest, out var error))
-            {
-                failures.Add($"{url} -> {error}");
-                continue;
-            }
-
-            return manifest.Version.IsNewerThan(_currentVersion)
-                ? new UpdateCheckResult(UpdateCheckStatus.Available, manifest,
-                    $"{_currentVersion} -> {manifest.Version}")
-                : new UpdateCheckResult(UpdateCheckStatus.UpToDate, manifest,
-                    $"latest is {manifest.Version}, current is {_currentVersion}");
+            return new UpdateCheckResult(UpdateCheckStatus.Failed, null, "no manifest source configured");
         }
 
-        return new UpdateCheckResult(UpdateCheckStatus.Failed, null, string.Join(" | ", failures));
+        using var race = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var pending = new List<Task<SourceResult>>(_manifestUrls.Count);
+        foreach (var url in _manifestUrls) pending.Add(FetchAsync(url, race.Token));
+
+        var failures = new Dictionary<string, string>(StringComparer.Ordinal);
+        UpdateManifest? newest = null;
+        string? newestUrl = null;
+        DateTime? graceEnds = null;
+
+        while (true)
+        {
+            var next = await NextAsync(pending, graceEnds).ConfigureAwait(false);
+            if (next is not { } result) break;
+
+            if (result.IsCancelled)
+            {
+                // a cancelled caller must still see cancellation, not a failed check
+                cancellationToken.ThrowIfCancellationRequested();
+                continue;
+            }
+
+            if (result.Manifest is not { } manifest)
+            {
+                failures[result.Url] = result.Error;
+                continue;
+            }
+
+            if (manifest.Version.IsNewerThan(_currentVersion))
+            {
+                race.Cancel();
+                return new UpdateCheckResult(UpdateCheckStatus.Available, manifest,
+                    _currentVersion + " -> " + manifest.Version, result.Url);
+            }
+
+            // equal or older: keep the highest one seen and give the other sources a moment
+            if (newest is null || manifest.Version.IsNewerThan(newest.Version))
+            {
+                newest = manifest;
+                newestUrl = result.Url;
+            }
+            graceEnds ??= DateTime.UtcNow + StaleConfirmWindow;
+        }
+
+        if (newest is not null)
+        {
+            return new UpdateCheckResult(UpdateCheckStatus.UpToDate, newest,
+                "latest is " + newest.Version + ", current is " + _currentVersion, newestUrl);
+        }
+
+        return new UpdateCheckResult(UpdateCheckStatus.Failed, null,
+            failures.Count == 0 ? "no manifest source answered" : JoinFailures(failures));
+    }
+
+    /// <summary>Next finished source, or null once nothing is left or the grace window has passed.</summary>
+    private static async Task<SourceResult?> NextAsync(List<Task<SourceResult>> pending, DateTime? graceEnds)
+    {
+        if (pending.Count == 0) return null;
+
+        if (graceEnds is not { } ends)
+        {
+            var first = await Task.WhenAny(pending).ConfigureAwait(false);
+            pending.Remove(first);
+            return await first.ConfigureAwait(false);
+        }
+
+        var budget = ends - DateTime.UtcNow;
+        if (budget <= TimeSpan.Zero) return null;
+
+        // intentionally not tied to a token: caller cancellation unwinds through the pending
+        // fetches, and an abandoned cancellable timer would leave an unobserved fault behind
+        var timer = Task.Delay(budget);
+        var winner = await Task.WhenAny(pending.Cast<Task>().Append(timer)).ConfigureAwait(false);
+        if (winner == timer) return null;
+
+        var finished = (Task<SourceResult>)winner;
+        pending.Remove(finished);
+        return await finished.ConfigureAwait(false);
+    }
+
+    private string JoinFailures(Dictionary<string, string> failures) =>
+        string.Join(" | ",
+            _manifestUrls.Where(failures.ContainsKey).Select(url => url + " -> " + failures[url]));
+
+    private async Task<SourceResult> FetchAsync(string url, CancellationToken token)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return SourceResult.Failed(url, "HTTP " + (int)response.StatusCode);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            return UpdateManifest.TryParse(json, out var manifest, out var error)
+                ? SourceResult.Ok(url, manifest)
+                : SourceResult.Failed(url, error);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return SourceResult.Cancelled(url);
+        }
+        catch (OperationCanceledException)
+        {
+            // HttpClient.Timeout fired: nobody cancelled, so this source really did hang
+            return SourceResult.Failed(url, "timeout");
+        }
+        catch (Exception ex)
+        {
+            return SourceResult.Failed(url, ex.GetType().Name);
+        }
+    }
+
+    private readonly record struct SourceResult(string Url, UpdateManifest? Manifest, string Error, bool IsCancelled)
+    {
+        public static SourceResult Ok(string url, UpdateManifest manifest) => new(url, manifest, string.Empty, false);
+
+        public static SourceResult Failed(string url, string error) => new(url, null, error, false);
+
+        public static SourceResult Cancelled(string url) => new(url, null, string.Empty, true);
     }
 }

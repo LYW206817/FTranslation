@@ -492,3 +492,25 @@
 - **静默升级验证**:应用在托盘里时 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` → exit 0,264 文件,`ProductVersion 1.1.2+2565d299…`,三个二进制与 `publish/ft-folder` SHA256 全一致,`[Run]` 把应用重新拉起。
 - **发布**:主仓库 commit `4b8727c262f3270995fa388048a20b084bab076e`;Release id **425380700**,tag `v1.1.2`,资产 Setup `681423290` / portable `681423826`,两者 `state: uploaded` 且 digest 与本地一致。更新通道 `FTranslation-Updates` Release id **425381763**,资产 `681425525`;manifest 由 blob `42bcf59b…` 更新为 commit `031cd4cea4d79c191b21e2ba0718b25c0f1b2c74`,内容 version=1.1.2 / size 46696599 / sha256 `258045ca…`。
 - **本轮通道可达性实测(与 v33 不同,务必按次测)**:`github.com` 直连 `http=000`(拉 0 字节);`gh-proxy.com` **206 / 1.32 MB/s**;`ghfast.top` 206 / 141 KB/s;**`lyw206817.github.io`(Pages)与 `fastly.jsdelivr.net` 本轮都是 `http=000`**。清单三顺位里前两条都断,实际由第 3、4 顺位的 raw 代理供上 —— 这正是 v33 把清单通道补到四顺位的原因。
+
+## v35 并行分段下载 + 清单源竞速 + 手动检查可见反馈(2026-10-27)✅
+
+**背景**:v33 提交后用户指出「刚才我的环境就是带着节点的,现在才是国内真实环境,根本连不了 github,检查更新也没反应」。v33 的全部测速数据因此作废,必须在国内裸网重测再改。
+
+- **裸网实测推翻了「连不上」的判断**:`github.com/LYW206817/FTranslation-Updates` 网页 **200**(0.07–0.10 s 连接、0.40–1.02 s 完成、240749 字节),`objects.githubusercontent.com` 可达;真正不可达的是 `raw.githubusercontent.com`(http=000)。⇒ 问题不是「连不上」,是**单连接被限速**。
+- **update.log 证明「检查更新没反应」其实是成功**:日志末尾两条 `up to date (1.1.2)`,而线上清单也是 1.1.2 —— 结果正确,只是 `UpdateCoordinator` 对 UpToDate **完全静默**,用户看不到任何反馈。
+- **24 个 GitHub 代理裸网 bench(ranged 1MB / 8 s)**:只有 `https://gh-proxy.com/` 应答(206 / 208896 字节 / **26069 B/s**);其余 23 个全 http=000(含 v33 刚加进去的 `ghfast.top`)⇒ **ghfast.top 在真实网络里是死的,v33 那个改动现在有害(白等一次超时),已删除**。
+- **核心发现:单连接 ~30 KB/s,但总带宽不限**。同一个 46696599 字节资产单连接 22796–38576 B/s;并行 ranged 8 路 271648 B/s、16 路 459922 B/s、32 路 1087952 B/s、64 路 1648043 B/s。48 段并行完整下完 **elapsed=103s**,`certutil -hashfile` SHA256 与清单一致 ⇒ **分段并行 + 顺序拼接可行,且不需要任何代理**。
+- **改法(Platform,`UpdateInstaller.cs`)**:`DownloadAsync` 先走 `TrySegmentedAsync`,失败才回退原有 `MirrorCandidates` 顺序循环(候选语义不变)。新常量 `:38` `SegmentThresholdBytes = 8 MiB`、`:42` `MaxSegments = 32`、`:46` `SegmentSizeBytes = 1 MiB`、`:50` `SegmentAttempts = 4`、`:54-55` `StallWindow = 10s` / `StallFloorBytes = 60 KiB`。`PlanSegments`(`:98-118`)=`IReadOnlyList<(long Start,long Length)>`,按 1 MiB 算段数并用 `Math.Min(MaxSegments, wanted)` 截断,前 `total % count` 段各多 1 字节保证不丢字节。`TrySegmentedAsync`(`:247-327`)先用 `Range: bytes=0-0` 探针,**要求 206 且 `ContentRange?.Length == manifest.SizeBytes`**,否则删 .part 放弃;`File.OpenHandle` 预分配(`RandomAccess.WriteAsync(handle, new byte[1], SizeBytes-1)`)后 32 个 `Task.Run` 并发写同一 `SafeFileHandle` 的不同偏移;`VerifyDownload` 与 `File.Move` 在 handle 释放**之后**才做。
+- **踩坑 1**:写成 `using var handle = ...` 时 handle 活到方法末尾,`VerifyDownload` 的 `File.OpenRead` 撞共享冲突,**静默回退到顺序路径**(看上去像「分段没生效」)。必须换成 `using (...) { }` 块。
+- **踩坑 2**:最初 2 MiB/段 = 23 连接,在 97% 处塌陷(t=145 s 仍 98%),个别 socket 衰减到几 KB/s。改成 **1 MiB/段(打满 32 连接)+ 每段 10 s/60 KiB 滑窗速率看门狗**,低于阈值即放弃该连接并从断点续传。
+- **实测效果**:46.7 MB 从 **约 26 分钟 → 1~2 分钟**(我自建 console E2E:48 段 curl 103 s;分段引擎 120.4 s,sha256 与清单一致、无残留 .part;子代理同路径报 64 s)。口径按「1~2 分钟」说,不按最快的 64 s 说。
+- **遗留缺口(未做,已记录)**:分段只对清单里的原始 `github.com` 地址做。若某天 github.com 整体被封,探针 0.1 s 内失败 → 回退到 gh-proxy **单连接** ≈26 KB/s,又回到 26 分钟。gh-proxy 对 ranged 同样回 206,所以「分段走代理」是明确的下一步。
+- **改法(Core,`UpdateChecker.cs`)**:`ManifestUrls`(:54-58)由四顺位收紧为**两条**:Pages 源 + `https://gh-proxy.com/https://github.com/{Owner}/{Repository}/raw/main/{ManifestFile}`。剔除理由都是实测的:jsDelivr 的 `@main` 缓存卡在 **1.1.0**,会让用户**永远「已是最新」**;末尾两个 raw 通道本轮 http=000(`gh-proxy + raw.githubusercontent` 12 s 超时、裸 raw 连接被重置、`github.com/.../raw/main` 302 到死域名);而 `gh-proxy + github.com/.../raw/main` 200 / 585 字节 / 2.47 s,是活的。
+- **并发竞速 + 1.5 s 防过期**:`CheckAsync`(:87-145)对所有源立即并发请求,谁先返回「比当前新」就 `race.Cancel()` 立刻返回;若先到的是「不新于当前」,只记最高版本并开一个 `StaleConfirmWindow = 1500 ms`(:74)宽限窗,期间允许另一源推翻,到点才判 UpToDate。宽限计时器**故意不绑 token**(`NextAsync` :148-171),否则被丢弃的可取消计时器会留下未观察异常。落败源记 `Cancelled`、不进失败原因;全失败仍按 `_manifestUrls` 原顺序串接每条原因(`JoinFailures` :173-175)。
+- **改法(App,可见反馈)**:`UpdateCheckResult` 新增尾部可选 `SourceUrl`(:15-22,旧构造点全部仍合法);新类型 `UpdateCheckNotice`(readonly record struct :29-38,文案放 Core 里以便单测断言)=`UpToDate`「已经是最新版本 {current}。」/`Failed`「连不上更新服务器。可以到下载页手动获取最新版本:{ReleasesPageUrl} …失败原因已记录到 update.log。」。`UpdateCoordinator.CheckAsync` 注入 `_show`(:90-125),**只有 interactive 才说话**;静默定时检查保持全静默。`App.xaml.cs:191` 用 `MessageBox.Show(...)` 接,不再用托盘气泡 —— Win11 通知设置会把气泡吞掉,手动点一下必须有可见结果。update.log 另记 `check ok via {SourceUrl}`,便于事后判断走的是哪条源。
+- **测试**:`UpdateInstallerTests` 58→**68**(+10:`PlanSegments` 边界、非 GitHub 不代理、探针失败回退等);新增 `tests/FastTranslation.Core.Tests/UpdateCheckerTests.cs` Core 62→**75**(+13:竞速快路径、宽限窗口、过期源被推翻、全失败串接、取消语义)。`dotnet build` 0 警告 0 错误;`dotnet test` **75 + 68 + 40 全绿**。
+- **真实 E2E(裸网)**:running=1.1.2 → `elapsed=1.97s / UpToDate / source=Pages`(1.97 s 即宽限窗代价,<5 s 判定线);running=1.1.1 → `elapsed=0.10s / Available / detail=1.1.1 -> 1.1.2`(命中即返回,不等宽限窗)。
+
+- **注意(与本轮无关但在工作树里)**:仓库里另有一批未提交的图像翻译在制品(`ImageTranslationPolicy.cs`、`ImageTranslationTypes.cs`、`RegionCapture.cs`、`QwenMtImageTranslator.cs` 及其测试),它们让 `FastTranslation.Providers.QwenMt.Tests` 从 6 个测试涨到 40 个,且**打真实 Qwen API**,偶发超时甚至把测试宿主挂到 5 分钟。本轮未触碰这些文件。
+

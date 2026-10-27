@@ -187,7 +187,8 @@ public partial class App : Application, IResultPresenter
         _updates = new UpdateCoordinator(
             Dispatcher,
             PresentUpdate,
-            (title, text) => _tray?.ShowBalloon(title, text),
+            // a manual check must be visible: Win11 notification settings swallow tray balloons
+            notice => MessageBox.Show(notice.Body, notice.Title, MessageBoxButton.OK, MessageBoxImage.Information),
             ExitApp);
         _updates.Start();
 

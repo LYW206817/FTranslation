@@ -12,7 +12,9 @@ namespace FastTranslation.App;
 ///
 /// A silent check never speaks: no network, a 404, a bad mirror or an up-to-date result all
 /// look identical to the user, because a tray app that reports its own failures is noise.
-/// Only "a newer version exists" and an explicit manual request produce UI.
+/// Only "a newer version exists" and an explicit manual request produce UI - and a manual
+/// request produces it through a dialog, because a tray balloon is swallowed by the Windows 11
+/// notification settings and the user then cannot tell a working check from a broken one.
 /// </summary>
 internal sealed class UpdateCoordinator : IDisposable
 {
@@ -21,7 +23,7 @@ internal sealed class UpdateCoordinator : IDisposable
 
     private readonly Dispatcher _dispatcher;
     private readonly Action<UpdateManifest, ReleaseVersion> _present;
-    private readonly Action<string, string> _notify; // title, text
+    private readonly Action<UpdateCheckNotice> _show;
     private readonly Action _shutdown;
     private readonly HttpClient _http;
     private readonly UpdateChecker _checker;
@@ -32,12 +34,12 @@ internal sealed class UpdateCoordinator : IDisposable
     public UpdateCoordinator(
         Dispatcher dispatcher,
         Action<UpdateManifest, ReleaseVersion> present,
-        Action<string, string> notify,
+        Action<UpdateCheckNotice> show,
         Action shutdown)
     {
         _dispatcher = dispatcher;
         _present = present;
-        _notify = notify;
+        _show = show;
         _shutdown = shutdown;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("FastTranslation-Updater");
@@ -50,7 +52,7 @@ internal sealed class UpdateCoordinator : IDisposable
         {
             var info = typeof(UpdateCoordinator).Assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            // 1.1.0+<sha> — the build metadata is not part of the version
+            // 1.1.0+<sha> - the build metadata is not part of the version
             return ReleaseVersion.TryParse(info, out var version) ? version : ReleaseVersion.None;
         }
     }
@@ -96,23 +98,25 @@ internal sealed class UpdateCoordinator : IDisposable
             switch (result.Status)
             {
                 case UpdateCheckStatus.Available when result.Manifest is { } manifest:
+                    UpdateLog.Write($"check ok via {result.SourceUrl}");
                     UpdateLog.Write($"update available: {manifest.Version} (running {current})");
                     _present(manifest, current);
                     break;
                 case UpdateCheckStatus.UpToDate:
+                    UpdateLog.Write($"check ok via {result.SourceUrl}");
                     UpdateLog.Write($"up to date ({current})");
-                    if (interactive) _notify("Fast Translation", $"已经是最新版本 {current}。");
+                    if (interactive) _show(UpdateCheckNotice.UpToDate(current));
                     break;
                 default:
                     UpdateLog.Write($"check failed: {result.Detail}");
-                    if (interactive) _notify("检查更新失败", "连不上更新服务器,请稍后再试。");
+                    if (interactive) _show(UpdateCheckNotice.Failed(UpdateChannel.ReleasesPageUrl));
                     break;
             }
         }
         catch (Exception ex)
         {
             UpdateLog.Write($"check threw: {ex}");
-            if (interactive) _notify("检查更新失败", "检查更新时出错,请稍后再试。");
+            if (interactive) _show(UpdateCheckNotice.Failed(UpdateChannel.ReleasesPageUrl));
         }
         finally
         {
