@@ -462,3 +462,17 @@
 - **托盘占用修复**:`CloseRunningApp()` 在 `PrepareToInstall` 两条分支都调用,用 `taskkill /f /im` 关掉正在运行的应用。根因:托盘程序点 X 只是隐藏窗口,Restart Manager 关不掉它(`CloseApplications=no`),已加载的 DLL 全部拒绝替换,手动双击 Setup 会以 `DeleteFile 失败;错误代码 5` 回滚。自更新时 `/UPDATEPID` 非 0,函数直接让开,仍由 `WaitForUpdateProcess()` 等 PID 退出。
 - **验证**:重编译 `Successful compile (64.593 sec)`;六页截图(1138x870)像素级确认 —— 每页 body `#F7F9FC`、WelcomeLabel 区纯白像素归零、页脚 hairline 固定在 y=774–775、进度条按 (15,196)/(15,382)/(15,568)/(15,753)/(15,939) 递进;应用在托盘里时静默安装 `exit=0`、安装后自动拉起、264 文件且与 `publish/ft-folder` 二进制一致;`dotnet test` 125/125。
 - **版本 1.1.1**:`Directory.Build.props` 与 `.iss` 的 `AppVersion` 同步;`publish/dist/README.txt` 与根 `README.md` 的产物名跟着替换。
+
+## v33 更新器多代理轮换(国内下载加速)与代理只作用于 github.com(2026-10-27)✅
+
+**背景**:用户问「更新器在 GitHub,国内不挂梯子下载很慢,有没有方法」。先实测再动手 —— 直连 `github.com` 本轮根本连不上(本机 443 被 reset,`http=000`),上一版记录的「直连 9 KB/s」已是较好情况。
+
+- **镜像实测(本机 curl,ranged 抽样 + 整包)**:`gh-proxy.com` 206、497945 B/s;整包 46626589 字节 82.16s 下完、均速 567532 B/s、落地 SHA256 与清单一致 ⇒ 现有策略在当前网络下已能在 1.5 分钟内装完。`ghfast.top` 206、349837 B/s(可作第二备选)。**全死**(http=000)的一大批:`ghproxy.net`、`gh-proxy.top`、`ghp.ci`、`github.moeyy.xyz`、`ghfile.geeknimo.com`、`gitproxy.click`、`gh.api.99988866.xyz`、`gh.llkk.cc`、`hub.whtrys.space`、`gh-proxy.ygxz.in`、`ghx.gh-proxy.com`、`ghproxy.cc`;`gh-proxy.net` 302 只 11 字节、`ghproxy.homeboyc.cn` 403、`gh.ddlc.top` 429。⇒ 能用的就这两个,候选表不追求长度,追求每个都能应答。
+- **速率抖动大**:同一个 `gh-proxy.com` 连续两次 3MB ranged 得到 2234908 B/s 与 319394 B/s。所以第二代理是**真兜底**,不是装饰;哪个快由运行时决定,不写死单点。
+- **两个真实缺陷(本次修的)**:①`ProxyPrefix` 只有一条,主代理挂了直接掉到直连(等于没有更新);②`DownloadAsync` 里的 `.OrderBy(c => c.StartsWith(ProxyPrefix) ? 0 : 1)` 是**对全部候选无条件重排**,而 `MirrorCandidates` 又给任意绝对 URL 都加代理前缀 —— 一个非 GitHub 的下载地址会被先送进只能取 GitHub 的代理,把唯一能work的候选浪费掉。
+- **改法(Platform)**:`ProxyPrefixes` 改成 `private static readonly string[]` = { `https://gh-proxy.com/`, `https://ghfast.top/` };`MirrorCandidates` 改为**按 host 组装**——非 `github.com` 直接返回原 URL 单候选,github.com 则按「两个代理 → 原 URL → `https://www.github.com`+PathAndQuery」顺序建表(新增私有 `AddOnce` 去重);`DownloadAsync` 删掉那次排序,直接用 `MirrorCandidates` 的顺序。注释里写明「代理只讲 GitHub,给别人加前缀是把能下的变成必然失败」。
+- **清单通道同样加一条**(Core):`UpdateChannel.ManifestUrls` 从三顺位变四顺位,在 `gh-proxy.com` 那条后面补 `https://ghfast.top/https://raw.githubusercontent.com/{Owner}/{Repository}/main/{ManifestFile}`。实测两条都 200、558 字节。理由:清单取不到,用户就永远不会知道有更新 —— 比安装包慢更致命。
+- **测试**:原来 4 个 `MirrorCandidates` 断言里有两个**断言的正是要删掉的行为**(任意绝对 URL 加代理前缀)。改成 5 个:`LeavesGarbageAlone`、`DoesNotProxyANonGitHubUrl`(非 GitHub 只留原 URL)、`PutsEveryProxyBeforeTheDirectHost`(原 URL 不在首位、首位是 gh-proxy、含 ghfast、且原 URL 之前全带 `://gh`)、`AddsTheWwwHostLastForGitHub`(www 在末位,排在直连之后)、`DoesNotRewriteAnApiGitHubHost`。测试夹具用真实形态的 `v1.1.1` Setup URL。
+- **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` **62 + 57 + 6 = 125/125**(5 个新的 `MirrorCandidates` 用例替换掉原先 4 个里的 2 个,总数的净变化为零)。
+- **Gitee 待办已查清,但仍不迁**:官方帮助页写明发行版**单附件 ≤100MB、单仓库附件总量 ≤1GB**(46.6MB 的 Setup.exe 完全挂得下,账号 `lyw206817` 也存在,id 17012524)。但 ①Gitee 不支持 GitHub 风格的 `/releases/download/{tag}/{file}`;②附件直链带**不稳定数字 id**(形如 `/attach_files/{id}/download/{name}`),无法模板化,每次发布只能手填;③匿名 API 拿不到附件列表(对 RuoYi/Sa-Token/JeecgBoot 等公开仓库 `grep attach_files` 计数一律 0),页面又是前端渲染;④实测大文件吞吐极不稳定(同一条 archive 一次 2.8 MB/s、重测 73 KB/s)。⇒ 走 Gitee 每次发布都要手工上传 46MB 并手填清单,运维成本换来的是并不保证的速度,本轮不做;真要更进一步,应评估国内的 OSS/R2 而不是第 4 次搬仓库。
+
