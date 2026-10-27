@@ -547,3 +547,16 @@
 - **安装验证**:`publish/inno-install.ps1` 静默安装 exit 0,ARP `{8B1F2C34-…}_is1` DisplayVersion **1.2.0**、安装目录 exe `1.2.0+fcf15d6`(264 文件),拉起后 `update.log` 记 `up to date (1.2.0)`。
 - **探针假超时**:`Start-Process -Wait` 装完后 `[Run]` 拉起的 GUI 进程继承了 stdout 管道,bash 侧 `| tail` 一直等 EOF ⇒ 命令看起来挂住 240 s,其实安装早已 `Installation process succeeded`。以后装完要么重定向输出到文件,要么别接管道。
 
+## v37 结果卡:提示回到划词处 + 去掉被裁切的阴影
+
+两个用户可见缺陷(m01334 原话:「当前插入,保存失败的时候弹窗固定出现在左上角,应该是出现在划词的地方,还有卡片边框的阴影没有消除」):
+
+**1. 插入失败的提示固定在屏幕左上角。** 根因在调用顺序:`App.xaml.cs:457` 的 `WriteBackAsync` 先 `_card?.Hide()` 再写回,失败后 `ShowNotice` 走到 `if (!_window.IsVisible) ShowAt(new ScreenPoint(80, 80), null)` —— 卡片已被收起,于是按硬编码的 (80,80) 重新显示。修法:`ResultCardWindow` 在 `ShowAt` 里记住 `_lastAnchor / _lastRect / _hasPosition`,`ShowNotice` 复用这份位置;从未显示过时才退回 `WindowsSelectionCapture.CurrentCursorPoint()`。实测提示卡由左上角 (117,112) 挪到划词处 (1202,724)。
+
+**2. 卡片阴影其实一直在被窗口边界裁切。** `FtTheme.CardShadow()`(BlurRadius 32 / ShadowDepth 8)挂在撑满窗口的根 `Border` 上,而卡片窗口是 `AllowsTransparency + SizeToContent=Height`、没有给投影留任何透明边距,于是投影被裁成一圈 1~2px 深的硬边(实测边框外像素 `(217,227,241)`,再往外一格直接是背景)—— 看着就像「阴影没擦干净」。这与 v2x 里「工具条去阴影」是同一条决定,于是照做:删掉 `CardShadow()`(结果卡 + 截图译图卡),只留 1px 发丝边框;顺手删掉早已没有引用的 `PillShadow()`。
+
+**3. 提示卡顺手压扁。** 提示模式下 `_sourceBlock` 折叠、header/footer 外边距归零(正常卡片由 `RestoreFullChrome()` 还原),卡片高度 112 DIP → 88 DIP,不再是一行字顶着一大片空白。
+
+**验证方式(publish/CardProbe,gitignore 内)**:PowerShell 5.1 加载不了 net10 程序集(`GetTypes` 报 `Unable to load one of the requested types`),所以改用引用 `FastTranslation.Platform.Windows` 的 WPF 探针,按 结果卡 → 收起 → 提示 的顺序驱动 `ResultCardWindow` 并用 `Graphics.CopyFromScreen` 逐帧截图(`assets/qa/probe-card-1-result.png` … `-4-after-timer.png`)。同时确认收起后屏幕无残留:提示自动消失后原位置上没有任何边框/白块像素。
+
+`dotnet build` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。
