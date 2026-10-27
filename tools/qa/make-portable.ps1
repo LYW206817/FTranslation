@@ -4,8 +4,14 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # D:\FTranslation
 $src  = Join-Path $root 'publish\ft-folder'
 $dist = Join-Path $root 'publish\dist'
-$stage = Join-Path $root 'publish\FastTranslation-1.0.1-portable'
-$zip = Join-Path $dist 'FastTranslation-1.0.1-portable.zip'
+
+# version comes from Directory.Build.props so the zip name can never drift from the build
+$props = Get-Content -Raw (Join-Path $root 'Directory.Build.props')
+$m = [regex]::Match($props, '<Version>([0-9]+\.[0-9]+\.[0-9]+)</Version>')
+if (-not $m.Success) { throw 'no <Version> in Directory.Build.props' }
+$version = $m.Groups[1].Value
+$stage = Join-Path $root ('publish\FastTranslation-' + $version + '-portable')
+$zip = Join-Path $dist ('FastTranslation-' + $version + '-portable.zip')
 
 if (-not (Test-Path $src)) { throw "missing publish output: $src" }
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
@@ -25,3 +31,4 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
 }
 Write-Host ('portable files = ' + (Get-ChildItem $stage -Recurse -File).Count)
 Write-Host ('zip bytes = ' + (Get-Item $zip).Length)
+Write-Host ('zip path = ' + $zip)

@@ -210,6 +210,20 @@
           <StackPanel>
             <CheckBox x:Name="AutoStartCheck" Content="开机时自动启动(当前用户)"/>
             <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Button x:Name="CheckUpdateButton" Grid.Column="0" Content="检查更新"
+                      Style="{StaticResource SmallButton}" HorizontalAlignment="Left"
+                      Click="CheckUpdate_Click"/>
+              <TextBlock x:Name="UpdateHint" Grid.Column="1" Margin="10,0,0,0" FontSize="11"
+                         VerticalAlignment="Center" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextMutedBrush}"
+                         Text="发现新版本会提示下载并自动安装。"/>
+            </Grid>
+            <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
             <TextBlock x:Name="AboutText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                        TextWrapping="Wrap"/>
           </StackPanel>

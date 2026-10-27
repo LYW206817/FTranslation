@@ -18,7 +18,8 @@
 - **原位结果卡**：译文浮在原文附近，可以复制、替换原文、插入到原处、切换目标语言、重试、关掉
 - **写回**：替换或插入前做三重校验（窗口句柄 + UIA RuntimeId + 归一化后的选区文本），任何一项对不上就降级成「已复制」并提示，绝不写错地方
 - **剪贴板兜底**：UIA 拿不到文字时，临时占用剪贴板发 Ctrl+C 取词，取完把剪贴板所有格式原样恢复
-- **托盘常驻**：关窗口不退出；托盘菜单翻译剪贴板、打开主窗口、设置、退出
+- **托盘常驻**：关窗口不退出；托盘菜单翻译剪贴板、打开主窗口、设置、检查更新、退出
+- **自动更新**：启动 30 秒后静默检查、之后每 6 小时一次，发现新版本一键下载安装并重启；下载有镜像回退和 SHA256 校验
 
 ## 环境要求
 
@@ -30,9 +31,9 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `FastTranslation-1.0.1-Setup.msi` 双击安装，装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限。
+从 [Releases](../../releases) 下载 `FastTranslation-1.1.0-Setup.exe` 双击安装。安装向导里可以改安装位置，默认装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限；装过 1.0.x MSI 版的不必先卸载，安装程序会自动清掉旧版本。
 
-喜欢绿色版就下 `FastTranslation-1.0.1-portable.zip`，解压即用。
+喜欢绿色版就下 `FastTranslation-1.1.0-portable.zip`，解压即用。便携版没有安装目录，因此不会自动安装更新，只会提示去下载页取新版。
 
 > **当前构建未签名。** Windows SmartScreen 会拦一次，点「更多信息」→「仍要运行」。安装包请只从本仓库 Releases 获取。
 
@@ -78,12 +79,12 @@ dotnet test FastTranslation.slnx -c Release
 dotnet run --project src/FastTranslation.App
 ```
 
-打安装包（需要 [WiX v4](https://wixtoolset.org/) `dotnet tool install --global wix`）：
+打安装包（需要 [Inno Setup 6](https://jrsoftware.org/isdl.php)，脚本在 `installer/FastTranslation.iss`）：
 
 ```powershell
 dotnet publish src/FastTranslation.App -c Release -r win-x64 --self-contained true -o publish/ft-folder
-powershell -File tools/qa/gen-files-wxs.ps1
-wix build installer/Product.wxs installer/files.wxs -o publish/dist/FastTranslation-1.0.1-Setup.msi
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer/FastTranslation.iss
+powershell -File tools/qa/make-portable.ps1
 ```
 
 ## 项目结构
@@ -103,7 +104,7 @@ tools/
   Probe*/    启动耗时与内存探针（历史决策依据）
 docs/
   PLAN.md              技术决策 D1–D9 与实测数据
-  IMPL.md              迭代史 v1–v24，每个版本解决了什么
+  IMPL.md              迭代史 v1–v29，每个版本解决了什么
   superpowers/specs/   设计规格
 ```
 

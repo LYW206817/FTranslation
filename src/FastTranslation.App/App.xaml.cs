@@ -27,6 +27,7 @@ public partial class App : Application, IResultPresenter
     private AppSettings _settings = new();
     private readonly DpapiSecretStore _secrets = new();
     private bool _captureEnabled = true;
+    private UpdateCoordinator? _updates;
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -140,6 +141,7 @@ public partial class App : Application, IResultPresenter
             _mainWindow?.RefreshCaptureState();
         };
         _tray.MainWindowRequested += ShowMainWindow;
+        _tray.UpdateRequested += () => _updates?.CheckAsync(interactive: true);
         _tray.ExitRequested += ExitApp;
         _tray.Show("Fast Translation — 取词已开启");
 
@@ -179,6 +181,15 @@ public partial class App : Application, IResultPresenter
                 ShowOnboarding();
             }
         }
+
+        // updater last: it only schedules a timer, and a check that runs before the UI exists
+        // would have nowhere to put its dialog
+        _updates = new UpdateCoordinator(
+            Dispatcher,
+            PresentUpdate,
+            (title, text) => _tray?.ShowBalloon(title, text),
+            ExitApp);
+        _updates.Start();
 
         // startup warmup (user feedback: dead period before the app became usable):
         // 1) UIA client cold-init on a background thread  2) overlay HWNDs pre-created
@@ -420,8 +431,40 @@ public partial class App : Application, IResultPresenter
 
     private void ShowSettings()
     {
-        var window = new SettingsWindow(_settings, _settingsService, _secrets, _hotkey!);
+        var window = new SettingsWindow(_settings, _settingsService, _secrets, _hotkey!,
+            () => _updates?.CheckAsync(interactive: true));
         window.ShowDialog();
+    }
+
+    /// <summary>
+    /// The single entry point for "a newer version exists". Only a confirmed, verified
+    /// download reaches the caller, and only then does the app hand over to the installer and
+    /// quit — the installer starts the new build itself, so coming back here would race it.
+    /// </summary>
+    private void PresentUpdate(UpdateManifest manifest, ReleaseVersion currentVersion)
+    {
+        var window = new UpdateWindow(manifest, currentVersion, UpdateCoordinator.IsInstalledCopy());
+        if (_mainWindow is { IsVisible: true })
+        {
+            window.Owner = _mainWindow;
+        }
+        else
+        {
+            // an ownerless CenterOwner window lands at an arbitrary spot; the app is usually
+            // hidden in the tray when the timer fires
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+
+        if (window.ShowDialog() != true) return;
+        var installer = window.DownloadedPath;
+        if (string.IsNullOrEmpty(installer) || _updates is null) return;
+
+        if (!_updates.ApplyUpdate(installer, out var error))
+        {
+            UpdateLog.Write($"apply failed: {error}");
+            _tray?.ShowBalloon("更新失败", "无法启动安装程序,请到下载页手动更新。");
+        }
+        // a successful ApplyUpdate already exited the app; nothing after this runs
     }
 
     private void ExitApp()

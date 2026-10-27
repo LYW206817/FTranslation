@@ -14,14 +14,22 @@ public partial class SettingsWindow : Window
     private readonly SettingsService _service;
     private readonly ISecretStore _secrets;
     private readonly HotkeyService _hotkey;
+    private readonly Action? _checkUpdates;
 
-    public SettingsWindow(AppSettings settings, SettingsService service, ISecretStore secrets, HotkeyService hotkey)
+    public SettingsWindow(
+        AppSettings settings,
+        SettingsService service,
+        ISecretStore secrets,
+        HotkeyService hotkey,
+        Action? checkUpdates = null)
     {
         InitializeComponent();
         _settings = settings;
         _service = service;
         _secrets = secrets;
         _hotkey = hotkey;
+        _checkUpdates = checkUpdates;
+        CheckUpdateButton.IsEnabled = checkUpdates is not null;
 
         // target language combo: auto + catalog
         TargetCombo.Items.Add(new ComboBoxItem { Content = "自动(中英互译)", Tag = "auto" });
@@ -69,6 +77,13 @@ public partial class SettingsWindow : Window
             ? System.IO.File.GetLastWriteTime(location).ToString("yyyy-MM-dd")
             : "unknown";
         return $"Fast Translation {version}\n构建日期 {build}\n未签名测试版 — 请仅从可信来源获取安装包";
+    }
+
+    private void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        // the check is asynchronous and may open its own dialog; this one stays usable
+        UpdateHint.Text = "正在检查更新…";
+        _checkUpdates?.Invoke();
     }
 
     private void RefreshExcludedList()
