@@ -426,3 +426,6 @@
 - **Pages 缓存**:`Cache-Control: max-age=600`,改完清单最多要等 10 分钟才对外可见(jsDelivr 缓存更久);发布流程要留这个窗口,别以为提交就生效了。
 - **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` 62 + 57 + 6 = **125/125**;Setup.exe **46305182 字节** `sha256 8bb256d0…`;便携包 **61672161 字节**(263 条目);安装后 264 文件、ARP 单条 `{8B1F2C34-7A6D-4E58-9C21-5F3D8E7A1B60}_is1`、无 MSI 残留、旧 MSI 被自动卸载。
 - **残留风险(已告知用户)**:已经装 1.0.1 的朋友身上没有更新器,**必须手动装一次 1.1.0**,从那以后才真正自动。
+
+- **1.1.0 发布**:主仓库 Release id `425206694`,tag `v1.1.0` → commit `528d4f27ad5aa387fbfa68db1e5453645f7437f9`,https://github.com/LYW206817/FTranslation/releases/tag/v1.1.0 ;两个资产均 `state: uploaded`:`FastTranslation-1.1.0-Setup.exe`(id 680982868,**46305182 字节** `sha256 8bb256d0c07fdfa87b4617c4759a19589276abf4af6a31ae94a92c131d709a09`)、`FastTranslation-1.1.0-portable.zip`(id 680983576,**61672161 字节** `sha256 2567d8b3f86e3fc9550b6a09664139c778d7770baa68b72d0273309524cbd2b4`)。更新通道仓库 `FTranslation-Updates` 的 v1.1.0 资产 id `680940805`,清单 `version.json` 已指回 1.1.0。
+- **发布 API 坑**:`POST /releases` 的 `target_commitish` 传短 sha(`528d4f2`)会被拒 `422 tag_name is not a valid tag`,必须传完整 40 位 sha;`body` 含中文时用 `curl --data-binary @file`(JSON 由脚本生成,别让 PowerShell 拼 —— 在 win_bash 里 `@{}` 的 `$` 会被吞掉)。
