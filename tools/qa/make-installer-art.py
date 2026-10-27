@@ -9,6 +9,7 @@ os.makedirs(OUT, exist_ok=True)
 TOP = (253, 254, 255)
 BOT = (226, 237, 252)
 GLOW = (37, 98, 255)
+HAIR = (214, 221, 232)
 
 
 def lerp(a, b, t):
@@ -47,23 +48,12 @@ def wizard_strip(w, h):
 
 
 def badge(size):
-    # brand-blue rounded square with the droplet knocked out in cream: reads on a #F7F9FC page
+    # The app icon itself, plus a hairline outline so its cream plate keeps an edge on a #F7F9FC page.
     s = size * 4
-    img = Image.new('RGBA', (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    for y in range(s):
-        d.line([(0, y), (s, y)], fill=lerp((37, 98, 255), (26, 69, 196), y / (s - 1)) + (255,))
-    mask = Image.new('L', (s, s), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.22), fill=255)
-    img.putalpha(mask)
-
-    mark = Image.open(ICON).convert('RGBA')
-    inner = int(s * 0.60)
-    mark = mark.resize((inner, inner), Image.LANCZOS)
-    cream = Image.new('RGBA', (inner, inner), (253, 250, 246, 255))
-    cream.putalpha(mark.getchannel('A'))
-    img.alpha_composite(cream, (int((s - inner) / 2), int((s - inner) / 2)))
-    return img.resize((size, size), Image.LANCZOS)
+    art = Image.open(ICON).convert('RGBA').resize((s, s), Image.LANCZOS)
+    d = ImageDraw.Draw(art)
+    d.rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.22), outline=HAIR + (255,), width=max(1, s // 116))
+    return art.resize((size, size), Image.LANCZOS)
 
 
 for w, h in [(240, 459), (336, 643), (403, 772)]:

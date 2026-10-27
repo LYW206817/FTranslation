@@ -333,6 +333,29 @@ var
 begin
   target := (WizardForm.ClientWidth * PageStep(CurPageID)) div PageCount;
   AnimateProgress(target);
+
+  { FinishedLabel carries a caption the wizard only fills in once this page is current, so its
+    box can only be re-fitted here. }
+  if CurPageID = wpFinished then WizardForm.FinishedLabel.AdjustHeight;
+end;
+
+{ The wizard lays these labels out for its own 9pt default. A larger font makes the text taller
+  than the box it was given, so every heading overflows onto the line below it: re-fit each box,
+  then push the following label down by whatever the box gained. }
+procedure FitStackedLabels();
+begin
+  WizardForm.WelcomeLabel1.AdjustHeight;
+  WizardForm.WelcomeLabel2.Top :=
+    WizardForm.WelcomeLabel1.Top + WizardForm.WelcomeLabel1.Height + ScaleY(8);
+
+  WizardForm.PageNameLabel.AdjustHeight;
+  WizardForm.PageDescriptionLabel.Top :=
+    WizardForm.PageNameLabel.Top + WizardForm.PageNameLabel.Height + ScaleY(2);
+  WizardForm.PageDescriptionLabel.AdjustHeight;
+
+  WizardForm.FinishedHeadingLabel.AdjustHeight;
+  WizardForm.FinishedLabel.Top :=
+    WizardForm.FinishedHeadingLabel.Top + WizardForm.FinishedHeadingLabel.Height + ScaleY(6);
 end;
 
 { mbSecond | MinVersion 10.0 is enforced above; the hint on the finished page names the two
@@ -354,6 +377,7 @@ begin
     ColorText(WizardForm.PageDescriptionLabel, SecondaryColor, WizardBack, 11, False);
     ColorText(WizardForm.FinishedHeadingLabel, PrimaryColor, WizardBack, 20, True);
     ColorText(WizardForm.FinishedLabel, SecondaryColor, WizardBack, 11, False);
+    FitStackedLabels();
   end;
 
   { The polar style paints the button faces itself and offers no colour property, so weight and
