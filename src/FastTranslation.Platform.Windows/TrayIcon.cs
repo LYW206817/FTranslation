@@ -85,6 +85,7 @@ public sealed class TrayIconService : IDisposable
     public event Action<bool>? CaptureToggled; // true = enabled
     public event Action? ExitRequested;
     public event Action? MainWindowRequested;
+    public event Action? UpdateRequested;
 
     private bool _captureEnabled = true;
 
@@ -173,6 +174,7 @@ public sealed class TrayIconService : IDisposable
         {
             AppendMenuW(menu, MF_STRING, 1001, "设置");
             AppendMenuW(menu, MF_STRING, 1002, _captureEnabled ? "暂停取词" : "恢复取词");
+            AppendMenuW(menu, MF_STRING, 1004, "检查更新");
             AppendMenuW(menu, MF_SEPARATOR, 0, string.Empty);
             AppendMenuW(menu, MF_STRING, 1003, "退出");
 
@@ -191,6 +193,7 @@ public sealed class TrayIconService : IDisposable
                     CaptureToggled?.Invoke(_captureEnabled);
                     break;
                 case 1003: ExitRequested?.Invoke(); break;
+                case 1004: UpdateRequested?.Invoke(); break;
             }
         }
         finally
