@@ -19,9 +19,11 @@ public sealed record UpdateCheckResult(UpdateCheckStatus Status, UpdateManifest?
 
 /// <summary>
 /// Where the updater looks for the manifest. The project repository is private, so the
-/// manifest lives in a separate public repository and is read through three endpoints:
-/// GitHub Pages (canonical), the jsDelivr mirror and a raw proxy — on mainland networks
-/// raw.githubusercontent.com is unreachable while Pages and the proxy answer.
+/// manifest lives in a separate public repository and is read through four endpoints:
+/// GitHub Pages (canonical), the jsDelivr mirror and two raw proxies — on mainland networks
+/// raw.githubusercontent.com is unreachable while Pages and the proxies answer. The proxies are
+/// listed twice because they fail independently: when one goes dark the other still serves the
+/// file, and a manifest that cannot be read means the user never hears about an update at all.
 /// </summary>
 public static class UpdateChannel
 {
@@ -34,6 +36,7 @@ public static class UpdateChannel
         $"https://{Owner.ToLowerInvariant()}.github.io/{Repository}/{ManifestFile}",
         $"https://fastly.jsdelivr.net/gh/{Owner}/{Repository}@main/{ManifestFile}",
         $"https://gh-proxy.com/https://raw.githubusercontent.com/{Owner}/{Repository}/main/{ManifestFile}",
+        $"https://ghfast.top/https://raw.githubusercontent.com/{Owner}/{Repository}/main/{ManifestFile}",
     };
 
     /// <summary>Human-facing download page, used by portable copies that cannot self-install.</summary>

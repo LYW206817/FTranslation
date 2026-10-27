@@ -19,34 +19,53 @@ public static class UpdateInstaller
 {
     /// <summary>Public GitHub release downloads are routed through these when the direct host stalls.</summary>
     private const string GitHubHost = "github.com";
-    private const string ProxyPrefix = "https://gh-proxy.com/";
+
+    /// <summary>
+    /// Proxies for github.com release downloads, in the order they are tried. Both answered with
+    /// real bytes from a mainland network when measured, and both were tested repeatedly: the rate
+    /// swings by an order of magnitude between runs, so the second one is a genuine fallback rather
+    /// than decoration. A proxy that has gone dark simply loses its turn, the direct host stays last.
+    /// </summary>
+    private static readonly string[] ProxyPrefixes =
+    {
+        "https://gh-proxy.com/",
+        "https://ghfast.top/",
+    };
 
     public static string UpdatesDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastTranslation", "updates");
 
     /// <summary>
-    /// Download candidates in priority order. A mainland network cannot finish a
-    /// github.com release download (measured: 0 bytes in 60s), but the same URL behind
-    /// gh-proxy answers at ~150 KB/s, so the proxy is a first-class fallback rather than a debug aid.
+    /// Download candidates in the order they should be tried. A mainland network cannot finish a
+    /// github.com release download (measured: ~9 KB/s from objects.githubusercontent.com, an hour and
+    /// a half for 46 MB), while the same URL behind a gh proxy answered at 0.3-2 MB/s — so for
+    /// github.com the proxies come first and the direct hosts are the fallback.
+    ///
+    /// Every other host is left alone. The proxies only speak GitHub: prefixing a foreign URL with
+    /// them turns a download that worked into a guaranteed miss, which is why this list is built
+    /// host by host instead of being rewritten afterwards.
+    ///
+    /// assets.githubusercontent.com is what api.github.com reports for a release asset, but the
+    /// browser URL is always the canonical form, so reordering is only ever done for github.com.
     /// </summary>
     internal static IReadOnlyList<string> MirrorCandidates(string url)
     {
         var candidates = new List<string> { url };
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return candidates;
+        if (!uri.Host.Equals(GitHubHost, StringComparison.OrdinalIgnoreCase)) return candidates;
 
-        var proxied = ProxyPrefix + url;
-        if (!candidates.Contains(proxied, StringComparer.OrdinalIgnoreCase)) candidates.Add(proxied);
+        var ordered = new List<string>();
+        foreach (var prefix in ProxyPrefixes) AddOnce(ordered, prefix + url);
+        AddOnce(ordered, url);
 
-        // assets.githubusercontent.com is what api.github.com reports for a release asset;
-        // the browser URL is always the canonical form.
-        if (uri.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase)) return candidates;
+        // github.com and www.github.com reset connections differently on some networks
+        AddOnce(ordered, "https://www.github.com" + uri.PathAndQuery);
+        return ordered;
+    }
 
-        if (uri.Host.Equals(GitHubHost, StringComparison.OrdinalIgnoreCase))
-        {
-            var withWww = "https://www.github.com" + uri.PathAndQuery;
-            if (!candidates.Contains(withWww, StringComparer.OrdinalIgnoreCase)) candidates.Add(withWww);
-        }
-        return candidates;
+    private static void AddOnce(List<string> candidates, string candidate)
+    {
+        if (!candidates.Contains(candidate, StringComparer.OrdinalIgnoreCase)) candidates.Add(candidate);
     }
 
     public static string Sha256OfFile(string path)
@@ -91,12 +110,10 @@ public static class UpdateInstaller
         Directory.CreateDirectory(UpdatesDirectory);
         var failures = new List<string>();
 
-        // the proxy is tried before the direct URL for github.com: on a mainland network the
-        // direct host answers but then trickles at ~9 KB/s from objects.githubusercontent.com,
-        // which never trips a stall timer and leaves the user staring at 1% for ten minutes
-        var candidates = MirrorCandidates(manifest.DownloadUrl)
-            .OrderBy(c => c.StartsWith(ProxyPrefix, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ToList();
+        // MirrorCandidates already hands back proxies before the direct hosts for github.com, and
+        // nothing else is proxied. Reordering here would drag a non-GitHub URL through a proxy that
+        // cannot serve it and burn the only candidate that could have worked.
+        var candidates = MirrorCandidates(manifest.DownloadUrl);
 
         foreach (var candidate in candidates)
         {
