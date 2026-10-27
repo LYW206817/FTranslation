@@ -16,7 +16,12 @@ $zip = Join-Path $dist ('FastTranslation-' + $version + '-portable.zip')
 if (-not (Test-Path $src)) { throw "missing publish output: $src" }
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Copy-Item -Recurse -Path $src -Destination $stage
-Copy-Item (Join-Path $dist 'README.txt') (Join-Path $stage 'README.txt')
+# README 的源文件在 docs/ 里(受版本控制);dist 下的副本只是上一次的产物,
+# 直接读 dist 会让全新 clone 的仓库根本生不出便携包。
+$readme = Join-Path $root 'docs\portable-readme.txt'
+if (-not (Test-Path $readme)) { throw "missing README source: $readme" }
+Copy-Item $readme (Join-Path $stage 'README.txt')
+Copy-Item $readme (Join-Path $dist 'README.txt')
 
 for ($attempt = 1; $attempt -le 3; $attempt++) {
   try {
