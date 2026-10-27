@@ -447,3 +447,18 @@
 - **美术资源**:`tools/qa/make-installer-art.py`(PIL)生成 `assets/installer/` —— 横幅是奶白→淡蓝竖向渐变 + 底部品牌蓝柔光 + 图标 alpha 0.16 水印;页头小图不是透明图标(透明 PNG 在 #F7F9FC 上几乎看不见),而是品牌蓝渐变圆角方里挖出奶白水滴。
 - **自动更新兼容性**:静默升级带着 `/UPDATEPID=<pid>` 进来,安装器先等那个进程退出再覆盖文件(60s 上限),`[Run]` 不带 `skipifsilent` 所以装完会把应用重新拉起来。实测:应用运行中启动 Setup → 等 PID → 覆盖 264 文件 → 拉起新进程,exit 0;若应用一直不退则 60s 后放弃并回滚(exit 5,日志 `DeleteFile 失败;错误代码 5`),这是预期行为。
 - **仍未落地**:用户早前提的「GitHub 国内不友好是否迁 Gitee」还挂在待办 —— 需要先核实 Gitee 发行版附件的单文件上限、配额与实名要求(46MB 的 Setup.exe 能不能直接挂)。
+
+## v32 安装向导中文化、奶白泛蓝外观与托盘占用修复(2026-10-27)✅
+
+- **中文界面**:本机 Inno 6.7.3 的 `Languages` 目录没有简体中文,直接从 Inno 7 的 `ChineseSimplified.isl`(417 行,`LanguageID=$0804`/`LanguageCodePage=936`)拷到 `installer/Languages/`,`[Languages]` 只留这一条 + `ShowLanguageDialog=no`。
+- **升级时能改路径**:Inno 的 `DisableDirPage` 默认值 `auto` 会在同一 AppId 已注册时**自动隐藏**「选择目标位置」页 —— 这正是用户升级时看不到改路径入口的原因。改为 `DisableDirPage=no` + `UsePreviousAppDir=yes`(静默升级仍沿用原目录)。
+- **配色**:走 `WizardStyle=modern polar hidebevels`(逐值实测,见下)+`WizardBackColor=#F7F9FC`;文字与细线在 `[Code]` 里按应用色板绘制。**刻意不要 `dynamic`**。
+- **Inno 的 TColor 是 `$BBGGRR`**:`$FF6225` 显示成 `#2562FF`,`$36251B` 显示成 `#1B2536`。
+- **改色必须清 `StyleElements`**:只赋 `Font.Color`/`Panel.Color` 会被 VCL 主题覆盖;先 `Control.StyleElements := [];` 再设色才生效。副作用是**丢掉透明背景**,TNewStaticText 会铺一块白底方块(实测 339234 个纯白像素、bbox (410,82)-(1088,630)),所以 `ColorText` 必须同时把 `Text.Color` 设为页面底色 `#F7F9FC`。
+- **按钮改不了颜色**:`TNewButton` 在 CHM 里没有 `Color` 成员(`Unknown identifier 'COLOR'`),`StyleElements := []` + `Font.Color` 也无效(polar 主题自绘)。能动的只有 `Font.Size`/`Font.Style`。所以按钮观感只能靠 WizardStyle 选型:实测「下一步」底色 polar=`#A2D0FE`、windows11=`#E1EDF6`、zircon=`#A0D4DE`、modern light/classic=`#FDFDFD` ⇒ 只有 polar 是蓝色系。
+- **动效 = 底部进度条**:Inno Pascal 没有 TTimer,但有 `SetTimer(0,0,20,CreateCallback(@AnimTick))` + `KillTimer`。`CurPageChanged` 里按 `PageStep()/PageCount` 算目标宽度,`AnimTick` 每次走剩余距离的 1/4(线性步进在 20ms 定时器上看着卡)。`HighContrastActive` 时不动画。
+- **父级挂载**:常驻装饰面板挂 `WizardForm`(挂 `MainPanel` 完全不渲染,挂具体 Page 只在该页出现)。
+- **美术资源**:`tools/qa/make-installer-art.py` 生成横幅(奶白→淡蓝竖向渐变 + 底部品牌蓝柔光 + 图标水印)与右上角蓝底圆角徽标(纯透明 PNG 在 `#F7F9FC` 上几乎看不见,所以做成实心蓝底挖空水滴)。横幅与 `WizardBackImageFile` **不能同时用**,后者会把前者替代掉。
+- **托盘占用修复**:`CloseRunningApp()` 在 `PrepareToInstall` 两条分支都调用,用 `taskkill /f /im` 关掉正在运行的应用。根因:托盘程序点 X 只是隐藏窗口,Restart Manager 关不掉它(`CloseApplications=no`),已加载的 DLL 全部拒绝替换,手动双击 Setup 会以 `DeleteFile 失败;错误代码 5` 回滚。自更新时 `/UPDATEPID` 非 0,函数直接让开,仍由 `WaitForUpdateProcess()` 等 PID 退出。
+- **验证**:重编译 `Successful compile (64.593 sec)`;六页截图(1138x870)像素级确认 —— 每页 body `#F7F9FC`、WelcomeLabel 区纯白像素归零、页脚 hairline 固定在 y=774–775、进度条按 (15,196)/(15,382)/(15,568)/(15,753)/(15,939) 递进;应用在托盘里时静默安装 `exit=0`、安装后自动拉起、264 文件且与 `publish/ft-folder` 二进制一致;`dotnet test` 125/125。
+- **版本 1.1.1**:`Directory.Build.props` 与 `.iss` 的 `AppVersion` 同步;`publish/dist/README.txt` 与根 `README.md` 的产物名跟着替换。
