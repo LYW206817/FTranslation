@@ -8,6 +8,9 @@ public sealed class AppSettings
     public string SourceLanguage { get; set; } = "auto";
     public string Model { get; set; } = "qwen-mt-flash";
     public string Hotkey { get; set; } = "Ctrl+Alt+T";
+
+    // 截图翻译单独一个热键：取词热键保持不变，两个入口互不影响
+    public string ImageHotkey { get; set; } = "Ctrl+Alt+S";
     public bool ClipboardFallbackEnabled { get; set; } = true;
     public int ClipboardPollMs { get; set; } = 300;
     public bool WriteBackEnabled { get; set; } = true;

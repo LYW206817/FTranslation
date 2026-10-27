@@ -17,10 +17,14 @@ public partial class App : Application, IResultPresenter
     private bool _reallyExiting;
     private TrayIconService? _tray;
     private HotkeyService? _hotkey;
+    private HotkeyService? _imageHotkey;
     private WindowsSelectionCapture? _capture;
     private SelectionCoordinator? _coordinator;
     private SelectionToolbar? _toolbar;
     private ResultCardWindow? _card;
+    private ImageResultWindow? _imageWindow;
+    private ImageTranslationCoordinator? _imageCoordinator;
+    private IImageTranslationProvider? _imageProvider;
     private WriteBackService? _writeBack;
     private TranslationService? _translation;
     private SettingsService _settingsService = new();
@@ -91,6 +95,7 @@ public partial class App : Application, IResultPresenter
         _toolbar = new SelectionToolbar();
         _toolbar.CopyClicked += OnToolbarCopy;
         _toolbar.TranslateClicked += OnToolbarTranslate;
+        _toolbar.ScreenshotClicked += _ => RunScreenshotTranslation();
         _card = new ResultCardWindow();
         _card.CopyRequested += OnCopyRequested;
         _card.ReplaceRequested += OnReplaceRequested;
@@ -144,6 +149,30 @@ public partial class App : Application, IResultPresenter
         _tray.UpdateRequested += () => _updates?.CheckAsync(interactive: true);
         _tray.ExitRequested += ExitApp;
         _tray.Show("Fast Translation — 取词已开启");
+
+        // 截屏翻译走独立的图片通道：端点、模型、返回（译图）都和文本翻译不同，
+        // 所以不复用 _translation；key 仍然读同一个 secret，和文本 provider 完全一致。
+        _imageProvider = new QwenMtImageTranslator(
+            () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
+        _imageWindow = new ImageResultWindow();
+        _imageCoordinator = new ImageTranslationCoordinator(
+            _imageProvider,
+            () => _settings,
+            result => _imageWindow?.ShowResult(
+                result.JpegBytes,
+                $"{result.SourceLanguage} → {result.TargetLanguage} · {result.Model} · {result.ElapsedMs}ms"),
+            message => _tray?.ShowBalloon("截图翻译失败", message));
+        _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
+
+        // 第二个热键服务：HotkeyService 每个实例有自己的 message-only 窗口，
+        // 取词热键(Register/重注册)完全不受影响。
+        // 失败提示必须排在 _tray.Show() 之后：ShowBalloon 在图标还没添加时直接返回。
+        _imageHotkey = new HotkeyService();
+        _imageHotkey.Pressed += RunScreenshotTranslation;
+        if (!_imageHotkey.Register(_settings.ImageHotkey))
+        {
+            _tray.ShowBalloon("Fast Translation", $"截图翻译热键 {_settings.ImageHotkey} 被占用,请到设置里换一个");
+        }
 
         _mainWindow = new MainWindow(
             _translation,
@@ -388,6 +417,26 @@ public partial class App : Application, IResultPresenter
             TriggerKind.Hotkey, point, fgHandle, fgProcess, Environment.TickCount64));
     }
 
+    /// <summary>三个入口（工具栏按钮 / 托盘菜单 / Ctrl+Alt+S）都只调这一个方法。</summary>
+    private void RunScreenshotTranslation()
+    {
+        var hasKey = false;
+        try { hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName)); }
+        catch { }
+        if (!hasKey)
+        {
+            // 和主窗口「配置 Key」按钮同一条既有路径：打开设置页去填，不另造提示框
+            _tray?.ShowBalloon("截图翻译", "还没有配置 API Key,请在设置里填写。");
+            ShowSettings();
+            return;
+        }
+
+        _toolbar?.Hide();
+        _card?.Hide();
+        _imageWindow?.Hide(); // 浮窗是 Topmost，不先收起会被截进下一张图
+        _ = _imageCoordinator!.RunAsync();
+    }
+
     private void OnCopyRequested()
     {
         if (_lastResult is { Succeeded: true })
@@ -473,6 +522,10 @@ public partial class App : Application, IResultPresenter
         _reallyExiting = true;
         _toolbar?.Dispose();
         _card?.Dispose();
+        _imageCoordinator?.Dispose();
+        _imageProvider?.Dispose();
+        _imageWindow?.Dispose();
+        _imageHotkey?.Dispose();
         _coordinator?.Dispose();
         _capture?.Dispose();
         _hotkey?.Dispose();

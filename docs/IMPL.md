@@ -518,3 +518,22 @@
 - **提交隔离的坑**:工作树里的 `App.xaml.cs` 同时带着更新弹窗和未完成的截图翻译接线,原样提交会让 HEAD 编译失败(`error CS0246: 未能找到类型或命名空间名 ImageResultWindow`)。1.1.3 的提交里该文件是「e9ef59a 版本 + 仅 MessageBox 一行」,用 `git update-index --cacheinfo` + `commit --amend` 做的,**没有覆盖主工作树文件**;因此 `git status` 里 `App.xaml.cs` 仍显示 modified,那是残留的截图翻译在制品,属预期。
 - **注意(与本轮无关但在工作树里)**:仓库里另有一批未提交的图像翻译在制品(`ImageTranslationPolicy.cs`、`ImageTranslationTypes.cs`、`RegionCapture.cs`、`QwenMtImageTranslator.cs` 及其测试),它们让 `FastTranslation.Providers.QwenMt.Tests` 从 6 个测试涨到 40 个,且**打真实 Qwen API**,偶发超时甚至把测试宿主挂到 5 分钟。本轮未触碰这些文件。
 
+## v36 截图翻译:拖框选区 + 阿里 qwen-mt-image-2.0(2026-10-27)✅
+
+**背景**:用户 m00928「只快速翻译还是不够,加一个截图翻译,工具条变成三个,复制/翻译/截图翻译,截图模型就用阿里的 qwen-mt-image-2.0,我想先看看这个模型翻译图片的效果」。
+
+- **先验模型再写代码**。官方文档(help.aliyun.com/zh/model-studio/qwen-mt-image-api)给的是同步端点 `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis`,请求 `{"model","input":{"image_url","source_lang","target_lang"}}`,响应 `output.image_url` 指向 **JPG / 与原图同尺寸 / 24h 过期** 的译后图。文档里那个 `{WorkspaceId}.cn-beijing.maas.aliyuncs.com` 前缀**不需要**,普通域名实测 200。
+- **决定性实测:`image_url` 直接吃 base64 data URI**(`data:image/png;base64,…`)→ 200。桌面端因此**不需要上传、不需要公网托管**,截图不出本机。反面:先走 `getPolicy` + OSS POST 上传成 `oss://` 对象再引用,**一定失败** —— 私有对象过不了审核,`InvalidParameter.DataInspection`。
+- **计价与配额**:0.004 元/张(1 元 250 张);文档标 RPM=1,背靠背两次调用实测均 200(未硬卡),产品里仍按「一次截图一次 POST」节流。
+- **质量边界(已如实告知用户)**:英文网页(980x900 MDN)→ 中文,版面 1:1 保留、正文/导航/面包屑全译、`Request`/`Response`/`fetch()` 等标识符保持英文;**密集小字多栏界面会错位** —— 875x1260 的设置窗中文→英文时,左侧窄导航被压碎成 `g`/`F`/`C`/`e` 碎片。官方文档也承认复杂排版建议切块。
+- **Core 契约**(新 3 文件):`ImageTranslationTypes.cs` —— `record ImageTranslationRequest(byte[] PngBytes, string SourceLanguage, string TargetLanguage, string Model)`、`record ImageTranslationResult(byte[] JpegBytes, string SourceLanguage, string TargetLanguage, string Model, long ElapsedMs, string RemoteUrl)`(带 `Error`/`Succeeded`)、`interface IImageTranslationProvider`;`ImageTranslationPolicy.cs` —— 目标语言跟随设置,`auto`/空 → `Chinese`,与源同语言时退回 `auto`。
+- **Provider**(`QwenMtImageTranslator.cs` 256 行):`:163` `image_url = "data:image/png;base64," + Convert.ToBase64String(request.PngBytes)`;**只有合成 POST 参与 429/网络重试一次,译后图 GET 不重试** —— 一次 POST 就是 0.004 元,重试要付两次钱;响应里的 `error.code:message` 截断 200 字符带进 `TranslationError`。
+- **拖框截屏**(`RegionCapture.cs` 357 行):`CapturedImage(byte[] PngBytes, int Left, int Top, int Width, int Height)`、`PickAsync(CancellationToken)`;覆盖整个虚拟屏、黑 0.35 遮罩、品牌蓝选区框、Esc/右键取消、**小于 8 物理像素视为取消**。`NativeMethods.cs` 只追加 BitBlt 一族,`SRCCOPY = 0x00CC0020`。
+- **踩坑(遮罩混进截图)**:必须先 `overlay.Hide()` → `Dispatcher.Yield(Render)` → 等 60 ms 再 BitBlt,否则半透明遮罩被烤进画面。已知近似:mixed-DPI 多屏按 overlay 自身的单一 DPI 换算 DIP→物理像素。
+- **三个入口**:划词工具条第三颗 pill「截图翻译」(取景框图标,children 顺序 `{copy, divider, translate, screenshot}`)、全局热键 **Ctrl+Alt+S**(`AppSettings.ImageHotkey`)、托盘原生菜单 **id 1005**。三者都汇到 `App.xaml.cs` 的 `RunScreenshotTranslation()`。
+- **`ImageTranslationCoordinator`** 用 `Interlocked.CompareExchange(ref _busy, 1, 0)` 防重入 —— 两个拖框 overlay 同时开着会把彼此的灰罩截进图;开新一次前先 `_imageWindow?.Hide()`,否则 Topmost 浮窗会被拍进下一张;没配 Key 时走托盘气泡 + 打开设置页。
+- **浮窗 `ImageResultWindow`**:独立无边框窗(不改原位置覆盖,用户决策),`SizeToContent.WidthAndHeight` 居中、图片上限取工作区 70%、小图不放大、Esc 关闭、三个动作 **复制图片 / 另存为… / 关闭**。`:107-108` `_image.Width = bitmap.Width * scale` 用的是位图 DIP 尺寸(不是像素),aspect 才和图片一致。
+- **一次误判留档**:验收截图里译图下方看着像「白带」,实测是**源页面自己的空白**被框进了选区(拖框到 1000 而正文只到 940),不是布局缺陷;UIA 量到的窗口 1817x812 与 `header + image*scale + padding` 完全吻合。`.ps1` 里比对中文控件名**必须存 UTF-8 带 BOM**,否则 PowerShell 按 GBK 解码,字面量变乱码、`FindFirst(Name='复制图片')` 恒为 null。
+- **验证**:`dotnet build` 0 警告 0 错误;`dotnet test` **75 + 68 + 40 = 183 全绿**;真机 E2E(脚本 `publish/e2e-shot.ps1`,DPI-aware)拿到工具条三键与译图浮窗(截图 `assets/qa/ui-shot/e2e-toolbar.png`、`e2e-result.png`,`2609 ms` 出图);UIA 点击 `复制图片` → 剪贴板得到 **1580x620** 图,`关闭` → 只剩主窗口。
+- **订正 v35 末条**:图像翻译这批单测**不打真实 API** —— `QwenMtImageTranslatorTests` 与 `QwenMtProviderTests` 一样走本地 `HttpListener` 假上游(`FakeQwenServer`),无网络、无真实 Key,所以 183 个测试可以离线跑。PowerShell 探针里 DPI-unaware 进程的 `CopyFromScreen` 只抓物理屏左上角,`[Dpi]::SetProcessDPIAware()` 后坐标才与截图一致。
+

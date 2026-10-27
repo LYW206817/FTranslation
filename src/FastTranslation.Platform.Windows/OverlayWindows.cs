@@ -147,6 +147,14 @@ internal static class FtTheme
             "M 5.5,5.5 V 4 A 2,2 0 0 1 7.5,2 H 12 A 2,2 0 0 1 14,4 V 8.5 A 2,2 0 0 1 12,10.5 H 10.5 " +
             "M 10.5,5.5 H 4 A 2,2 0 0 0 2,7.5 V 12 A 2,2 0 0 0 4,14 H 10.5 A 2,2 0 0 0 12.5,12 V 7.5 A 2,2 0 0 0 10.5,5.5 Z";
         internal const string Bolt = "M 9.5,1.5 L 3.5,9.5 H 7.5 L 6.5,14.5 L 12.5,6.5 H 8.5 Z";
+
+        /// <summary>取景框（四角）:截图翻译,与「翻译」的闪电在形状和颜色上都区分开。</summary>
+        internal const string Viewfinder =
+            "M 2,6.5 V 4 A 2,2 0 0 1 4,2 H 6.5 " +
+            "M 9.5,2 H 12 A 2,2 0 0 1 14,4 V 6.5 " +
+            "M 14,9.5 V 12 A 2,2 0 0 1 12,14 H 9.5 " +
+            "M 6.5,14 H 4 A 2,2 0 0 1 2,12 V 9.5 " +
+            "M 10.4,8 A 2.4,2.4 0 1 1 5.6,8 A 2.4,2.4 0 1 1 10.4,8 Z";
     }
 
     internal static Path Icon(string data, Brush stroke) => new()
@@ -186,6 +194,7 @@ public sealed class SelectionToolbar : IDisposable
 
     public event Action<ScreenPoint>? CopyClicked;
     public event Action<ScreenPoint>? TranslateClicked;
+    public event Action<ScreenPoint>? ScreenshotClicked;
 
     public SelectionToolbar()
     {
@@ -221,11 +230,29 @@ public sealed class SelectionToolbar : IDisposable
             Padding = new Thickness(10, 5, 10, 5),
             Margin = new Thickness(0, 0, 0, 0),
         };
+        var screenshot = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    FtTheme.Icon(FtTheme.Icons.Viewfinder, FtTheme.TextSecondary),
+                    new TextBlock { Text = "截图翻译", FontSize = 12, Foreground = FtTheme.TextPrimary, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) },
+                },
+            },
+            Style = FtTheme.PillGhost(),
+            Padding = new Thickness(10, 5, 10, 5),
+            Margin = new Thickness(0),
+        };
         copy.Click += (_, _) => Raise(CopyClicked);
         translate.Click += (_, _) => Raise(TranslateClicked);
+        screenshot.Click += (_, _) => Raise(ScreenshotClicked);
         // icon+text content no longer auto-exposes a name — keep the UIA contract (E2E + scripts)
         global::System.Windows.Automation.AutomationProperties.SetName(copy, "复制");
         global::System.Windows.Automation.AutomationProperties.SetName(translate, "翻译");
+        global::System.Windows.Automation.AutomationProperties.SetName(screenshot, "截图翻译");
 
         var divider = new Rectangle
         {
@@ -257,7 +284,7 @@ public sealed class SelectionToolbar : IDisposable
                 Child = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Children = { copy, divider, translate },
+                    Children = { copy, divider, translate, screenshot },
                 },
             },
         };
