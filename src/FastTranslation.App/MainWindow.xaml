@@ -93,6 +93,8 @@
               Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>
       <Button x:Name="AccountButton" Content="账号" DockPanel.Dock="Right" HorizontalAlignment="Right"
               Padding="10,4" FontSize="12" Margin="0,0,8,0" Click="AccountButton_Click"/>
+      <Button x:Name="NotesButton" Content="单词本" DockPanel.Dock="Right" HorizontalAlignment="Right"
+              Padding="10,4" FontSize="12" Margin="0,0,8,0" Click="NotesButton_Click"/>
       <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Right" VerticalAlignment="Center"
                  Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
       <StackPanel VerticalAlignment="Center">

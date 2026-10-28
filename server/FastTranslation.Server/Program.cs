@@ -32,6 +32,7 @@ builder.Services.AddSingleton(sp =>
 });
 
 builder.Services.AddSingleton<AccountStore>();
+builder.Services.AddSingleton<NoteStore>();
 builder.Services.AddSingleton<VerificationCodeService>();
 builder.Services.AddSingleton<IVerificationMailSender, VerificationMailSender>();
 
@@ -51,6 +52,7 @@ app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
+app.MapNotesEndpoints();
 app.MapAdminEndpoints();
 
 app.Run();

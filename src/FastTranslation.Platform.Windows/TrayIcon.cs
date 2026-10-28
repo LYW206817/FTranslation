@@ -87,6 +87,7 @@ public sealed class TrayIconService : IDisposable
     public event Action? MainWindowRequested;
     public event Action? UpdateRequested;
     public event Action? AccountRequested;
+    public event Action? NotesRequested;
     public event Action? ScreenshotTranslateRequested;
 
     private bool _captureEnabled = true;
@@ -176,6 +177,7 @@ public sealed class TrayIconService : IDisposable
         {
             AppendMenuW(menu, MF_STRING, 1001, "设置");
             AppendMenuW(menu, MF_STRING, 1006, "账号");
+            AppendMenuW(menu, MF_STRING, 1007, "单词本");
             AppendMenuW(menu, MF_STRING, 1002, _captureEnabled ? "暂停取词" : "恢复取词");
             AppendMenuW(menu, MF_STRING, 1004, "检查更新");
             AppendMenuW(menu, MF_STRING, 1005, "截图翻译");
@@ -200,6 +202,7 @@ public sealed class TrayIconService : IDisposable
                 case 1004: UpdateRequested?.Invoke(); break;
                 case 1005: ScreenshotTranslateRequested?.Invoke(); break;
                 case 1006: AccountRequested?.Invoke(); break;
+                case 1007: NotesRequested?.Invoke(); break;
             }
         }
         finally

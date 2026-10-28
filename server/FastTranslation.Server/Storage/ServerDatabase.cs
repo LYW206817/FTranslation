@@ -129,5 +129,24 @@ public sealed class ServerDatabase
             attempts     INTEGER NOT NULL DEFAULT 0,
             last_sent_at INTEGER NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS notes (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL,
+            source_text TEXT NOT NULL,
+            target_text TEXT NOT NULL,
+            source_lang TEXT NOT NULL DEFAULT 'auto',
+            target_lang TEXT NOT NULL DEFAULT 'auto',
+            model       TEXT NOT NULL DEFAULT '',
+            origin_app  TEXT NOT NULL DEFAULT '',
+            note        TEXT NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL,
+            deleted_at  INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_notes_user_kind ON notes(user_id, kind, created_at DESC);
+        CREATE INDEX IF NOT EXISTS ix_notes_user_live ON notes(user_id, deleted_at);
         """;
 }

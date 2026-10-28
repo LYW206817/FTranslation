@@ -395,6 +395,7 @@ public sealed class ResultCardWindow : IDisposable
     private readonly Button _copyButton;
     private readonly Button _replaceButton;
     private readonly Button _insertButton;
+    private readonly Button _saveButton;
     private readonly Button _closeButton;
     private readonly Ellipse _spinner;
     private readonly DockPanel _header;
@@ -409,6 +410,7 @@ public sealed class ResultCardWindow : IDisposable
     public event Action? CopyRequested;
     public event Action? ReplaceRequested;
     public event Action? InsertRequested;
+    public event Action? SaveRequested;
     public event Action? Dismissed;
 
     public ResultCardWindow()
@@ -457,6 +459,10 @@ public sealed class ResultCardWindow : IDisposable
         _replaceButton.Click += (_, _) => ReplaceRequested?.Invoke();
         _insertButton = ActionButton("插入译文", FtTheme.Ghost());
         _insertButton.Click += (_, _) => InsertRequested?.Invoke();
+        // 保存 is the paid gate (design §4.4): it is always visible so the free tier can be
+        // told what it would get, and the handler decides whether to save or to explain.
+        _saveButton = ActionButton("保存", FtTheme.Ghost());
+        _saveButton.Click += (_, _) => SaveRequested?.Invoke();
         _closeButton = new Button
         {
             Content = "✕",
@@ -486,6 +492,7 @@ public sealed class ResultCardWindow : IDisposable
 
         // footer: status + actions
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        actions.Children.Add(_saveButton);
         actions.Children.Add(_insertButton);
         actions.Children.Add(_replaceButton);
         actions.Children.Add(_copyButton);
@@ -580,6 +587,7 @@ public sealed class ResultCardWindow : IDisposable
         _statusBlock.Text = string.Empty;
         _replaceButton.Visibility = Visibility.Collapsed;
         _insertButton.Visibility = Visibility.Collapsed;
+        _saveButton.Visibility = Visibility.Collapsed;
         _copyButton.IsEnabled = false;
         StartSpinner();
         ShowAt(selection.Anchor, selection.Rects.Count > 0 ? selection.Rects[0] : null);
@@ -591,6 +599,9 @@ public sealed class ResultCardWindow : IDisposable
         RestoreFullChrome();
         // a failed translation must not offer 复制 for the red error text
         _copyButton.IsEnabled = result.Succeeded;
+        _saveButton.Content = "保存";
+        _saveButton.IsEnabled = true;
+        _saveButton.Visibility = result.Succeeded ? Visibility.Visible : Visibility.Collapsed;
         _sourceBlock.Text = TrimForDisplay(result.RequestText, 160);
         if (result.Succeeded)
         {
@@ -677,6 +688,7 @@ public sealed class ResultCardWindow : IDisposable
         _copyButton.Visibility = Visibility.Collapsed;
         _replaceButton.Visibility = Visibility.Collapsed;
         _insertButton.Visibility = Visibility.Collapsed;
+        _saveButton.Visibility = Visibility.Collapsed;
         // 插入失败时卡片刚在 WriteBackAsync 里被 Hide()，这里必须回到原来的划词位置；
         // 固定 (80,80) 会让提示凭空出现在屏幕左上角。
         if (!_window.IsVisible)
@@ -697,6 +709,13 @@ public sealed class ResultCardWindow : IDisposable
         _sourceBlock.Visibility = Visibility.Visible;
         _header.Margin = new Thickness(0, 0, 0, 8);
         _footer.Margin = new Thickness(0, 14, 0, 0);
+    }
+
+    /// <summary>Flips 保存 to a dead "已保存" so a second click cannot look like it did something.</summary>
+    public void MarkSaved()
+    {
+        _saveButton.Content = "已保存";
+        _saveButton.IsEnabled = false;
     }
 
     private static string TrimForDisplay(string text, int max) =>
