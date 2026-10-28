@@ -1,4 +1,4 @@
-# Rebuild the portable zip from the freshly published folder plus dist/README.txt.
+﻿# Rebuild the portable zip from the freshly published folder plus dist/README.txt.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # D:\FTranslation
