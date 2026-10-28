@@ -617,3 +617,33 @@
 - GCM 里的 GitHub 令牌已失效/不存在(`CredEnumerate('git:*')` 只有一条无关的 `git.istudy.xin`),`git credential fill` 会挂起等待交互;本次由用户 Regenerate 后临时写入 `publish/.tok` 用完即删。
 - 本机原先装在 `D:\SoftwareDownload\FastTranslation`(MSYS2 路径转换的历史遗留),而 `UpdateCoordinator.IsInstalledCopy()` 只认 `%LOCALAPPDATA%\Programs\FastTranslation`,不在默认目录就只能降级到下载页。为了让用户能真的体验一键更新,先静默卸载旧副本,再把 1.2.0 装到默认目录(设置与 Key 在 `%LOCALAPPDATA%\FastTranslation`,不受影响)。
 - `dotnet build` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。
+
+## v41 自动更新:自定义安装目录不再被挪走,也不再被误判成便携版
+
+用户 m01641 原话:「这个自动更新不允许我们选择安装路径,是全自动的,自动没关系,不能更改原先安装路径」。
+
+**先测事实,再看代码。** 本机把 1.2.0 装进 `D:\FT-Custom-Test`,再用更新器原样的参数(`/SILENT /SUPPRESSMSGBOXES /NORESTART`,不带 `/DIR`)跑 1.2.1:
+
+- `publish/custom-upgrade.log` 里 `Dest filename: D:\FT-Custom-Test\FastTranslation.exe`,`[Run]` 启动的也是这个目录;
+- 升级后 ARP 变成 `v1.2.1 | D:\FT-Custom-Test\`,默认目录始终没有出现。
+
+⇒ `UsePreviousAppDir=yes` 确实沿用了用户选的目录,**静默安装本身不会挪位置**。真正的缺陷在应用侧的判定:
+
+- `src/FastTranslation.App/UpdateCoordinator.cs` 的 `IsInstalledCopy()` 把「默认目录 `%LOCALAPPDATA%\Programs\FastTranslation`」写死,别的目录一律视为便携版;
+- `src/FastTranslation.App/UpdateWindow.xaml.cs` 于是在点「立即更新」时弹「安装位置会变 / 会把它装到默认位置」的确认 —— 这个说法与上面的实测相反,而且把自定义目录的用户直接推到下载页。
+
+**修法**
+
+- 新增 `src/FastTranslation.Platform.Windows/InstallLayout.cs`:`UninstallKey = "{8B1F2C34-7A6D-4E58-9C21-5F3D8E7A1B60}_is1"`、`ReadRegisteredDirectory()`(HKCU / HKLM × 64/32 视图读 `InstallLocation`)、`CanSelfUpdate(exeDir, registeredDir, protectedRoots)`、纯函数 `IsSameDirectory` / `IsUnder`。判据从「是不是默认目录」改成「是不是安装记录里的那个目录」;便携包没有安装记录 ⇒ 仍然降级到下载页。
+- `ProgramFiles` / `ProgramFilesX86` / `System` / `Windows` 四个根视为不可自我替换 —— `PrivilegesRequired=lowest` 没有提权通道,在那里静默安装会在应用已经退出之后失败。
+- `UpdateInstaller.LaunchInstaller(setupPath, pid, installDirectory, out error)` 增加 `/DIR`:静默模式看不到文件夹页,显式重复当前目录才是「不改路径」的硬保证;`BuildInstallerArguments` 独立成公开方法以便测试,含空格的路径会加引号。
+- `UpdateWindow` 删掉那段与事实不符的确认;便携版的降级文案仍由 `_selfInstallable` 负责。`NoticeWindow.Confirm` 保留,只由 UI 探针分支使用(`FT_UITEST=notice-confirm` 的文案改为中性说法)。
+
+**验证**
+
+- 单元测试 `tests/FastTranslation.Platform.Windows.Tests/InstallLayoutTests.cs`(9 例:去尾分隔符/大小写、reject 不同目录、便携无记录、Program Files 及其兄弟目录的边界)与 `InstallerArgumentsTests.cs`(3 例);`dotnet test` 75 + **83** + 40 = **198 全绿**,`dotnet build` 0 警告 0 错误。
+- 真机探针 `publish/InstallProbe`(net10.0-windows 控制台,ProjectReference 到 Platform.Windows)对着真实注册表输出:`registered = D:\FT-Custom-Test\`、`canSelfUpdate(D:\FT-Custom-Test) = True`、`canSelfUpdate(默认目录) = False`、`canSelfUpdate(publish\ft-folder) = False`、`canSelfUpdate(C:\Program Files\FastTranslation) = False`。
+- 安装级验证 `publish/dir-args-test.ps1`:T1 在 `D:\FT-Custom-Test` 已装 1.2.1 的基础上用 `/DIR=D:\FT-Custom-Test` 静默升级 → 目录内变成 `1.2.2+cfe2fc6`,默认目录仍 absent;T2 全新静默安装 `/DIR="D:\FT Test Dir"`(带空格、带引号)→ 落在该目录。测试目录随后卸载删除,本机恢复为默认目录的 1.2.2。
+- 顺带发现:静默安装的 `[Run]` 会把应用拉起来,脚本里 `Start-Process -Wait` 会一直等到应用退出 —— 判完成要轮询 `ProductVersion`,不能用 `-Wait`。
+
+**顺带修掉的**`tools/qa/make-portable.ps1` 缺 BOM(`$readme` 变 null)已在 1.2.1 那次提交里补上。

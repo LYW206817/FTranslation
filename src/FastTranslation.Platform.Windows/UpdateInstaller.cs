@@ -468,8 +468,11 @@ public static class UpdateInstaller
     /// switch so the installer can wait for this process to really be gone before it replaces
     /// the exe — the tray app cancels a plain WM_CLOSE, so Restart Manager cannot clear it.
     /// Closing the app from here is not an option either: the caller must not block.
+    /// /DIR repeats the folder the copy runs from, so the silent run cannot drift to the default
+    /// location: the wizard page where the user picked it never appears in this mode.
     /// </summary>
-    public static bool LaunchInstaller(string setupPath, int ownProcessId, out string error)
+    public static bool LaunchInstaller(
+        string setupPath, int ownProcessId, string? installDirectory, out string error)
     {
         error = string.Empty;
         try
@@ -477,7 +480,7 @@ public static class UpdateInstaller
             Process.Start(new ProcessStartInfo
             {
                 FileName = setupPath,
-                Arguments = $"/SILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEPID={ownProcessId}",
+                Arguments = BuildInstallerArguments(ownProcessId, installDirectory),
                 UseShellExecute = true,
             });
             return true;
@@ -487,6 +490,15 @@ public static class UpdateInstaller
             error = $"{ex.GetType().Name}: {ex.Message}";
             return false;
         }
+    }
+
+    public static string BuildInstallerArguments(int ownProcessId, string? installDirectory)
+    {
+        var arguments = $"/SILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEPID={ownProcessId}";
+        if (string.IsNullOrWhiteSpace(installDirectory)) return arguments;
+        var trimmed = installDirectory.Trim();
+        var quoted = trimmed.Contains(' ', StringComparison.Ordinal) ? $"\"{trimmed}\"" : trimmed;
+        return $"{arguments} /DIR={quoted}";
     }
 }
 

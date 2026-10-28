@@ -53,15 +53,6 @@ public partial class UpdateWindow : Window
             return;
         }
 
-        var installable = true;
-        if (!UpdateCoordinator.IsInstalledCopy())
-        {
-            // a moved folder would break the installer's assumption about the target directory
-            installable = NoticeWindow.Confirm(this, "安装位置会变",
-                $"当前程序不在默认安装位置。安装新版本会把它装到默认位置,并保留现有设置。继续吗?");
-            if (!installable) { OpenDownloadPage(); return; }
-        }
-
         ApplyButton.IsEnabled = false;
         LaterButton.IsEnabled = false;
         Progress.Visibility = Visibility.Visible;

@@ -58,21 +58,16 @@ internal sealed class UpdateCoordinator : IDisposable
     }
 
     /// <summary>
-    /// An extracted portable copy cannot be replaced by the installer, so it must not be told
-    /// it can update itself; the dialog degrades to "open the download page" instead.
+    /// A copy the installer owns (the folder the user picked in the wizard) may replace itself in
+    /// place; an extracted portable zip may not and degrades to "open the download page".
     /// </summary>
-    public static bool IsInstalledCopy()
-    {
-        var exe = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(exe)) return false;
-        var installRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "FastTranslation");
-        var actual = Path.GetDirectoryName(Path.GetFullPath(exe));
-        return actual is not null &&
-               string.Equals(Path.TrimEndingDirectorySeparator(actual),
-                   Path.TrimEndingDirectorySeparator(Path.GetFullPath(installRoot)),
-                   StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool IsInstalledCopy() =>
+        InstallLayout.CanSelfUpdate(
+            InstallDirectory(), InstallLayout.ReadRegisteredDirectory(), InstallLayout.ProtectedRoots());
+
+    /// <summary>The folder this build runs from, or null when the path cannot be resolved.</summary>
+    public static string? InstallDirectory() =>
+        Environment.ProcessPath is { Length: > 0 } exe ? Path.GetDirectoryName(Path.GetFullPath(exe)) : null;
 
     public void Start()
     {
@@ -130,7 +125,7 @@ internal sealed class UpdateCoordinator : IDisposable
     /// </summary>
     public bool ApplyUpdate(string setupPath, out string error)
     {
-        if (!UpdateInstaller.LaunchInstaller(setupPath, Environment.ProcessId, out error))
+        if (!UpdateInstaller.LaunchInstaller(setupPath, Environment.ProcessId, InstallDirectory(), out error))
         {
             UpdateLog.Write($"installer launch failed: {error}");
             return false;
