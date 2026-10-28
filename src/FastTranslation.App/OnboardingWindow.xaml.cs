@@ -1,5 +1,6 @@
 using System.Windows;
 using FastTranslation.Core;
+using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
 
 namespace FastTranslation.App;
@@ -13,6 +14,7 @@ public partial class OnboardingWindow : Window
     public OnboardingWindow(ISecretStore secrets, AppSettings settings, SettingsService service)
     {
         InitializeComponent();
+        WindowChrome.Apply(this);
         _secrets = secrets;
         _settings = settings;
         _service = service;

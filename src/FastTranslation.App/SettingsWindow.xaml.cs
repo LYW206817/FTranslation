@@ -24,6 +24,7 @@ public partial class SettingsWindow : Window
         Action? checkUpdates = null)
     {
         InitializeComponent();
+        WindowChrome.Apply(this);
         _settings = settings;
         _service = service;
         _secrets = secrets;

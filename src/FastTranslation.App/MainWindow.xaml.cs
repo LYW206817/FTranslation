@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using FastTranslation.Core;
+using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
 
 namespace FastTranslation.App;
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
         Func<bool> isCaptureEnabled)
     {
         InitializeComponent();
+        WindowChrome.Apply(this);
         if (Environment.GetEnvironmentVariable("FT_UITEST") is not null)
         {
             PreviewMouseLeftButtonDown += (_, _) =>

@@ -216,8 +216,9 @@ public partial class App : Application, IResultPresenter
         _updates = new UpdateCoordinator(
             Dispatcher,
             PresentUpdate,
-            // a manual check must be visible: Win11 notification settings swallow tray balloons
-            notice => MessageBox.Show(notice.Body, notice.Title, MessageBoxButton.OK, MessageBoxImage.Information),
+            // a manual check must be visible: Win11 notification settings swallow tray balloons.
+            // a themed window rather than MessageBox — the native one ignores the palette (v38)
+            notice => NoticeWindow.Show(_mainWindow, notice.Title, notice.Body, notice.LinkUrl),
             ExitApp);
         _updates.Start();
 
@@ -335,6 +336,52 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "notice-confirm")
+        {
+            // the two-button shape (UpdateWindow's "install location will change" question)
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                _ = Dispatcher.BeginInvoke(() => NoticeWindow.Confirm(_mainWindow,
+                    "安装位置会变", "当前程序不在默认安装位置。安装新版本会把它装到默认位置,并保留现有设置。继续吗?"));
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "notice" or "notice-link")
+        {
+            // FT_UITEST=notice[-link] -> open the update notice so a screenshot can prove the
+            // dialog follows the palette; nobody clicks a real update check on a QA box
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    var notice = uitest == "notice"
+                        ? UpdateCheckNotice.UpToDate(new Core.ReleaseVersion(1, 2, 0, 0))
+                        : UpdateCheckNotice.Failed(UpdateChannel.ReleasesPageUrl);
+                    _ = Dispatcher.BeginInvoke(() =>
+                    {
+                        try { NoticeWindow.Show(_mainWindow, notice.Title, notice.Body, notice.LinkUrl); }
+                        catch (Exception ex) { Trace($"notice show: {ex}"); }
+                    });
+                }
+                catch (Exception ex) { Trace($"notice branch: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+    }
+
+    private static void Trace(string message)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ft-uitest-errors.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     private void OnRawMouseDown(ScreenPoint point)
