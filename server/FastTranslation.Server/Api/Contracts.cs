@@ -1,0 +1,56 @@
+namespace FastTranslation.Server.Api;
+
+/// <summary>
+/// Wire contracts. Field names are camelCase on the wire (default JSON policy) and are the
+/// contract with the WPF client — renaming any of them is a breaking client change.
+/// </summary>
+public sealed record RegisterRequest(string Email, string Password, string? Code, string? DeviceFingerprint, string? DeviceName);
+
+public sealed record LoginRequest(string Email, string Password, string? DeviceFingerprint, string? DeviceName);
+
+public sealed record RefreshRequest(string RefreshToken);
+
+public sealed record VerificationCodeRequest(string Email);
+
+public sealed record TokenPairResponse(
+    string AccessToken,
+    string RefreshToken,
+    int ExpiresInSeconds,
+    string TokenType = "Bearer");
+
+public sealed record AuthResponse(
+    string AccessToken,
+    string RefreshToken,
+    int ExpiresInSeconds,
+    AccountDto Account,
+    UsageDto Usage,
+    string TokenType = "Bearer");
+
+public sealed record AccountDto(Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily);
+
+public sealed record UsageDto(
+    int UsedMonthlyChars,
+    int? UsedDailyChars,
+    int QuotaMonthlyChars,
+    int? QuotaDailyChars,
+    int RemainingMonthlyChars,
+    int? RemainingDailyChars,
+    string Month,
+    string Day);
+
+public sealed record ErrorResponse(string Error, string? Message = null);
+
+public sealed record AdminMetricsResponse(
+    int TotalUsers,
+    int FreeUsers,
+    int LightUsers,
+    int StandardUsers,
+    int ActiveUsersLast30Days);
+
+public sealed record MessageResponse(string Message);
+
+public sealed record DeviceRequest(string? Fingerprint, string? Name);
+
+public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt);
+
+public sealed record PlanChangeRequest(string? Plan);

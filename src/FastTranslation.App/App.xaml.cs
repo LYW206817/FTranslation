@@ -1,6 +1,8 @@
+using System.Net.Http;
 using System.Threading;
 using System.Windows;
 using FastTranslation.Core;
+using FastTranslation.Core.Account;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
 
@@ -32,6 +34,8 @@ public partial class App : Application, IResultPresenter
     private readonly DpapiSecretStore _secrets = new();
     private bool _captureEnabled = true;
     private UpdateCoordinator? _updates;
+    private AccountCoordinator? _account;
+    private AccountApiClient? _accountClient;
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -80,6 +84,14 @@ public partial class App : Application, IResultPresenter
         // palette before any window exists: the XAML brushes are mutable (po:Freeze="False") and
         // ThemeBridge recolors them in place, so every style and template picks up the theme (v24)
         ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme));
+
+        // account service: one HttpClient for the process, 20 s so a dead host surfaces as a
+        // network error instead of a button that never comes back
+        _accountClient = new AccountApiClient(
+            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
+            _settings.AccountBaseUrl);
+        _account = new AccountCoordinator(_accountClient, _secrets);
+        _account.Changed += OnAccountChanged;
 
         var provider = new QwenMtProvider(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName),
@@ -147,6 +159,7 @@ public partial class App : Application, IResultPresenter
         };
         _tray.MainWindowRequested += ShowMainWindow;
         _tray.UpdateRequested += () => _updates?.CheckAsync(interactive: true);
+        _tray.AccountRequested += ShowAccount;
         _tray.ExitRequested += ExitApp;
         _tray.Show("Fast Translation — 取词已开启");
 
@@ -185,7 +198,8 @@ public partial class App : Application, IResultPresenter
                 _captureEnabled = enabled;
                 _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
             },
-            () => _captureEnabled);
+            () => _captureEnabled,
+            ShowAccount);
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
@@ -210,6 +224,10 @@ public partial class App : Application, IResultPresenter
                 ShowOnboarding();
             }
         }
+
+        // restore the stored session in the background: a dead network must not delay startup,
+        // and nothing on screen blocks on it
+        _ = RestoreAccountAsync();
 
         // updater last: it only schedules a timer, and a check that runs before the UI exists
         // would have nowhere to put its dialog
@@ -563,6 +581,51 @@ public partial class App : Application, IResultPresenter
         return _mainWindow is { IsVisible: true } ? _mainWindow : null;
     }
 
+    /// <summary>
+    /// Everything the account state touches lives here: the footer line and, when it is open,
+    /// the account window re-reading its own copy through the coordinator's event.
+    /// </summary>
+    private void OnAccountChanged()
+    {
+        var profile = _account?.Session?.Profile;
+        _mainWindow?.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
+    }
+
+    private async Task RestoreAccountAsync()
+    {
+        if (_account is null) return;
+        try
+        {
+            await _account.TryRestoreAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Trace($"account restore: {ex}");
+        }
+    }
+
+    private void ShowAccount()
+    {
+        if (_account is null) return;
+        var existing = Windows.OfType<AccountWindow>().FirstOrDefault();
+        if (existing is not null)
+        {
+            existing.Activate();
+            return;
+        }
+        var window = new AccountWindow(_account);
+        if (DialogOwner() is { } owner)
+        {
+            window.Owner = owner;
+            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        }
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+        window.Show(); // modeless: a translation can still be started while it is open
+    }
+
     private void ShowSettings()
     {
         var window = new SettingsWindow(_settings, _settingsService, _secrets, _hotkey!,
@@ -620,6 +683,8 @@ public partial class App : Application, IResultPresenter
         _coordinator?.Dispose();
         _capture?.Dispose();
         _hotkey?.Dispose();
+        if (_account is not null) _account.Changed -= OnAccountChanged;
+        _accountClient = null;
         _tray?.Dispose();
         _mainWindow?.Close();
         try { _mutex?.ReleaseMutex(); } catch { }

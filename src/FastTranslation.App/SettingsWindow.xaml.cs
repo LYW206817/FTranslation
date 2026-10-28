@@ -51,6 +51,7 @@ public partial class SettingsWindow : Window
         ClipboardFallbackCheck.IsChecked = _settings.ClipboardFallbackEnabled;
         WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
         BaseUrlBox.Text = _settings.OverrideBaseUrl;
+        AccountUrlBox.Text = _settings.AccountBaseUrl;
         RefreshExcludedList();
         AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
         AboutText.Text = AboutLine();
@@ -222,6 +223,7 @@ public partial class SettingsWindow : Window
         _settings.ClipboardFallbackEnabled = ClipboardFallbackCheck.IsChecked == true;
         _settings.WriteBackEnabled = WriteBackCheck.IsChecked == true;
         _settings.OverrideBaseUrl = BaseUrlBox.Text.Trim();
+        _settings.AccountBaseUrl = AccountUrlBox.Text.Trim();
 
         var key = new string(KeyBox.Password.Where(c => !char.IsWhiteSpace(c)).ToArray());
         if (key.Length > 0)

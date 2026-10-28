@@ -5,9 +5,13 @@
     <Project Path="src/FastTranslation.Platform.Windows/FastTranslation.Platform.Windows.csproj" />
     <Project Path="src/FastTranslation.Providers.QwenMt/FastTranslation.Providers.QwenMt.csproj" />
   </Folder>
+  <Folder Name="/server/">
+    <Project Path="server/FastTranslation.Server/FastTranslation.Server.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FastTranslation.Core.Tests/FastTranslation.Core.Tests.csproj" />
     <Project Path="tests/FastTranslation.Platform.Windows.Tests/FastTranslation.Platform.Windows.Tests.csproj" />
     <Project Path="tests/FastTranslation.Providers.QwenMt.Tests/FastTranslation.Providers.QwenMt.Tests.csproj" />
+    <Project Path="tests/FastTranslation.Server.Tests/FastTranslation.Server.Tests.csproj" />
   </Folder>
 </Solution>

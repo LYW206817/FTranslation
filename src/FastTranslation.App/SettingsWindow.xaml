@@ -157,6 +157,10 @@
             <TextBlock Text="自定义服务地址(可选)" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
             <TextBox x:Name="BaseUrlBox" AutomationProperties.Name="自定义服务地址"/>
             <TextBlock Text="留空使用默认 DashScope 地址。" Style="{StaticResource Hint}"/>
+
+            <TextBlock Text="账号服务地址(可选)" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
+            <TextBox x:Name="AccountUrlBox" AutomationProperties.Name="账号服务地址"/>
+            <TextBlock Text="留空使用内置账号服务器;自建或测试服务器可在此填写。" Style="{StaticResource Hint}"/>
           </StackPanel>
         </Border>
 

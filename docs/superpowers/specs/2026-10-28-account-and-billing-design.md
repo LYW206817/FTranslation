@@ -1,239 +1,342 @@
-# Fast Translation — 账号体系 + 后端 + 上云 方案（评审用）
+# Fast Translation — 账号 · 后端 · 上云 · 学习功能 方案 v2（评审用）
 
-- 状态：**待决策**（本文只做方案，不含代码改动）
-- 日期：2026-10-28（对应客户端 1.2.2 / git 头 `cfe2fc6`）
-- 前置文档：`docs/superpowers/specs/2026-10-22-fast-translation-design.md`（v1.0 规格，本文与之冲突处已在 §7 列出）
-- 一手价格来源：`https://help.aliyun.com/zh/model-studio/model-pricing`（2026-10-28 抓取）、`https://help.aliyun.com/zh/model-studio/machine-translation`（响应 usage 字段）
-
----
-
-## 1. 结论摘要
-
-用户诉求拆成 6 条：①客户端加账号 ②自建后端 ③买云服务器 ④能统计注册用户数与用户数 ⑤未来免费版/商用版双档 ⑥商用版用开发者的 Key，开发者与用户都要能看到消耗。
-
-**一句话结论**：账号和后端必须做，但「商用版用你的 Key + 消耗可见」有两条互斥的实现路径，选哪条决定工作量是 3 周还是 6 周，也决定要不要备案、要不要阿里云书面确认。这两条路径之外的部分（账号、注册统计、设备绑定、用量展示）无争议，可以先做。
-
-| 方案 | 计量准确度 | Key 是否暴露 | 合规门槛 | 工作量 | 建议 |
-|---|---|---|---|---|---|
-| **A. 客户端直连，Key 下发客户端** | 差（客户端自报，可篡改） | **会暴露** | 代付性质仍需阿里云确认 | 3 周 | 只适合过渡 |
-| **B. 服务端代理网关（推荐）** | 准（网关读 `usage` 记账） | 不暴露 | 代付 + 需域名备案（可用香港免备案） | 6 周 | **推荐** |
-| **C. 商用版仍 BYO（用户自己的 Key）** | 准（用户自己付费） | 不涉及 | 无 | 2 周 | 只想卖软件授权时选 |
-
-推荐 B，理由与「什么会推翻它」见 §3。
+- 状态：**决策已定，可进实施**
+- 日期：2026-10-28（客户端 1.2.2 / git 头 `cfe2fc6`）
+- 取代：本文 §1 的决策覆盖前版（`2026-10-28-account-and-billing-design.md` v1）里所有"待决策"项
+- 一手价格来源：`https://help.aliyun.com/zh/model-studio/model-pricing`、`https://help.aliyun.com/zh/model-studio/machine-translation`
 
 ---
 
-## 2. 事实基线（已核实，不是估算）
+## 1. 已定决策（用户 2026-10-28 拍板，不再讨论）
 
-### 2.1 Qwen-MT 官方单价（华北 2 / 北京，每百万 Token）
+| # | 决策 | 影响 |
+|---|---|---|
+| D1 | **套餐用激活码/手动开通**，不接支付 | 省 2~3 周，不需要营业执照/商户号 |
+| D2 | **方案 B：服务端代理网关** | 文本经你的服务器；需备案；需改隐私说明 |
+| D3 | **服务器放内地** | ICP 备案 2~3 周（可并行开发），35 元/月档够用 |
+| D4 | **免费档额度基准 1 万字符/月** | 成本 ≈ 0.015~0.035 元/人/月（见 §6） |
+| D5 | **`spec:743` 作废** | 不再需要阿里云对"代理/转售/代付"的书面确认；自行承担条款风险 |
+| D6 | **免费版也给 1 万字符/月** | 新用户不必先申请百炼 Key 就能试用（理由见 §1.2） |
+| D7 | **定价：轻享 6.9 元/月，标准 12.9 元/月** | 年付按 10 个月计：69 / 129 元 |
+| D8 | **免费版完全不能保存**（本地也不行） | 保存是唯一付费闸门，不留旁路 |
 
-| 模型 ID | 输入 | 输出 | 免费额度 |
+> D5 的剩余风险写在 §7.1，不隐藏：条款层面仍属"代付"，只是不再作为开工前置卡点。
+
+### 1.1 新商业模型（本轮最重要的变更）
+
+产品重新定位为**面向英语学习者的教学翻译工具**。免费与付费的差别**不在翻译量，而在"能不能沉淀"**：
+
+| | 免费版（0 元） | 轻享（6.9/月） | 标准（12.9/月） |
 |---|---|---|---|
-| `qwen-mt-flash`（客户端默认，`src/FastTranslation.Core/Settings.cs:9`） | 0.7 元 | 1.95 元 | 100 万 Token / 90 天 |
+| 网关额度 | **1 万字符/月** | 5 万字符/月 | 20 万字符/月 |
+| 自带百炼 Key 直连 | ✅ **无限量** | ✅ 无限量 | ✅ 无限量 |
+| 额度用尽后 | 硬停当天，提示配 Key 或升级 | 自动回落自带 Key | 自动回落自带 Key |
+| 选中即可翻译 | ✅ | ✅ | ✅ |
+| **保存到单词本/短语本/语句** | ❌ **点保存弹订阅页** | ✅ | ✅ |
+| 跨设备同步 | ❌ | ✅ | ✅ |
+| 复习 / 导出 Anki（阶段 3） | ❌ | ❌ | ✅ |
+
+付费买到的是"学习沉淀"，是教学软件真正的价值点，而不是被限流的翻译次数。
+
+### 1.2 免费版为什么也要送额度（D6 的理由）
+
+原设计里免费版纯 BYO —— 好处是你零成本，**坏处是每个新用户上手前都得先去阿里云百炼注册、实名、开通、拿 Key、粘进设置页**。教学软件的受众是学生，这一步会流失掉大部分人，等于把漏斗最窄的地方摆在最前面。
+
+送 1 万字符/月把这一步彻底挪后：下载 → 直接选中英文单词 → 看到翻译。想用更多时再引导配 Key 或升级。**1 万字符的 API 成本是 0.015~0.035 元/人/月**（§6），1000 个白嫖用户 15~35 元/月 —— 这是买注册转化最便宜的价钱。
+
+代价是必须防刷，见 §7.4。
+
+---
+
+## 2. 事实基线（已核实）
+
+### 2.1 单价（华北 2 / 北京，每百万 Token）
+
+| 模型 | 输入 | 输出 | 免费额度 |
+|---|---|---|---|
+| `qwen-mt-flash`（客户端默认） | 0.7 元 | 1.95 元 | 100 万 Token / 90 天 |
 | `qwen-mt-plus` | 1.8 元 | 5.4 元 | 100 万 Token / 90 天 |
 | `qwen-mt-lite` | 0.6 元 | 1.6 元 | 100 万 Token / 90 天 |
 
-图片翻译（截图翻译链路 `qwen-mt-image-2.0`）：**0.004 元/张**，100 张免费；旧 `qwen-mt-image` 0.003 元/张。
+截图翻译 `qwen-mt-image-2.0`：**0.004 元/张**（100 张免费）。
 
-### 2.2 计费口径（关键，直接决定成本模型）
+### 2.2 计费口径（决定成本模型，别按字符估）
 
-- 按 **输入 Token + 输出 Token** 计费，响应体里回传 `usage`。官方文档实测样本：原文「我看到这个视频后没有笑」（17 字）→ `CompletionUsage(completion_tokens=9, prompt_tokens=56, total_tokens=65)`。
-- ⇒ **每次请求有约 45 Token 的固定开销**（模型内部指令），与选中文本长度无关。划词多为短句，所以「按字符数估成本」会严重低估，必须按 Token 且有固定项。
-- 当前客户端**完全不解析 `usage`**：`src/FastTranslation.Providers.QwenMt/QwenMtProvider.cs:131-147` 的 `ReadTranslationAsync` 只取 `choices[0].message.content`。这是「消耗可见」唯一的硬缺口。
+官方实测：原文「我看到这个视频后没有笑」（17 字）→ `CompletionUsage(completion_tokens=9, prompt_tokens=56, total_tokens=65)`。
+⇒ **每次请求约 45 Token 固定开销**，与文本长短无关。划词多短句，按字符数直接换算会严重低估。
 
-### 2.3 现有可复用的机制（不要重造）
+**学习场景反而便宜**：用户主要查英文单词/短语/句子（英→中），英文 1 Token ≈ 4 字符，输入侧的 Token 远少于中文。
 
-| 机制 | 位置 | 复用方式 |
+### 2.3 现有可复用机制（不要重造）
+
+| 机制 | 位置 | 复用 |
 |---|---|---|
-| `OverrideBaseUrl` | `src/FastTranslation.Core/Settings.cs:20`、`src/FastTranslation.App/App.xaml.cs:88-90` | 指向自建网关，**provider 零改动** |
-| OpenAI 兼容路径 | `QwenMtProvider.cs:107-111` `BuildUri()` = `BaseUrl.TrimEnd('/') + "/chat/completions"` | 网关实现同名路径即可透明替换 |
-| Bearer 鉴权 | `QwenMtProvider.cs:63` `Authorization: Bearer {apiKey}` | 登录令牌塞进现有 `ISecretStore`，鉴权代码零改动 |
-| 密钥存储 | `ISecretStore`（Core）/ DPAPI（Platform.Windows） | 存 refresh token |
-| 自更新通道 | `src/FastTranslation.Core/UpdateChecker.cs:49-63` | 后端上线后可加「必须升级」门槛 |
+| `OverrideBaseUrl` | `src/FastTranslation.Core/Settings.cs:20`、`src/FastTranslation.App/App.xaml.cs:88-90` | 指向自建网关，**provider 不改** |
+| OpenAI 兼容路径 | `QwenMtProvider.cs:107-111` `BaseUrl.TrimEnd('/') + "/chat/completions"` | 网关同名路由即透明替换 |
+| Bearer 鉴权 | `QwenMtProvider.cs:63` | 登录令牌塞进 `ISecretStore` |
+| 结果卡按钮区 | `src/FastTranslation.Platform.Windows/OverlayWindows.cs:588` `ShowResult`，已有 `_copyButton`/`_replaceButton`/`_insertButton` | "保存"做第 4 个按钮 |
+| 非模态提示 | `OverlayWindows.cs:664` `ShowNotice` | 保存成功/需订阅的提示都走它，不弹 MessageBox |
+| 自更新通道 | `src/FastTranslation.Core/UpdateChecker.cs:49-63` | 后端可加"必须升级"门槛 |
 
-### 2.4 云服务器价格（**二手来源，下单前必须现场核实**）
+### 2.4 服务器价格（**二手来源，下单前现场核价**）
 
-- 阿里云轻量应用服务器通用型档位：**35 / 40 / 45 / 70 / 220 元/月**（来源 `developer.aliyun.com/article/1716989`，非官方定价页；官方定价页是 JS 渲染，抓不到正文）。
-- 促销价（2026）：2 核 2G 抢购价 38 元/年、2 核 4G 9.9 元/月 —— **促销价不可作为长期预算**。
-- 本方案预算按 **35 元/月 ×12 = 420 元/年**（内地机房，2 核 2G）计；免备案走香港约 +30%。
+阿里云轻量应用服务器通用型 35 / 40 / 45 / 70 / 220 元/月（来源 `developer.aliyun.com/article/1716989`；官方定价页 JS 渲染抓不到正文）。预算按 35 元/月 = **420 元/年**。
 
 ---
 
-## 3. 推荐架构（方案 B）
+## 3. 架构
 
 ```
-桌面客户端 1.2.x+                你的服务器（1 台轻量）              阿里云百炼
-  │                                  │
-  ├─ 登录 ──────────────► POST /api/auth/login ──► users 表
-  │                        ◄── accessToken(1h) + refreshToken(30d)
+桌面客户端                      你的服务器（1 台轻量，内地）           阿里云百炼
+  │                                │
+  ├─ 注册/登录 ───────────────► /api/auth/*  ──► users / devices
   │
-  ├─ 翻译 ──────────────► POST /v1/chat/completions ──► dashscope compatible-mode
-  │   Bearer accessToken      │  校验配额 → 注入你的 Key → 转发
-  │                        ◄── 流式透传 + 读 usage.prompt/completion_tokens
-  │                        └─► usage_daily 累加（只记数字，不记文本）
+  ├─ 翻译（套餐额度）──────────► /v1/chat/completions ──► dashscope
+  │   Bearer accessToken          校验额度 → 注入你的 Key → 转发
+  │                              ◄── 透传 + 读 usage 记账
   │
-  └─ 看消耗 ────────────► GET /api/me/usage
+  ├─ 翻译（自己的 Key）──────────── 直连 ─────────────────────► dashscope
+  │   （免费版默认 / 套餐额度用尽后回落）
+  │
+  └─ 保存单词/短语/句子 ────────► /api/notes   ──► notes 表
+      点保存 → 未登录弹登录 → 无订阅弹订阅页
 ```
 
-**为什么网关能做到 provider 零改动**：网关对外就是 OpenAI 兼容的 `/chat/completions`。客户端只需要把 `OverrideBaseUrl` 设成 `https://api.<你的域名>/v1`、把 `ISecretStore` 里的 `qwenmt-api-key` 换成登录 accessToken + `refreshToken` 的刷新逻辑。`QwenMtProvider.cs` 一行不用改。
+**两条翻译链路并存**是本次模型的核心：**所有登录用户**先走网关（可计量、可限额、免费版也能开箱即用），额度用尽后回落直连用户自己的 Key（体验不断、你不会被刷爆）。未登录 / 未配 Key / 额度已尽三者叠加时，翻译按钮引导登录或配置 Key。
 
-**为什么不用「短时令牌下发 Key」**：DashScope 只认真的 API Key，没有「短时令牌」这种东西。要客户端直连就只能把真 Key 下发，等于把 Key 交给每个用户，只能靠 Workspace 拆分 + 限额 + 事后吊销兜底 —— 这个代价通常不划算，所以推荐代理。
+### 3.1 为什么这不会把 Key 暴露
 
-**推翻方案 B 的条件**（两条任一成立就要改）：
-1. 你拿不到阿里云对「代理/转售/代付」的书面确认（`spec:743` 是项目自己的硬性前置条件）⇒ 退回方案 C，商用版改 BYO。
-2. 你不想为域名做 ICP 备案 ⇒ 改用香港/新加坡轻量服务器（免备案），或退回方案 A。
+网关对外只是 OpenAI 兼容的 `/chat/completions`，你的 Key 只存在于服务器进程环境变量里。客户端只持有登录令牌（可撤销、1 小时过期 + refresh）。
 
 ---
 
-## 4. 分三期落地
+## 4. 学习功能设计（本次新增，产品重心）
 
-### 阶段 0：账号与统计（无争议，先做，约 1.5 周）
+### 4.1 交互
 
-只做「谁在用」，不动 Key 归属，**零合规风险**。
+1. 划词翻译 → 结果卡（`OverlayWindows.cs:588`）底部多一个 **「保存」** 按钮。
+2. 点「保存」→ 自动判定类型（可改）→ 写入 → 卡片底部用 `ShowNotice`（`OverlayWindows.cs:664`）闪一行「已保存到单词本」。
+3. 未登录 → 就地弹登录窗；已登录无有效订阅 → 弹订阅页（展示激活码输入框）。
 
-- 后端：注册/登录/刷新/设备绑定/管理员看板（用户总数、日活、按设备数）。
-- 客户端：登录窗、令牌持久化、「账号」设置分组。
-- 翻译链路：**不变**，仍是用户自己的 Key 直连（`App.xaml.cs:88` 保持默认）。
+### 4.2 类型自动判定（初版规则，写死够用）
 
-### 阶段 1：计量可见（约 1 周，两个方案都需要）
+| 类型 | 判定 |
+|---|---|
+| 单词 | 源文本不含空格且长度 ≤ 24；或单个 CJK 字 |
+| 短语 | 词数 2~6 且无句末标点 `. ! ?` |
+| 语句 | 含句末标点，或词数 > 6，或长度 > 80 |
 
-- `TranslationTypes.cs:31-42` 的 `TranslationResult` 增加 `TokenUsage? Usage { get; init; }`（可空 init 属性，既有 6 处构造点全部仍合法）。
-- `QwenMtProvider.cs:131-147` 解析 `usage.prompt_tokens / completion_tokens`。
-- 客户端本地累计 + 设置页显示「本月 X 次 / Y Token ≈ Z 元」，按上表单价换算。
-- **此时数据是客户端自报，只能给用户看，不能给你做账。**
+存的时候记下判定依据，用户可在列表里手工改类型 —— 规则错的成本必须低。
 
-### 阶段 2：服务端代理 + 双档（约 3 周，需 §7 合规前置条件）
+### 4.3 数据模型（与账号同一库）
 
-- 网关 `/v1/chat/completions`：验 accessToken → 查配额 → 注入服务端 Key → 转发 → 读 `usage` 记账 → 扣配额。
-- 图片链路同样代理：`QwenMtImageTranslator.cs:12` 的 BaseUrl(`/api/v1/services/aigc/image2image/image-synthesis`)需加一条网关路由，按 0.004 元/张记账。
-- 免费版/商用版：`plan` 字段 + 月配额；免费版按月 token 上限硬截断（返回 429 语义，客户端已有 `RateLimited` 处理，`TranslationTypes.cs:21`）。
-- 管理后台：注册用户数、日活、每用户用量与折算金额、套餐变更、封号。
+```
+notes  (id, user_id, kind, source_text, target_text, source_lang, target_lang,
+        model, origin_app, note, created_at, updated_at, deleted_at)
+tags   (id, user_id, name)
+note_tags (note_id, tag_id)
+reviews (note_id, due_at, interval_days, ease, lapses)   -- 复习功能预留，阶段3才写
+```
+
+- `kind` = `word` | `phrase` | `sentence`（单词本/短语本/语句 三个视图是**同一张表的过滤**，不是三张表）。
+- `origin_app` 记来源应用名（"Edge"/"Word"），比记窗口标题安全，也够复习时回忆语境。
+- `deleted_at` 软删除，同步用。
+
+### 4.4 客户端界面
+
+- 新增 `NotesWindow.xaml(.cs)`：左侧三个视图（单词 / 短语 / 语句），中间列表，右侧详情（原文、译文、备注、标签）。现有 App 只有 6 个 XAML（Main / Onboarding / App / Update / Settings / Notice），需要新增 2 个（Notes + Account）。
+- 设置页新增「账号与用量」分组（现有分组：翻译与外观 / 取词与写回 / 服务 / 系统）。
 
 ---
 
-## 5. 后端技术选型（建议）
+## 5. 分四期落地
 
-| 项 | 选择 | 理由 |
+### 阶段 0 · 账号基座（8~10 人天）
+
+后端骨架 + 注册/登录/刷新/设备绑定 + 管理看板（注册总数、日活、按套餐分布）。客户端：登录窗、令牌持久化、设置页「账号」分组。**翻译链路完全不动。**
+
+### 阶段 1 · 学习功能（12~15 人天，产品重心）
+
+- 结果卡「保存」按钮 + 类型判定 + 保存接口。
+- `NotesWindow`：三视图 + 搜索 + 手工改类型 + 删除。
+- **本阶段先不做订阅闸门**（内部可用），闸门在阶段 2 一次加。
+- 数据落服务器，跨设备同步天然成立。
+
+### 阶段 2 · 套餐与网关（12~15 人天）
+
+- 代理网关 `/v1/chat/completions`：验令牌 → 查额度 → 注入 Key → 转发 → 读 `usage` 记账。
+- 免费版额度开通（D6）：free 档 `quota_monthly_chars = 10000`，新注册即可用网关，无需配 Key。
+- 防刷（§7.4）：单设备日上限 + 注册风控 + 匿名额度不叠加。
+- 截图翻译同样代理：`QwenMtImageTranslator.cs:12` 的 image-synthesis 路由加一条网关分支，按 0.004 元/张记账。
+- 激活码：`POST /api/redeem`（码 → 开通 N 个月 + 额度档位）。
+- 订阅闸门：保存接口校验 `plan != free` 且未过期；客户端「保存」按钮同样灰掉并给订阅入口。
+- 额度用尽 → 返回 429 → 客户端提示"套餐额度已用完，已切到你的 Key 继续" → 自动回落直连。
+- 管理后台：用户列表、套餐变更、额度调整、封号。
+
+### 阶段 3 · 复习（可选，8~12 人天）
+
+间隔重复（`reviews` 表已预留）、每日复习队列、"导出 CSV/Anki"。
+
+| 阶段 | 人天 | 累计 |
 |---|---|---|
-| 语言/框架 | **ASP.NET Core Minimal API（.NET 10）** | 与客户端同一门语言、同一套 SDK，你维护成本最低；不引入 Node/Java |
-| 数据库 | **SQLite → PostgreSQL** | 500 用户以内 SQLite 完全够（单文件备份即可）；上量后换 PG，EF Core 换 provider 即可 |
-| 部署 | 单二进制 self-contained + systemd + Caddy（自动 HTTPS） | 与客户端已有的 publish 流程同构，无需 Docker 学习成本 |
-| 管理后台 | Blazor Server 单页（复用同一后端） | 不额外开前端工程 |
+| 0 账号基座 | 8~10 | 10 |
+| 1 学习功能 | 12~15 | 25 |
+| 2 套餐+网关 | 12~15 | 40 |
+| 3 复习（可选） | 8~12 | 52 |
 
-### 5.1 数据表（最小集）
-
-```
-users        (id, email, password_hash, plan, created_at, status, invite_code_used)
-devices      (id, user_id, device_id, first_seen, last_seen, name)     -- 一人多机
-refresh_tokens (jti, user_id, expires_at, revoked_at)
-invites      (code, max_uses, used_count, expires_at)
-usage_daily  (user_id, day, model, prompt_tokens, completion_tokens, image_count, cost_micro_yuan)
-```
-
-**红线（继承 `docs/PLAN.md:62`「不记录选中文本」）**：`usage_daily` 只存 Token 数、张数与折算金额，**不落任何原文或译文**。网关日志同样不得写请求体。
-
-### 5.2 接口清单
-
-```
-POST /api/auth/register      {email, password, inviteCode}
-POST /api/auth/login         -> {accessToken(1h), refreshToken(30d), plan}
-POST /api/auth/refresh
-GET  /api/me                 -> {email, plan, quotaMonthly, usedThisMonth, deviceCount}
-GET  /api/me/usage?from&to   -> 按日聚合
-POST /v1/chat/completions    (OpenAI 兼容，Bearer accessToken)
-POST /api/v1/services/aigc/image2image/image-synthesis   (图片，Bearer accessToken)
-GET  /admin/users            管理看板（仅管理员令牌）
-```
+备案 2~3 周墙钟，与阶段 0/1 并行，不占开发天数。
 
 ---
 
-## 6. 成本模型（可复算）
+## 6. 成本模型（按 1 万字符/月重算）
 
-### 6.1 API 成本（按 `qwen-mt-flash`，含 45 Token 固定开销）
+改口径后仍然成立：假设平均每次翻译 60 字符、每月 1 万字符 ⇒ **167 次/月/人**。
 
-单人每月免费额度定为 **5 万字符**（沿用 `spec:1009-1022` 的起点建议）：
+英→中为主（英文 1 Token ≈ 4 字符）：
+- 输入 Token = 167 × (15 + 45 固定) ≈ **10,020**
+- 输出 Token ≈ 167 × 25 ≈ **4,175**
+- 月成本 = 10,020×0.7/1e6 + 4,175×1.95/1e6 = 0.007 + 0.008 ≈ **0.015 元/人/月**
 
-- 假设平均每次划词 60 字 → 约 **833 次/月/人**
-- 输入 Token = 833 × (60 + 45) ≈ **87,500**
-- 输出 Token ≈ 833 × 70 ≈ **58,000**（中译英译文偏长，取 1.2×）
-- 每人每月成本 = 87,500×0.7/1e6 + 58,000×1.95/1e6 = 0.061 + 0.113 ≈ **0.17 元**
+中→英为主的最坏情况：≈ **0.035 元/人/月**。
 
-| 免费用户数 | API 月成本 | 服务器月成本 | 合计 |
+| 付费用户数 | API 月成本 | 服务器 | 合计 |
 |---|---|---|---|
-| 50 | ≈ 9 元 | 35 元 | **≈ 44 元/月** |
-| 200 | ≈ 35 元 | 35 元 | **≈ 70 元/月** |
-| 1,000 | ≈ 175 元 | 35~70 元 | **≈ 210~245 元/月** |
-| 5,000 | ≈ 875 元 | 220 元 | **≈ 1,095 元/月** |
+| 20 | ≈ 0.3~0.7 元 | 35 元 | **≈ 36 元/月** |
+| 100 | ≈ 1.5~3.5 元 | 35 元 | **≈ 38 元/月** |
+| 1,000 | ≈ 15~35 元 | 35~70 元 | **≈ 50~105 元/月** |
+| 5,000 | ≈ 75~175 元 | 220 元 | **≈ 295~395 元/月** |
 
-**关键洞察**：用户量 200 以下时，**服务器固定成本大于 API 成本**；API 便宜到不构成压力（1,000 个跑满额度的免费用户才 175 元/月）。所以定价压力主要来自服务器和你的时间，不是 Token。
+**结论**：API 成本已经低到可以忽略，**服务器才是固定成本**。所以定价完全可以围绕"学习功能的价值"，不必围绕 Token 算账。
 
-### 6.2 商用版定价参考（框架，不是决定）
+### 6.1 定价（D7 已定）
 
-`月费 ≈ (平均 API 成本 × 3) + 服务器分摊`。按重度用户（每月 50 万字符 ≈ 1.7 元 API）算，**15~25 元/月**是可覆盖成本且有毛利的位置；免费版给 5 万字符，两档之间差 10 倍用量，用户升级动机清晰。
+| 档 | 月付 | 年付（按 10 个月计） | 内容 | 额度成本 | 毛利 |
+|---|---|---|---|---|---|
+| 免费 | 0 | — | 翻译（1 万字符网关额度 + 自带 Key 无限）+ 无保存 | ≤0.035 元 | — |
+| **轻享** | **6.9 元** | **69 元** | 保存 + 5 万字符 + 同步 | ≤0.18 元 | **≈97%** |
+| **标准** | **12.9 元** | **129 元** | 轻享全部 + 20 万字符 + 复习/导出 | ≤0.70 元 | **≈95%** |
 
----
+成本仍然可忽略：**5 个轻享用户（34.5 元/月）就覆盖服务器 35 元/月**；毛利压力全部来自你的时间，不来自 Token。
 
-## 7. 必须正面回应的 3 条既有约束
+> 定价的心理位置说明：6.9 落在"一杯奶茶以内、不用犹豫"的区间，12.9 与它差 1.9 倍但额度差 4 倍，形成明显的"加 6 块翻四倍"的升级拉力。年付给 2 个月免费是最常见的转化工具，且极大改善现金流。
 
-### 7.1 隐私承诺要改口（方案 B 一定会打破）
+### 6.2 免费额度的成本敞口
 
-- 现行 `spec:29`：「文本由客户端直接发往阿里云百炼，**不经过开发者服务器**」；`:141` 把这条列为 BYO 模式的卖点。
-- 走代理后这句话就是假的，**必须改**：官网/README/隐私政策统一改成「文本经我们的网关转发（仅加鉴权，不落盘）」。这是对已有用户（你朋友）的告知义务，不能悄悄改。
-
-### 7.2 代理需要阿里云书面确认（`spec:743` 是硬前置）
-
-- 原文：「v1.1 若做免费额度代理，**必须先取得阿里云对『代理/转售/代付』的书面确认；未确认前不实现代理**」。用户付钱给你、你用你的 Key 调百炼，就是代付/转售性质。
-- 动作：开工阶段 2 之前，先开工单问百炼。**回执是阶段 2 的开工条件，不是收尾事项。**
-
-### 7.3 备案与个人信息合规
-
-- 内地服务器 + 域名必须 ICP 备案（约 2~3 周，需要身份证/主体信息）；**免备案路径 = 香港/新加坡轻量服务器**，延迟增加 30~50ms，对划词翻译几乎无感。
-- 账号体系上线即开始处理个人数据（邮箱、设备标识），需要一份隐私政策 + 注销/删除通道。
+1 万字符/月 × 1000 个白嫖用户 = 15~35 元/月 API，但**服务器不能只按 API 算**：免费额度引入后网关 QPS 会显著上升（原设计里免费用户根本不打你的服务器）。2 核 2G 轻量单机能扛住约 200~400 并发翻译请求绰绰有余，但若白嫖用户过千需观察 CPU 与出口带宽。**这是 §7.4 防刷存在的第二个理由**。
 
 ---
 
-## 8. 客户端改动清单（文件级，供排期）
+## 7. 必须处理的 4 件事
+
+### 7.1 条款风险（`spec:743` 虽作废，风险没消失）
+
+用户付你钱、你用你的 Key 调百炼，条款上仍是"代付/转售"。`spec:743` 原本要求先拿书面确认，现按 D5 作废。**剩余风险**：百炼若判定违规，可能限流或封 Key，直接打掉所有付费用户的翻译能力。
+
+**最低成本缓解（建议做，不阻塞开工）**：付费用户的额度用尽后自动回落用户自己的 Key（§3 已设计），并保留"一键切到 BYO"的设置项 —— 极端情况下你只需关掉网关，产品仍是可用翻译器。
+
+### 7.2 隐私说明必须改口
+
+`spec:29` 现在写的是"文本由客户端直接发往阿里云百炼，**不经过开发者服务器**"，`:141` 还把它当卖点。走网关后这句是假的。要改成：**"免费版直连百炼；套餐额度内的翻译经我们的网关转发（只加鉴权与计量，不落盘、不记录原文）。"**
+
+注意这是**分版本表述**：免费用户直连，这条承诺对他仍然成立。别一刀切成"全部经服务器"。
+
+### 7.3 备案与个人信息
+
+- 内地机房 + 域名必须 ICP 备案（2~3 周，需主体证件）。**这是阶段 2 上线的真实卡点**，建议今天就提交。
+- 上线即处理个人数据（邮箱、设备标识、**学习记录**）。学习记录比翻译文本更敏感（能反推学习者的水平与关注点），需要隐私政策 + 注销即删。
+
+### 7.4 免费额度必须防刷（D6 带出来的新问题）
+
+给免费用户送额度，就是把一个**无门槛、可自动化的 API 代理**挂在公网上。一个 python 脚本注册 100 个邮箱就能每月刷走 100 万字符（≈35 元）—— 而且他不会只是刷一次。这不是"万一"，是必然会发生。三道闸，缺一不可：
+
+| 闸 | 做法 | 拦的是 |
+|---|---|---|
+| 注册 | 邮箱验证码（必须真的发信）；**同一设备指纹 90 天内只算一次免费额度** | 批量注册 |
+| 用量 | 免费档**单设备日上限 2000 字符**（月度 1 万仍是总闸） | 当天刷爆、也把滥用者拖成慢性 |
+| 形状 | 免费额度**只对登录设备生效**，不提供免登录试译；每账号设备数上限 3 | 拿一台机器跑循环 |
+
+- **不要用 IP 做主要判据**：校园网/公司网 NAT 之下，按 IP 限流会误杀一整栋楼的学生，这正是教学产品的核心用户。
+- **不要给免费额度自动续到"已超额"状态**：月中超额即硬停（返回 429），次日重置日上限 —— 免费档不需要平滑体验，付费档才需要。
+- 风控命中后**降级不封号**：清空网关额度、保留自带 Key 直连能力，用户仍可继续用软件。封号会让被误伤的学生直接卸载，而降级只会让他升级。
+
+> 这份防刷清单是阶段 2 的一部分，不是上线后的补丁。额度功能与防刷同时上线，否则第一批白嫖流量会先于你的监控到达。
+
+---
+
+## 8. 客户端改动清单（文件级）
 
 | 文件 | 改动 | 阶段 |
 |---|---|---|
-| `src/FastTranslation.Core/Settings.cs:5-25` | `AppSettings` 增 `ServerBaseUrl`、`AccountEmail`、`LastKnownPlan` | 0 |
-| `src/FastTranslation.Core/TranslationTypes.cs:31-42` | `TranslationResult` 增 `TokenUsage? Usage { get; init; }` | 1 |
-| `src/FastTranslation.Providers.QwenMt/QwenMtProvider.cs:131-147` | `ReadTranslationAsync` 解析 `usage` | 1 |
-| 新增 `src/FastTranslation.Core/AccountService.cs` | 注册/登录/刷新/取用量（HttpClient） | 0 |
-| 新增 `src/FastTranslation.App/AccountWindow.xaml(.cs)` | 登录/注册/用量页 | 0 |
-| `src/FastTranslation.App/SettingsWindow.xaml` | 新增「账号与用量」分组（现有分组：翻译与外观 / 取词与写回 / 服务 / 系统） | 0 |
-| `src/FastTranslation.App/App.xaml.cs:84-91` | 组合根：已登录 → BaseUrl 指向网关；未登录 → 保持直连 | 2 |
-| `src/FastTranslation.App/App.xaml.cs:155` | 图片 provider 同样指向网关 | 2 |
-| 新增 `server/FastTranslation.Server/` | 网关 + 账号 API + 管理页 | 0~2 |
+| `src/FastTranslation.Core/Settings.cs:5-25` | `AppSettings` 增 `ServerBaseUrl`、`AccountEmail`、`LastKnownPlan`、`PreferOwnKey` | 0 |
+| 新增 `src/FastTranslation.Core/AccountService.cs` | 注册/登录/刷新/兑换激活码/取用量（HttpClient） | 0 |
+| 新增 `src/FastTranslation.Core/NotesService.cs` | 保存/查询/改类型/删/同步 | 1 |
+| 新增 `src/FastTranslation.App/AccountWindow.xaml(.cs)` | 登录/注册/激活码/用量 | 0 |
+| 新增 `src/FastTranslation.App/NotesWindow.xaml(.cs)` | 单词本/短语本/语句 | 1 |
+| `src/FastTranslation.App/SettingsWindow.xaml` | 新增「账号与用量」分组 | 0 |
+| `src/FastTranslation.Platform.Windows/OverlayWindows.cs:588-614` | `ShowResult` 增加「保存」按钮与回调 | 1 |
+| `src/FastTranslation.App/App.xaml.cs:84-91` | 组合根：有额度走网关；否则直连 | 2 |
+| `src/FastTranslation.App/App.xaml.cs:155` | 图片 provider 同上 | 2 |
+| `src/FastTranslation.Core/TranslationTypes.cs:31-42` | `TranslationResult` 增 `TokenUsage? Usage { get; init; }` | 2 |
+| `src/FastTranslation.Providers.QwenMt/QwenMtProvider.cs:131-147` | `ReadTranslationAsync` 解析 `usage` | 2 |
+| 新增 `server/FastTranslation.Server/` | 账号 API + 网关 + notes API + 管理页 | 0~2 |
+
+> `TranslationResult` 加的是可空 init 属性，既有构造点全部仍合法，不破坏编译。
 
 ---
 
-## 9. 工作量估算
+## 9. 后端选型
 
-| 阶段 | 内容 | 人天 |
+| 项 | 选择 | 理由 |
 |---|---|---|
-| 0 | 后端骨架 + 账号 API + 客户端登录与设置页 | 8~10 |
-| 1 | usage 解析 + 本地计量 + 用量 UI | 4~5 |
-| 2 | 代理网关 + 配额 + 双档 + 管理后台 | 12~15 |
-| — | 备案（并行，不占开发） | 2~3 周墙钟 |
-| — | 部署、HTTPS、备份、监控 | 2~3 |
-| **合计** | 全量（方案 B） | **26~33 人天（约 6 周）** |
+| 框架 | **ASP.NET Core Minimal API（.NET 10）** | 与客户端同语言同 SDK，你只有一套心智模型 |
+| 数据库 | **SQLite → PostgreSQL** | 500 用户内 SQLite 足够，单文件备份；上量换 provider 即可 |
+| 部署 | self-contained 单二进制 + systemd + Caddy（自动 HTTPS） | 与现有 publish 流程同构，不引入 Docker |
+| 管理后台 | Blazor Server 单页 | 不额外开前端工程 |
 
-只要阶段 0+1（能统计用户、能看见消耗，但商用版仍 BYO）：**12~15 人天（约 3 周）**，且不触发 §7 的任何前置条件。
+### 9.1 表
+
+```
+users         (id, email, password_hash, plan, plan_expires_at, quota_monthly_chars, status, created_at)
+devices       (id, user_id, device_id, first_seen, last_seen, name)
+refresh_tokens(jti, user_id, expires_at, revoked_at)
+activation_codes (code, tier, duration_days, max_uses, used_count, expires_at)
+usage_daily   (user_id, day, model, prompt_tokens, completion_tokens, image_count, cost_micro_yuan)
+notes / tags / note_tags / reviews   -- 见 §4.3
+```
+
+**红线（继承 `docs/PLAN.md:62`「不记录选中文本」）**：`usage_daily` 只存 Token 数与折算金额，**不落原文译文**；网关日志不得写请求体。`notes` 表存的是用户主动保存的学习内容，属于用户数据而非遥测，需在隐私政策里单列。
+
+### 9.2 接口
+
+```
+POST /api/auth/register     {email, password}
+POST /api/auth/login        -> {accessToken(1h), refreshToken(30d), plan}
+POST /api/auth/refresh
+POST /api/redeem            {code} -> 开通套餐
+GET  /api/me                -> {email, plan, quota, usedThisMonth, deviceCount}
+GET  /api/me/usage?from&to
+POST /v1/chat/completions                          (OpenAI 兼容, Bearer)
+POST /api/v1/services/aigc/image2image/image-synthesis
+GET  /api/notes?kind=&q=&cursor=
+POST /api/notes             {kind, sourceText, targetText, ...}   ← 订阅闸门在此
+PATCH /api/notes/{id}       {kind?, note?, tags?}
+DELETE /api/notes/{id}
+GET  /admin/users                                  (管理员令牌)
+```
 
 ---
 
-## 10. 待决策的 4 个点
+## 10. 剩余待定（2 条，不阻塞阶段 0/1）
 
-1. **商用版的钱怎么收**：手动开通/激活码（省 2~3 周）｜外部卖卡密｜接微信支付宝（需营业执照+商户号，多 2~3 周）。
-2. **翻译请求走哪条路**：服务端代理（推荐，但触发 §7.1/7.2）｜客户端直连 + Key 下发（Key 会暴露）｜商用版仍 BYO（零合规风险，但「用你的 Key」不成立）。
-3. **服务器放哪**：内地机房（35 元/月，需 ICP 备案 2~3 周）｜香港（约 +30%，免备案，延迟 +30~50ms）。
-4. **免费版额度定多少**：5 万字符/月（≈0.17 元/人/月，沿用既有 spec 建议）｜更低（1 万字符，≈0.035 元）｜更高。
+1. **各档的额度数字**：免费 1 万（D6/D4 已定）、轻享 5 万、标准 20 万是我按定价倒推的建议值 —— 6.9 元买 5 万字符、12.9 元买 20 万字符，成本占比都低于 5%，随时可在管理后台调整，**不用改代码**（额度是 `users.quota_monthly_chars` 字段）。
+2. **是否提供年付**：§6.1 已给 69/129 元/年的建议价，但激活码制下需要决定"年付码"与"月付码"是否共用一批码池（建议分开，`activation_codes.tier` 区分）。
+
+> 已定且不再讨论的三条：免费版给 1 万字符（D6）、定价 6.9/12.9（D7）、免费版完全不能保存（D8）。
 
 ---
 
-## 11. 未核实项（写在这里，避免当成事实用）
+## 11. 未核实项
 
-- 云服务器具体配置与报价：官方定价页是 JS 渲染抓不到正文，本文档引的是二手文章数据，**下单前必须在控制台核价**。
-- `qwen-mt-image` 图片接口是否也返回 `usage` 字段：官方文档只给了文本 chat 的样本，图片链路的 Token/张数计量方式需实测确认（若只按张计，则按 0.004 元/张 × 张数即可）。
-- 香港/新加坡机房对百炼 API 的实测延迟：需部署后实测，本文档的「+30~50ms」是经验值。
+- 云服务器实际配置与报价：官方定价页 JS 渲染抓不到，引的是二手数据，**下单前控制台核价**。
+- `qwen-mt-image` 接口是否回传 `usage`：官方只给了文本 chat 样本。若只按张计，直接 0.004 元/张 × 张数。
+- 内地机房实际延迟与带宽峰值：部署后实测。
