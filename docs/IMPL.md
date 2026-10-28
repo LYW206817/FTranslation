@@ -579,3 +579,18 @@
 
 `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。
 
+
+## v39 结果卡:更新弹窗跟随发起它的窗口
+
+用户 m02559 原话:「不对啊,在设置页面里检查更新,出现的弹窗应该也是在设置页面的上层,现在是在使用页面的上层」——从设置页点「检查更新」,提示框却盖在主窗口上。
+
+- **根因**:`src/FastTranslation.App/App.xaml.cs:221` 把 owner 写死成主窗:`notice => NoticeWindow.Show(_mainWindow, notice.Title, notice.Body, notice.LinkUrl)`。`UpdateCoordinator` 的回调本身不带「谁发起的」这一信息,于是无论托盘、主窗还是设置页发起检查,弹框一律认主窗为 owner —— 在设置页里点时,`CenterOwner` 自然把它摆到主窗中央。同类问题也在 `PresentUpdate`(发现新版本时开的 `UpdateWindow`)。
+- **修法(不改回调签名)**:在**显示那一刻**解析 owner,而不是在订阅时绑定。新增 `App.xaml.cs` `private Window? DialogOwner()`,遍历 `Windows.OfType<Window>()` 取 `IsVisible && IsActive` 的那个;都没有(托盘发起、整个应用没焦点)就退 `_mainWindow is { IsVisible: true }`,再没有就返回 null,让 `NoticeWindow.ShowFor` 落到 `CenterScreen`。设置窗是主窗之上的模态窗,检查期间它一直是活动窗口,所以它天然成为 owner;设置窗先关了也不会有悬空 owner。
+- **回调收口**:原来内联给 `UpdateCoordinator` 的 lambda 提成 `private void ShowNotice(UpdateCheckNotice notice) => NoticeWindow.Show(DialogOwner(), notice.Title, notice.Body, notice.LinkUrl);`,构造函数处直接传方法组 `ShowNotice`;`PresentUpdate` 的 owner 判断也换成 `if (DialogOwner() is { } owner)`,ownerless 分支保留原来的 `CenterScreen`。
+- **设置窗本身也锚到主窗**:`SettingsWindow` 原本 `WindowStartupLocation="CenterScreen"` 且没有 Owner,是一个和主窗无关的顶层窗口(被主窗拖开后两者并列,弹框就更像「盖错窗」)。`ShowSettings()` 里改成:`_mainWindow is { IsVisible: true, WindowState: not WindowState.Minimized }` 时 `window.Owner = owner; window.WindowStartupLocation = WindowStartupLocation.CenterOwner;`,否则保持 `CenterScreen`(托盘进设置、主窗已收起的情况)。
+- **QA 钩子 `FT_UITEST=notice-settings`**:先 `Dispatcher.BeginInvoke(ShowSettings)` 打开设置页,2600ms 后走**生产同一条** `ShowNotice`(`UpdateCheckNotice.UpToDate(new Core.ReleaseVersion(1, 2, 0, 0))`)。设置页是 `ShowDialog()`,但嵌套消息循环里 DispatcherTimer 照常 tick,不需要非模态旁路。
+- **取证判据用 `GW_OWNER`,不是像素**:新脚本 `tools/qa/check-notice-owner.ps1`(参数 `-ExePath -Kind -Expect -Out [-TimeoutSec 40]`)用 `EnumWindows` 收本进程全部可见顶层窗口 → 标题:句柄,再对弹框调 `GetWindow(hwnd, GW_OWNER /*4*/)` 反查 owner 标题,并打印三个窗口的 rect 与中心点。不靠截图的原因:主窗、设置窗、弹框都居中,三者中心点**完全重合**(实测都是 1260,798),截图分不出 owner 是谁 —— 句柄关系才是唯一确定的证据。
+- **证据**:`-Kind notice-settings` → `GW_OWNER -> '设置' expected '设置' => PASS`;回归 `-Kind notice`(主窗/托盘路径)→ `GW_OWNER -> 'Fast Translation' => PASS`。截图 `publish/qa-notice-over-settings.png`(875x1260,设置窗 rect 整块)留档,`publish/` 在 gitignore 内。
+- **踩坑**:含中文的 `.ps1` 必须 UTF-8 **带 BOM**(PowerShell 5.1 按 GBK 解码会把 `param()` 第一行读坏,报「赋值表达式无效」);用脚本补 BOM 时若先按 utf8 读回再拼 BOM 字节会写出双 BOM,表现为行首多一个 `?` —— 写之前先剥掉开头的 U+FEFF。
+
+`dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。

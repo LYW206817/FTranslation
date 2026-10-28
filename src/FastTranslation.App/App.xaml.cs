@@ -218,7 +218,7 @@ public partial class App : Application, IResultPresenter
             PresentUpdate,
             // a manual check must be visible: Win11 notification settings swallow tray balloons.
             // a themed window rather than MessageBox — the native one ignores the palette (v38)
-            notice => NoticeWindow.Show(_mainWindow, notice.Title, notice.Body, notice.LinkUrl),
+            ShowNotice,
             ExitApp);
         _updates.Start();
 
@@ -348,6 +348,24 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "notice-settings")
+        {
+            // FT_UITEST=notice-settings -> open the settings page, then raise the notice the way a
+            // manual check does: it must land on the page that asked, not on the window underneath
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2600) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                var notice = UpdateCheckNotice.UpToDate(new Core.ReleaseVersion(1, 2, 0, 0));
+                _ = Dispatcher.BeginInvoke(() =>
+                {
+                    try { ShowNotice(notice); }
+                    catch (Exception ex) { Trace($"notice show: {ex}"); }
+                });
+            };
+            uiTimer.Start();
+            _ = Dispatcher.BeginInvoke(new Action(ShowSettings));
+        }
         else if (uitest is "notice" or "notice-link")
         {
             // FT_UITEST=notice[-link] -> open the update notice so a screenshot can prove the
@@ -363,7 +381,7 @@ public partial class App : Application, IResultPresenter
                         : UpdateCheckNotice.Failed(UpdateChannel.ReleasesPageUrl);
                     _ = Dispatcher.BeginInvoke(() =>
                     {
-                        try { NoticeWindow.Show(_mainWindow, notice.Title, notice.Body, notice.LinkUrl); }
+                        try { ShowNotice(notice); }
                         catch (Exception ex) { Trace($"notice show: {ex}"); }
                     });
                 }
@@ -526,10 +544,36 @@ public partial class App : Application, IResultPresenter
         window.ShowDialog();
     }
 
+    private void ShowNotice(UpdateCheckNotice notice) =>
+        NoticeWindow.Show(DialogOwner(), notice.Title, notice.Body, notice.LinkUrl);
+
+    /// <summary>
+    /// The window an update dialog belongs on: whichever of ours the user is working in. A check
+    /// can start from the settings window, which is modal over the main window — owning the
+    /// dialog by the main window dropped it on the wrong page (user report 2026-10: 设置页点检查更新,
+    /// 弹窗盖在使用页上). No active window means the check came from the tray; the app is usually
+    /// hidden there, so there is no owner and the dialog goes to the screen centre.
+    /// </summary>
+    private Window? DialogOwner()
+    {
+        foreach (var window in Windows.OfType<Window>())
+        {
+            if (window.IsVisible && window.IsActive) return window;
+        }
+        return _mainWindow is { IsVisible: true } ? _mainWindow : null;
+    }
+
     private void ShowSettings()
     {
         var window = new SettingsWindow(_settings, _settingsService, _secrets, _hotkey!,
             () => _updates?.CheckAsync(interactive: true));
+        // anchor the page to the main window: as a loose top-level window it lands at the screen
+        // centre and a dialog opened from it has no visible link back to the app (v39)
+        if (_mainWindow is { IsVisible: true, WindowState: not WindowState.Minimized } owner)
+        {
+            window.Owner = owner;
+            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        }
         window.ShowDialog();
     }
 
@@ -541,9 +585,9 @@ public partial class App : Application, IResultPresenter
     private void PresentUpdate(UpdateManifest manifest, ReleaseVersion currentVersion)
     {
         var window = new UpdateWindow(manifest, currentVersion, UpdateCoordinator.IsInstalledCopy());
-        if (_mainWindow is { IsVisible: true })
+        if (DialogOwner() is { } owner)
         {
-            window.Owner = _mainWindow;
+            window.Owner = owner;
         }
         else
         {
