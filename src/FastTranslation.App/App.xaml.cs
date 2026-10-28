@@ -338,13 +338,13 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "notice-confirm")
         {
-            // the two-button shape (UpdateWindow's "install location will change" question)
+            // the two-button notice shape (Confirm() is no longer reachable from the update flow)
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
                 uiTimer.Stop();
                 _ = Dispatcher.BeginInvoke(() => NoticeWindow.Confirm(_mainWindow,
-                    "安装位置会变", "当前程序不在默认安装位置。安装新版本会把它装到默认位置,并保留现有设置。继续吗?"));
+                    "确认操作", "这是一个带「取消」与「继续」的提示窗口,只用来核对按钮形态与归属窗口。"));
             };
             uiTimer.Start();
         }
