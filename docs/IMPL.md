@@ -594,3 +594,26 @@
 - **踩坑**:含中文的 `.ps1` 必须 UTF-8 **带 BOM**(PowerShell 5.1 按 GBK 解码会把 `param()` 第一行读坏,报「赋值表达式无效」);用脚本补 BOM 时若先按 utf8 读回再拼 BOM 字节会写出双 BOM,表现为行首多一个 `?` —— 写之前先剥掉开头的 U+FEFF。
 
 `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。
+
+## v40 发布 1.2.1:提示位置、卡片阴影、Fluent 提示框
+
+先是用户报的两条缺陷(v37),随后用户自己提交了 v38/v39 两轮界面改动,合起来作为 1.2.1 发布。
+
+- **v37 提示落在左上角**:`WriteBackAsync`(`src/FastTranslation.App/App.xaml.cs:457`)先 `_card?.Hide()` 再写回,失败时卡片已不可见,`ResultCardWindow.ShowNotice` 走兜底 `ShowAt(new ScreenPoint(80, 80), null)`。修法是在 `src/FastTranslation.Platform.Windows/OverlayWindows.cs` 的 `ResultCardWindow` 里记住 `_lastAnchor/_lastRect/_hasPosition`(`ShowAt` 赋值),提示复用该位置,只有从未显示过才退回鼠标位置。实测提示从 (117,112) 移到 (1202,724)。
+- **v37 卡片阴影**:`FtTheme.CardShadow()` 挂在撑满窗口的根 Border 上,而卡片窗是 `AllowsTransparency` + `SizeToContent`,没有留透明边距,投影被窗口边界裁掉,只剩边框外 1–2px 深灰硬边(边框外实测 `(217,227,241)`,再外一格即背景)。与 docs/IMPL.md:290「工具条去阴影」同一决定,删掉 `CardShadow()`(结果卡 + `ImageResultWindow.cs:60`),只留发丝边框,并清掉无引用的 `PillShadow()`。提示卡同时加了 `RestoreFullChrome()`,折叠原文块后高度 112 → 88 DIP。
+- **v38/v39(用户提交)**:`src/FastTranslation.App/NoticeWindow.xaml(.cs)` 取代 `MessageBox`,`UpdateCheckNotice` 增加 `LinkUrl`;`src/FastTranslation.Platform.Windows/WindowChrome.cs` 统一深色标题栏;更新提示按 `GW_OWNER` 归属到发起它的窗口。
+
+**发布数据(2026-10-28)**
+
+- 版本:1.2.1(`Directory.Build.props` `<Version>` 与 `installer/FastTranslation.iss:7` `AppVersion`),提交 `687fa5e94409cbc94258b9df48a1c928761b0fdc`。
+- 产物:`FastTranslation-1.2.1-Setup.exe` **46764884 字节** `sha256 fcc38d7ee68f93a12994fe90293572a6cec6d8f1a977c0abd7aff5988a36a0d0`;`FastTranslation-1.2.1-portable.zip` **61754362 字节** `sha256 9217d1f4cb18d4b34a268a188634876295cbee76d7503e979fed27d8f3f92b63`(263 条目)。
+- 主仓库 Release `426239503`:Setup 资产 `683724425`、portable 资产 `683724413`,均 `state: uploaded` 且 digest 与本地一致。
+- 更新通道 Release `426239654`:资产 `683724944`(46764884 / 同 digest);清单 `version.json` 更新为 1.2.1,commit `1d29e1fbf95d04128e1bdc327de6a35ba13170f0`。
+- 清单四顺位实测:Pages 仍是 1.2.0(`Cache-Control: max-age=600`),jsdelivr / gh-proxy / ghfast.top 已经 1.2.1;gh-proxy 取通道资产 `206`。因为 `UpdateChecker` 取「首个有效清单」,Pages 追上之前手动检查会显示「已是最新」,这是 b22 记录的已知残留风险。
+
+**踩坑**
+
+- `tools/qa/make-portable.ps1` 无 BOM 且含中文注释,PowerShell 5.1 按 GBK 解码导致 `$readme` 变成 null,报 `ParameterArgumentValidationErrorNullNotAllowed`;补 UTF-8 BOM 后正常(与 v39 记录的同一条规则)。
+- GCM 里的 GitHub 令牌已失效/不存在(`CredEnumerate('git:*')` 只有一条无关的 `git.istudy.xin`),`git credential fill` 会挂起等待交互;本次由用户 Regenerate 后临时写入 `publish/.tok` 用完即删。
+- 本机原先装在 `D:\SoftwareDownload\FastTranslation`(MSYS2 路径转换的历史遗留),而 `UpdateCoordinator.IsInstalledCopy()` 只认 `%LOCALAPPDATA%\Programs\FastTranslation`,不在默认目录就只能降级到下载页。为了让用户能真的体验一键更新,先静默卸载旧副本,再把 1.2.0 装到默认目录(设置与 Key 在 `%LOCALAPPDATA%\FastTranslation`,不受影响)。
+- `dotnet build` 0 警告 0 错误;`dotnet test` 75 + 68 + 40 = **183 全绿**。
