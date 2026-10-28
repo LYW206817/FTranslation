@@ -26,15 +26,16 @@ public sealed record UpdateCheckResult(
 /// only through a tray balloon is indistinguishable from one that never ran; Core keeps the text
 /// so a test can pin it while the App only decides how to show it.
 /// </summary>
-public readonly record struct UpdateCheckNotice(string Title, string Body)
+public readonly record struct UpdateCheckNotice(string Title, string Body, string? LinkUrl = null)
 {
     public static UpdateCheckNotice UpToDate(ReleaseVersion current) =>
-        new("Fast Translation", "已经是最新版本 " + current + "。");
+        new("已经是最新版本", "当前版本 " + current + " 已经是最新的,不需要更新。");
 
     public static UpdateCheckNotice Failed(string releasesPageUrl) =>
         new("检查更新失败",
-            "连不上更新服务器。可以到下载页手动获取最新版本:" + Environment.NewLine + releasesPageUrl +
-            Environment.NewLine + Environment.NewLine + "失败原因已记录到 update.log。");
+            "连不上更新服务器,可能是网络不通。你可以到下载页手动获取最新版本。" + Environment.NewLine +
+            Environment.NewLine + "失败原因已记录到 update.log。",
+            releasesPageUrl);
 }
 
 /// <summary>

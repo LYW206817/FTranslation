@@ -199,18 +199,21 @@ public class UpdateCheckerTests
     {
         var notice = UpdateCheckNotice.UpToDate(Current);
 
-        Assert.Equal("Fast Translation", notice.Title);
-        Assert.Contains("已经是最新版本", notice.Body);
+        Assert.Equal("已经是最新版本", notice.Title);
         Assert.Contains("1.1.2", notice.Body);
+        // an up-to-date check offers nothing to click: the dialog would show a dead button
+        Assert.Null(notice.LinkUrl);
     }
 
     [Fact]
-    public void Notice_Failed_NamesTheDownloadPageAndTheLog()
+    public void Notice_Failed_OffersTheDownloadPageAsALink()
     {
         var notice = UpdateCheckNotice.Failed(UpdateChannel.ReleasesPageUrl);
 
         Assert.Equal("检查更新失败", notice.Title);
-        Assert.Contains(UpdateChannel.ReleasesPageUrl, notice.Body);
+        Assert.Equal(UpdateChannel.ReleasesPageUrl, notice.LinkUrl);
         Assert.Contains("update.log", notice.Body);
+        // the URL is a clickable link in the dialog, not a raw line crammed into the sentence
+        Assert.DoesNotContain(UpdateChannel.ReleasesPageUrl, notice.Body);
     }
 }

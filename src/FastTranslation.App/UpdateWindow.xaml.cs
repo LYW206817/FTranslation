@@ -24,6 +24,7 @@ public partial class UpdateWindow : Window
     public UpdateWindow(UpdateManifest manifest, ReleaseVersion currentVersion, bool selfInstallable)
     {
         InitializeComponent();
+        WindowChrome.Apply(this);
         _manifest = manifest;
         _selfInstallable = selfInstallable;
 
@@ -56,10 +57,8 @@ public partial class UpdateWindow : Window
         if (!UpdateCoordinator.IsInstalledCopy())
         {
             // a moved folder would break the installer's assumption about the target directory
-            var answer = MessageBox.Show(this,
-                $"当前程序不在默认安装位置。安装新版本会把它装到默认位置,并保留现有设置。继续吗?",
-                "Fast Translation", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            installable = answer == MessageBoxResult.OK;
+            installable = NoticeWindow.Confirm(this, "安装位置会变",
+                $"当前程序不在默认安装位置。安装新版本会把它装到默认位置,并保留现有设置。继续吗?");
             if (!installable) { OpenDownloadPage(); return; }
         }
 
