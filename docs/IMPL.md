@@ -647,3 +647,11 @@
 - 顺带发现:静默安装的 `[Run]` 会把应用拉起来,脚本里 `Start-Process -Wait` 会一直等到应用退出 —— 判完成要轮询 `ProductVersion`,不能用 `-Wait`。
 
 **顺带修掉的**`tools/qa/make-portable.ps1` 缺 BOM(`$readme` 变 null)已在 1.2.1 那次提交里补上。
+
+## v42 发布记录:1.2.2
+
+- 主仓库 Release `426263015`,tag `v1.2.2` → commit `8601dddbd56b718fdb3bab44a9d709194dd8e3e3`;资产 `FastTranslation-1.2.2-Setup.exe` id **683817104**(46766839 字节 / `sha256:fc29736278a635e71945e29d8766a4a40c95e9f2a97803c521f68d8e90540d3e`)、`FastTranslation-1.2.2-portable.zip` id **683817237**(61757746 字节 / `sha256:279df77f0931311d71d0deb416188ce421e8044034000f21a8d445a2b6317f7b`)。
+- 更新通道 `LYW206817/FTranslation-Updates` Release `426263182`,资产 id **683817635**(同一份 Setup.exe),三个资产均为 `state: uploaded` 且 digest 与本地一致。
+- `version.json` 由 blob `bf2f85dea1aab1ea1e6164665c006f1d9b9f6ffb` 更新为 commit `6ef0b2f7e8a92c519772cdb612e44b29a9e3aedf`(version 1.2.2 / size 46766839 / sha256 fc297362… / url 指向通道的 v1.2.2 资产)。
+- 清单四顺位实测:gh-proxy 与 ghfast.top 的 raw 立即 1.2.2;GitHub Pages 在 600 秒缓存过期后于 12:33 变 1.2.2;**fastly.jsdelivr 到 12:40 仍是 1.2.1**("@main" 的 CDN 缓存明显更久)。因为 `UpdateChannel.ManifestUrls` 里 Pages 排第一、这两个 raw 代理排在后两位,不影响正常检查;只有「Pages 挂掉且 jsdelivr 还在缓存旧清单」这种叠加情况下才会短暂读不到新版本,属于已知限窗,遇到再考虑改成「多源取最高版本」。
+- 通道资产可用性:直连 `github.com` 返回 302 后不可达;`https://gh-proxy.com/https://github.com/…/v1.2.2/FastTranslation-1.2.2-Setup.exe` 返回 206、约 138 KB/s ⇒ 下载仍然只能走代理。
