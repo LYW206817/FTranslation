@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fast Translation — 划词即译的 Windows 桌面工具</title>
+<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口。Windows 10/11,免安装运行时。">
+<link rel="icon" href="assets/img/icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Fast Translation — 划词即译的 Windows 桌面工具">
+<meta property="og:description" content="选中文字,工具条浮出来;点翻译,译文贴回原文旁边。531 毫秒,不用切窗口。">
+<meta property="og:image" content="assets/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <img src="assets/img/icon.png" alt="">
+      <span>Fast Translation</span>
+      <span class="mark">v1.2.2</span>
+    </div>
+    <nav>
+      <a href="#how">怎么用</a>
+      <a href="#look">界面</a>
+      <a href="#numbers">实测</a>
+      <a href="#plans">套餐</a>
+      <a href="#download">下载</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<div class="wrap hero">
+  <div>
+    <p class="eyebrow">Windows 10 / 11 · 桌面划词翻译</p>
+    <h1>选中,<br><mark>就已经译好了</mark>。</h1>
+    <p class="lede">
+      在任意程序里选中一段文字,鼠标旁边浮出一个小工具条。点「翻译」,译文出现在原句下方——不用切窗口,不用复制粘贴,不用等一个网页加载完。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#download">下载安装 <span aria-hidden="true">→</span></a>
+      <a class="btn btn-ghost" href="#how">先看它怎么工作</a>
+    </div>
+    <p class="hero-meta">1.2.2 · 约 70 MB · 运行时已内置 · 免管理员安装</p>
+  </div>
+
+  <aside class="note">
+    <dl>
+      <dt>原文</dt>
+      <dd class="en">meticulous</dd>
+      <dt>译文</dt>
+      <dd class="zh">一丝不苟的</dd>
+      <dt>耗时</dt>
+      <dd class="zh" style="font-family:var(--mono);font-size:.82rem;color:var(--muted)">531 ms · qwen-mt-flash</dd>
+    </dl>
+  </aside>
+</div>
+
+<div class="wrap stage">
+  <div class="stage-inner">
+    <figure style="margin:0">
+      <div class="paper">
+        <div class="floatbar">
+          <span><i>⧉</i>复制</span>
+          <span class="on"><i>译</i>翻译</span>
+          <span><i>▣</i>截图翻译</span>
+        </div>
+        Selected text never leaves its paragraph — it stays
+        <span class="sel-hit">highlighted in place</span>
+        while the translation opens underneath it.
+      </div>
+
+      <div class="card-demo">
+        <p class="src">Selected text never leaves its paragraph — it stays highlighted in place</p>
+        <p class="dst">选中的文字从不离开它所在的段落——译文就开在它下面,它一直留在原地被高亮着。</p>
+        <div class="row">
+          <span class="b pri">保存</span>
+          <span class="b">复制</span>
+          <span class="b">替换</span>
+          <span class="b">插入</span>
+          <span class="status">qwen-mt-flash · 531ms</span>
+        </div>
+      </div>
+
+      <figcaption>工具条与结果卡,按 1:1 用 CSS 重建(实际是 Win32 分层窗口)</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">01 / 交互</span>一颗工具条,三个动作</h2>
+        <p class="sub">工具条只在你选中文字之后出现,离开就消失。三个按钮对应三种最常做的事,顺序按用得多少排。</p>
+      </div>
+      <p class="aside-note">工具条由 Win32 分层窗口绘制,不抢焦点,所以它浮在 PDF、IDE、Office、浏览器上时,底下的选区不会消失。</p>
+    </div>
+
+    <div class="strip">
+      <div>
+        <div class="glyph">⧉</div>
+        <h3>复制</h3>
+        <p>只复制,不翻译。有些文本你只是想拿去别处用。</p>
+      </div>
+      <div>
+        <div class="glyph act">译</div>
+        <h3>翻译</h3>
+        <p>译完可直接「替换原文」或「插入译文」,写回靠模拟输入,不改剪贴板内容。</p>
+      </div>
+      <div>
+        <div class="glyph">▣</div>
+        <h3>截图翻译</h3>
+        <p>框一块屏幕区域,出译图。用于图片、扫描件、游戏与视频字幕。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="look">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">02 / 界面</span>没有主界面哲学</h2>
+        <p class="sub">主窗口只在你想手动翻译时打开。日常使用中,你看到的是工具条、结果卡、和一个托盘图标。</p>
+      </div>
+      <p class="aside-note">配色跟系统深浅色走。浅色 #F7F9FC / 白 / #2562FF,深色 #16191F / #1F242C / #4A82FF。</p>
+    </div>
+
+    <div class="plates">
+      <figure class="plate">
+        <img src="assets/img/main-light.png" alt="主窗口浅色主题:输入框、语言选择、模型标记、翻译按钮">
+        <figcaption><span>主窗口 / 浅色</span><span>Ctrl+Enter 翻译</span></figcaption>
+      </figure>
+      <figure class="plate">
+        <img src="assets/img/main-dark.png" alt="主窗口深色主题">
+        <figcaption><span>主窗口 / 深色</span><span>跟随系统</span></figcaption>
+      </figure>
+      <figure class="plate">
+        <img src="assets/img/settings-light.png" alt="设置窗口:服务地址、API Key、热键、外观">
+        <figcaption><span>设置 / 服务与热键</span><span>浅色主题</span></figcaption>
+      </figure>
+      <figure class="plate">
+        <img src="assets/img/notes.png" alt="单词本窗口:搜索、单词/短语/语句三栏、详情面板">
+        <figcaption><span>单词本</span><span>单词 · 短语 · 语句</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="numbers">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">03 / 实测</span>数字来自真实请求</h2>
+        <p class="sub">下面这些不是宣传口径,是开发机上跑真实翻译接口记录下来的值。</p>
+      </div>
+      <p class="aside-note">测量方式:客户端记录 Environment.TickCount64 差值;token 与环境来自服务端记账表 usage_events。</p>
+    </div>
+
+    <dl class="figures">
+      <div>
+        <dt>单次翻译耗时</dt>
+        <dd>531<small>毫秒,短句 en→zh,走开发者网关 + qwen-mt-flash</small></dd>
+      </div>
+      <div>
+        <dt>每次请求 token</dt>
+        <dd>65<small>约 60 输入 + 5 输出,服务端按 usage 记账</small></dd>
+      </div>
+      <div>
+        <dt>单账号设备数上限</dt>
+        <dd>3<small>免费额度的日限额按设备算,避免一号多机池化</small></dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">04 / 取舍</span>能做与不做</h2>
+        <p class="sub">写在这里的边界都是实测出来的,不是没做完。</p>
+      </div>
+      <p class="aside-note">划词取词顺序:先 UIA 读当前选区,读不到再退回模拟 Ctrl+C 抓剪贴板。两条路径都在你的机器上完成。</p>
+    </div>
+
+    <div class="cols">
+      <div>
+        <h3>做得好的</h3>
+        <ul class="plain">
+          <li>网页、PDF 阅读器、IDE、Word 里的划词取词</li>
+          <li>译文写回原位置,替换与插入两种方式</li>
+          <li>截图翻译适合稀疏排版:网页、宽界面、PPT</li>
+          <li>单词本按单词 / 短语 / 语句自动归类</li>
+          <li>句子级缓存,同一句重复翻译不再发请求</li>
+        </ul>
+      </div>
+      <div>
+        <h3>明确不做</h3>
+        <ul class="plain">
+          <li>Windows 终端 / cmd / PowerShell 只取词、不写回</li>
+          <li>密码框不取词</li>
+          <li>密集小字、多栏挤在一起的截图会错位</li>
+          <li>不采集任何使用数据,不写文本日志</li>
+          <li>安装包未做代码签名,首次运行会提示未知发布者</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="plans">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">05 / 套餐</span>按字符算,不按时间算</h2>
+        <p class="sub">额度用字符衡量:一个汉字、一个字母都算一个字符。额度用完不会断你,会自动切到你自己填的 API Key 继续翻。</p>
+      </div>
+      <p class="aside-note">付费额度由开发者账号统一出,你不用自己去阿里云开 Key。也可以一直用自己的 Key,免费版即可。</p>
+    </div>
+
+    <div class="plans">
+      <div class="plan">
+        <h3>免费版</h3>
+        <p class="quota">10,000 字符 / 月 · 每日 2,000</p>
+        <ul>
+          <li>划词翻译</li>
+          <li>截图翻译</li>
+          <li>自带 API Key,额度不限本工具</li>
+          <li>单词本只读</li>
+        </ul>
+        <a class="plan-cta" href="#download">下载安装</a>
+      </div>
+      <div class="plan feature">
+        <span class="tag">推荐</span>
+        <h3>轻享版</h3>
+        <p class="quota">50,000 字符 / 月 · 6.9 元 / 月</p>
+        <ul>
+          <li>免费版全部功能</li>
+          <li>单词本保存与跨设备同步</li>
+          <li>无每日限额,只有月额度</li>
+          <li>年付 69 元,合 5.75 元 / 月</li>
+        </ul>
+        <a class="plan-cta pri" href="#download">先下载,再用激活码开通</a>
+      </div>
+      <div class="plan">
+        <h3>标准版</h3>
+        <p class="quota">200,000 字符 / 月 · 12.9 元 / 月</p>
+        <ul>
+          <li>轻享版全部功能</li>
+          <li>适合整天读外文文档</li>
+          <li>年付 129 元,合 10.75 元 / 月</li>
+          <li>额度用尽自动回落自带 Key</li>
+        </ul>
+        <a class="plan-cta" href="#download">先下载,再用激活码开通</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">06 / 下载</span>装完就能用</h2>
+        <p class="sub">安装版支持自动更新;便携版解压即用,不写注册表,但升级要手动换包。</p>
+      </div>
+      <p class="aside-note">系统要求 Windows 10 1903+ / Windows 11,64 位。.NET 运行时已内置,不需要另装。装在用户目录,不需要管理员权限。</p>
+    </div>
+
+    <div class="dl">
+      <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
+        <p class="k">安装版 · 推荐</p>
+        <p class="t">FastTranslation-1.2.2-Setup.exe</p>
+        <p class="d">约 70 MB。之后自动检查更新,点一下就能升级,不用再找安装包。</p>
+        <span class="dl-btn pri">下载安装包</span>
+      </a>
+      <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
+        <p class="k">便携版</p>
+        <p class="t">FastTranslation-1.2.2-portable.zip</p>
+        <p class="d">解压到任意目录直接运行,不写注册表。适合放 U 盘或不想装东西的机器。</p>
+        <span class="dl-btn">下载便携包</span>
+      </a>
+    </div>
+    <p class="dl-note">先下载免费版:注册就有 10,000 字符/月,不用自己申请 API Key。付费套餐用激活码开通,兑换入口上线后会在这一页放出来。</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <div class="brand" style="margin-bottom:.5rem">
+        <img src="assets/img/icon.png" alt="">
+        <span>Fast Translation</span>
+      </div>
+      <div class="mono">划词翻译 · 截图翻译 · 单词本</div>
+    </div>
+    <div class="mono">
+      <div>翻译由阿里云百炼 qwen-mt 提供</div>
+      <div>© 2026 Fast Translation</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
