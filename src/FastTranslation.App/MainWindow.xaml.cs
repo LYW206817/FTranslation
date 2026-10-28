@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly ISecretStore _secrets;
     private readonly Action _openSettings;
+    private readonly Action? _openAccount;
     private readonly Action<bool> _setCaptureEnabled;
     private readonly Func<bool> _isCaptureEnabled;
     private CancellationTokenSource? _translateCts;
@@ -26,7 +27,8 @@ public partial class MainWindow : Window
         ISecretStore secrets,
         Action openSettings,
         Action<bool> setCaptureEnabled,
-        Func<bool> isCaptureEnabled)
+        Func<bool> isCaptureEnabled,
+        Action? openAccount = null)
     {
         InitializeComponent();
         WindowChrome.Apply(this);
@@ -40,6 +42,7 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
         _secrets = secrets;
         _openSettings = openSettings;
+        _openAccount = openAccount;
         _setCaptureEnabled = setCaptureEnabled;
         _isCaptureEnabled = isCaptureEnabled;
 
@@ -67,6 +70,16 @@ public partial class MainWindow : Window
         }
         TargetCombo.SelectedIndex = 0;
     }
+
+    /// <summary>Shown in the footer so the signed-in state is visible without opening a window.</summary>
+    public void RefreshAccountStatus(string? email, string? planDisplay)
+    {
+        AccountStatus.Text = email is null
+            ? "账号:未登录"
+            : "账号:" + email + (string.IsNullOrEmpty(planDisplay) ? string.Empty : "(" + planDisplay + ")");
+    }
+
+    private void AccountButton_Click(object sender, RoutedEventArgs e) => _openAccount?.Invoke();
 
     private void RefreshKeyStatus()
     {

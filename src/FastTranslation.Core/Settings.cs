@@ -18,6 +18,10 @@ public sealed class AppSettings
     public List<string> ExcludedProcesses { get; set; } = new();
 
     public string OverrideBaseUrl { get; set; } = "";
+
+    // Account service (FastTranslation.Server). Empty = the built-in default host; a settings
+    // field rather than a constant so a test server or a self-hosted deployment needs no rebuild.
+    public string AccountBaseUrl { get; set; } = "";
     public bool FirstRunCompleted { get; set; }
     public string Theme { get; set; } = "system";
 

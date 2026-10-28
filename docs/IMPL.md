@@ -655,3 +655,47 @@
 - `version.json` 由 blob `bf2f85dea1aab1ea1e6164665c006f1d9b9f6ffb` 更新为 commit `6ef0b2f7e8a92c519772cdb612e44b29a9e3aedf`(version 1.2.2 / size 46766839 / sha256 fc297362… / url 指向通道的 v1.2.2 资产)。
 - 清单四顺位实测:gh-proxy 与 ghfast.top 的 raw 立即 1.2.2;GitHub Pages 在 600 秒缓存过期后于 12:33 变 1.2.2;**fastly.jsdelivr 到 12:40 仍是 1.2.1**("@main" 的 CDN 缓存明显更久)。因为 `UpdateChannel.ManifestUrls` 里 Pages 排第一、这两个 raw 代理排在后两位,不影响正常检查;只有「Pages 挂掉且 jsdelivr 还在缓存旧清单」这种叠加情况下才会短暂读不到新版本,属于已知限窗,遇到再考虑改成「多源取最高版本」。
 - 通道资产可用性:直连 `github.com` 返回 302 后不可达;`https://gh-proxy.com/https://github.com/…/v1.2.2/FastTranslation-1.2.2-Setup.exe` 返回 206、约 138 KB/s ⇒ 下载仍然只能走代理。
+
+## v43 账号基座:自建后端 + 客户端登录链路(阶段0)✅
+
+**为什么这样改**
+
+v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后端、计费」排除在外,只做 BYO Key。用户已经推给朋友用之后要「知道有多少注册用户、免费版与商用版分档、开发者与用户都能看到消耗」,这套前提就作废了 —— 决策与取舍记在 `docs/superpowers/specs/2026-10-28-account-and-billing-design.md`,其中 D5 明确把 spec:743 那条「必须先取得阿里云对代理/转售/代付的书面确认」作废(该行已加删除线)。本版只做**阶段 0 账号基座**:能注册、能登录、能看到自己的额度与用量;翻译仍走用户自己的 Key,**没有任何文本经过本机以外的服务器**,所以这一版没有合规风险,也不影响现有用户。
+
+**后端 `server/FastTranslation.Server`(.NET 10 + SQLite,零第三方业务框架)**
+
+- 只有两个直接依赖:`Microsoft.NET.Sdk.Web` 框架本身 + `Microsoft.Data.Sqlite` 10.0.0。不引 EF、不引 ORM、不引 Identity、不引日志框架 —— 与客户端「最小实现 + 单测」的约定保持一致。
+- `Domain/Plan.cs` 是配额的单一事实源:`Free = 10_000`、`Light = 50_000`、`Standard = 200_000` 字符/月,免费档额外 `FreeDailyChars = 2_000` 字符/天,单账号 `MaxDevicesPerAccount = 3`。`Domain/QuotaPolicy.Evaluate()` 是纯函数(先查月再查日,负数直接抛),所以额度语义可以脱离数据库测边界 —— 这是后面阶段 2 网关复用的同一份判定。
+- 认证不引 JWT 库:`Auth/TokenService.cs` 手写 HS256(iss/aud/sub/email/plan/iat/exp/jti),签名与 base64url 解码**全部包在 try/catch(FormatException)** 里 —— 早期版本漏了这层,畸形 token 会变成 500 而不是 401。刷新令牌是 32 字节随机值的 SHA256,**一次性消费**,重放直接 401。
+- 密码 `Auth/PasswordHasher.cs` 用 PBKDF2-SHA256 / 210,000 轮,格式 `pbkdf2-sha256$iterations$salt$hash`,校验用 `CryptographicOperations.FixedTimeEquals`。
+- 注册可要求邮箱验证码(`Auth/VerificationCodeService.cs`:6 位数字、`VerificationCodeMinutes = 10`、`VerificationResendSeconds = 60`、`VerificationMaxAttempts = 5`)。开发环境 `RequireEmailVerification = false`,于是 `POST /api/v1/auth/code` 回 `verification_disabled`,客户端据此把「验证码」输入行整行隐藏 —— 不要把它当成错误。
+- 登录失败一律 `401 credentials_invalid`,不区分「邮箱不存在」与「密码错」,避免账号枚举。
+- 限流只作用在 `/api/v1/auth` 组上且按 **RemoteIpAddress**(`Api/RateLimiting.cs`)。**配额绝不能按 IP 限** —— 校园网与公司网 NAT 会把核心用户整片误杀(设计 §7.4)。
+- `Storage/AccountStore.cs` 集中全部 SQL;三张用量表:`usage_monthly(user_id, month)`、`usage_daily(device_id, day)`、`usage_events`(逐条明细,供后续账单核对)。SQLite 开 WAL + `busy_timeout=5000` + `foreign_keys=ON`。
+- `Program.cs` 里 `ServerOptions` 必须用 `AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection(...).Get<ServerOptions>())` 取,**不能**在 `Build()` 之前从 `builder.Configuration` 直接读 —— 否则 `WebApplicationFactory` 的内存配置覆盖不到,集成测试会连到真实数据库。
+- 生产环境 `Server:SigningKey` 少于 32 字节直接抛异常拒绝启动(而不是悄悄用弱 key);Development 下才回退成随机 32 字节。
+
+**客户端**
+
+- 全部网络代码在 `src/FastTranslation.Core/Account/`(无 WPF 依赖,可单测):`AccountApiClient` / `AccountSessionStore` / `DeviceIdentity` / `AccountTypes`。`AccountApiClient` 承诺**永不抛异常**,所有失败都映射成 `AccountErrorCode`;传输层异常(DNS/拒绝/TLS/超时)那一层是靠 `SendAsync` 返回 `null` 实现的,不是靠调用方 catch。
+- **wire 必须是 camelCase**:服务器 DTO 是 `record RegisterRequest(string Email, ...)`,System.Text.Json 服务端默认**大小写敏感**,所以客户端的 `JsonOptions` 必须带 `PropertyNamingPolicy = JsonNamingPolicy.CamelCase`。漏了这一条的后果是注册/登录稳定 400,而单元测试如果只断言路径不查请求体是发现不了的 —— 所以测试里显式断言了 `"code":"123456"`(注意这个字段的 wire 名就是 `code`,不是 `verificationCode`)。
+- 会话(access + refresh)存 `ISecretStore`(`AccountSessionStore.SecretName = "account-session"`,Windows 下走 DPAPI),**不进 settings.json**:refresh 令牌是 90 天凭证,不该以明文躺在设置文件里。access 令牌提前 60 秒视为过期,避免边界上刚好失效。
+- `AccountCoordinator` 用 `SemaphoreSlim` 保证并发请求只会刷新一次令牌;只有 `Unauthorized`/`InvalidResponse` 才清会话登出,网络类错误保留会话等下次启动重试 —— 否则用户坐一趟地铁就被登出。
+- 入口:托盘菜单「账号」(id 1006,`TrayIcon.AccountRequested`)与主窗 footer 的「账号」按钮,都打开同一个非模态 `AccountWindow`(已开则前置复用)。设置页「服务」卡片新增**账号服务地址**输入框,指向自建或测试服务器;留空走内置默认。
+- 会话恢复在启动时后台跑(`RestoreAccountAsync`),失败只 `Trace` 不弹窗。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**;**`dotnet test` → 112 + 83 + 92 + 40 = 327 全绿**(阶段 0 之前基线 290,新增 37 个)。
+- 新增测试项目 `tests/FastTranslation.Server.Tests`(92 例):`QuotaPolicyTests`(月尽/日尽/两者皆尽报月/付费无日限/刚好用尽/负数抛)、`PasswordHasherTests`(畸形串 5 种)、`TokenServiceTests`(篡改 payload / 他钥签名 / 过期 / `alg=none` / 畸形输入 6 种)、`AccountStoreTests`(真 SQLite 临时库,含设备复用、refresh 一次性与过期、验证码计数、`ReadAccountMetrics`)、`AuthEndpointTests`(17 个 HTTP 端到端,用 `WebApplicationFactory` 覆盖注册/重复邮箱/统一登录失败/伪造令牌/refresh 轮换与重放/设备上限/admin 越权/升级套餐后 20 万字符且无日限)。
+- 新增 `tests/FastTranslation.Core.Tests/AccountClientTests.cs`(34 例):`StubHandler : HttpMessageHandler` 断言请求 URI、方法、body 与 `Authorization: Bearer`,并覆盖 429/401/5xx 兜底、`HttpRequestException`→Network、`<html>gateway</html>`→InvalidResponse、死服务器下的 logout 不抛。
+- 真服务器 E2E(Production 环境、独立 SQLite 文件、curl 与一个临时控制台探针):`/health` ok → 注册 `plan=free quota=10000 daily=2000` → me / usage → 重复注册 `EmailTaken` → 错密码 `InvalidCredentials` → refresh 轮换成功且新 access 不同 → **重放 Unauthorized** → 垃圾令牌 Unauthorized → logout → 死主机 `Network`。探针与临时库已删除。
+- UI 证据(`assets/qa/account-main.png` 980x945、`assets/qa/account-dialog.png` 770x702 / 2366 种颜色,该目录不入库):UIA 控件树含邮箱/密码输入框、去注册/登录/关闭按钮,设置页 `账号服务地址` 输入框存在。
+
+**残留风险**
+
+- `AccountApiClient.DefaultBaseUrl` 目前是 `http://127.0.0.1:5199`(开发默认)。**正式对外前必须换成备案后的域名并走 HTTPS**,否则用户装上去默认连不上账号服务器(翻译不受影响,仍用本地 Key)。
+- 本机没有任何人登录过的情况下,托盘「账号」能打开但提交会连不上 —— 属于预期行为,文案已说明是「自定义服务地址」。
+- 邮件验证码的 SMTP 通道未接(未配置时只把验证码打进日志),所以**目前不能开 `RequireEmailVerification`**;阶段 2 做免费额度前必须先接上,否则刷号无门槛(设计 §7.4 三道闸的第一道)。
+- 服务器尚无 TLS 终止、无反向代理、无备份策略;数据库是单文件 WAL,适合百人级,千人级要重新评估。
+- 分档与网关(阶段 2)未做:现在所有人都是免费档,额度只被**展示**,没有任何地方真正扣减 —— `usage_events` 表与 `RecordUsage` 已就位但暂时没有调用方。

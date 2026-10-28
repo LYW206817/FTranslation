@@ -16,3 +16,8 @@ assets/qa/
 settings.json
 install.log
 *.wixpdb
+# server runtime state (SQLite database + WAL files are local, never committed)
+server/**/data/
+*.db
+*.db-wal
+*.db-shm

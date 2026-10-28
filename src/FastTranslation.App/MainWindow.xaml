@@ -91,10 +91,16 @@
     <DockPanel Grid.Row="4" Margin="2,12,2,0">
       <Button x:Name="KeyButton" Content="配置 Key" DockPanel.Dock="Right" HorizontalAlignment="Right"
               Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>
+      <Button x:Name="AccountButton" Content="账号" DockPanel.Dock="Right" HorizontalAlignment="Right"
+              Padding="10,4" FontSize="12" Margin="0,0,8,0" Click="AccountButton_Click"/>
       <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Right" VerticalAlignment="Center"
                  Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
-      <TextBlock x:Name="KeyStatus" VerticalAlignment="Center"
-                 Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock x:Name="KeyStatus"
+                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+        <TextBlock x:Name="AccountStatus" Text="账号:未登录" Margin="0,2,0,0"
+                   Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+      </StackPanel>
     </DockPanel>
   </Grid>
 </Window>
