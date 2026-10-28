@@ -90,10 +90,17 @@ public sealed class AccountApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// <paramref name="deviceFingerprint"/> is what makes the daily line meaningful: the gateway
+    /// meters translation per device, so without it the server can only report the account month.
+    /// </summary>
     public async Task<AccountApiResult<AccountUsage>> GetUsageAsync(
-        string accessToken, CancellationToken cancellationToken)
+        string accessToken, CancellationToken cancellationToken, string? deviceFingerprint = null)
     {
-        var response = await SendAsync(HttpMethod.Get, "api/v1/account/usage", accessToken, null, cancellationToken)
+        var path = string.IsNullOrWhiteSpace(deviceFingerprint)
+            ? "api/v1/account/usage"
+            : "api/v1/account/usage?fingerprint=" + Uri.EscapeDataString(deviceFingerprint.Trim());
+        var response = await SendAsync(HttpMethod.Get, path, accessToken, null, cancellationToken)
             .ConfigureAwait(false);
         return await ReadAsync<UsageResponse, AccountUsage>(response, body => body.ToUsage(), cancellationToken)
             .ConfigureAwait(false);

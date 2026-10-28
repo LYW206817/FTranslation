@@ -10,6 +10,14 @@ public enum TranslationErrorCode
     InvalidResponse,
     ServerError,
     Cancelled,
+
+    /// <summary>
+    /// The gateway declined to serve this request because the account is out of quota (or the
+    /// developer's free tier is not switched on). It is deliberately distinct from
+    /// <see cref="RateLimited"/>: the composite provider treats it as "try the user's own key".
+    /// </summary>
+    QuotaExhausted,
+
     Unknown,
 }
 
@@ -28,6 +36,15 @@ public sealed record TranslationRequest(string Text, string SourceLanguage, stri
     public const int MaxInputLength = 5000;
 }
 
+/// <summary>
+/// What one request cost, as reported by the service that served it. Optional because a provider
+/// that talks to a user's own key may not report usage, and because failures cost nothing.
+/// </summary>
+public sealed record TokenUsage(long InputTokens, long OutputTokens)
+{
+    public long TotalTokens => InputTokens + OutputTokens;
+}
+
 public sealed record TranslationResult(
     string RequestText,
     string TranslatedText,
@@ -38,6 +55,16 @@ public sealed record TranslationResult(
     bool FromCache)
 {
     public TranslationError? Error { get; init; }
+
+    /// <summary>Token accounting when the provider reported it; null otherwise.</summary>
+    public TokenUsage? Usage { get; init; }
+
+    /// <summary>
+    /// One extra sentence for the card, such as "the plan quota is spent, this one used your own
+    /// key". Providers leave it null when the answer needs no explanation.
+    /// </summary>
+    public string? Notice { get; init; }
+
     public bool Succeeded => Error is null;
 }
 

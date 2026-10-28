@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using FastTranslation.Server;
 using FastTranslation.Server.Api;
 using FastTranslation.Server.Auth;
+using FastTranslation.Server.Gateway;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Authentication;
 
@@ -31,6 +32,10 @@ builder.Services.AddSingleton(sp =>
     return new ServerDatabase(path);
 });
 
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Gateway);
+builder.Services.AddSingleton<GatewayRateLimiter>();
+builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
+
 builder.Services.AddSingleton<AccountStore>();
 builder.Services.AddSingleton<NoteStore>();
 builder.Services.AddSingleton<VerificationCodeService>();
@@ -53,6 +58,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapNotesEndpoints();
+app.MapGatewayEndpoints();
 app.MapAdminEndpoints();
 
 app.Run();

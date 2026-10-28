@@ -13,6 +13,13 @@ public sealed class QwenMtOptions
     public string BaseUrl { get; init; } = "https://dashscope.aliyuncs.com/compatible-mode/v1";
     public string Model { get; init; } = "qwen-mt-flash";
     public int TimeoutSeconds { get; init; } = 30;
+
+    /// <summary>
+    /// Headers sent with every request. Only the developer gateway needs them: the device id lets
+    /// the per-device daily quota land on the device that actually sent the text. DashScope itself
+    /// ignores unknown headers, so one class serves both routes.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ExtraHeaders { get; init; }
 }
 
 /// <summary>
@@ -29,6 +36,8 @@ public sealed class QwenMtProvider : ITranslationProvider
     private readonly Func<string?> _apiKeyAccessor;
     private readonly QwenMtOptions _options;
     private readonly bool _ownsHttp;
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>();
 
     public QwenMtProvider(Func<string?> apiKeyAccessor, QwenMtOptions? options = null, HttpClient? http = null)
     {
@@ -61,13 +70,17 @@ public sealed class QwenMtProvider : ITranslationProvider
             {
                 using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUri());
                 httpRequest.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                foreach (var header in _options.ExtraHeaders ?? EmptyHeaders)
+                {
+                    httpRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
                 httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
                 using var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var translated = await ReadTranslationAsync(response, ct).ConfigureAwait(false);
+                    var (translated, usage) = await ReadTranslationAsync(response, ct).ConfigureAwait(false);
                     if (translated is null)
                     {
                         return Fail(request, TranslationError.InvalidResponse("content missing"), started);
@@ -75,10 +88,22 @@ public sealed class QwenMtProvider : ITranslationProvider
                     return new TranslationResult(
                         request.Text, translated,
                         request.SourceLanguage, request.TargetLanguage, request.Model,
-                        Environment.TickCount64 - started, FromCache: false);
+                        Environment.TickCount64 - started, FromCache: false)
+                    {
+                        Usage = usage,
+                    };
                 }
 
-                var error = ClassifyStatus(response, await SafeReadBodyAsync(response, ct).ConfigureAwait(false));
+                var body = await SafeReadBodyAsync(response, ct).ConfigureAwait(false);
+                // The gateway refuses a spent quota with 429 as well, so only the body can tell the
+                // two apart. Retrying a spent quota just wastes the user's time, and the composite
+                // provider has to know this means "switch to your own key".
+                if (QuotaRefusal.Describe(body) is { } quota)
+                {
+                    return Fail(request, new TranslationError(TranslationErrorCode.QuotaExhausted, quota), started);
+                }
+
+                var error = ClassifyStatus(response, body);
                 if (error.Code == TranslationErrorCode.RateLimited && attempt == 0)
                 {
                     await DelayAsync(attempt, ct).ConfigureAwait(false);
@@ -128,23 +153,42 @@ public sealed class QwenMtProvider : ITranslationProvider
         return JsonSerializer.Serialize(payload);
     }
 
-    private static async Task<string?> ReadTranslationAsync(HttpResponseMessage response, CancellationToken ct)
+    private static async Task<(string? Text, TokenUsage? Usage)> ReadTranslationAsync(HttpResponseMessage response, CancellationToken ct)
     {
         try
         {
             using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), cancellationToken: ct).ConfigureAwait(false);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0) return null;
+            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0) return (null, null);
             var message = choices[0].TryGetProperty("message", out var m) ? m : default;
-            if (message.ValueKind == JsonValueKind.Undefined || !message.TryGetProperty("content", out var content)) return null;
+            if (message.ValueKind == JsonValueKind.Undefined || !message.TryGetProperty("content", out var content)) return (null, null);
             var text = content.ValueKind == JsonValueKind.String ? content.GetString() : null;
-            return string.IsNullOrWhiteSpace(text) ? null : text;
+            if (string.IsNullOrWhiteSpace(text)) return (null, null);
+            return (text, ReadUsage(root));
         }
         catch (JsonException)
         {
-            return null;
+            return (null, null);
         }
     }
+
+    /// <summary>
+    /// Usage rides along in the same body, so reading it costs nothing extra. Absent fields mean the
+    /// consumer keeps its own estimate rather than reporting a fabricated zero.
+    /// </summary>
+    internal static TokenUsage? ReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object) return null;
+
+        var input = ReadTokenCount(usage, "prompt_tokens");
+        var output = ReadTokenCount(usage, "completion_tokens");
+        return input is null && output is null ? null : new TokenUsage(input ?? 0, output ?? 0);
+    }
+
+    private static long? ReadTokenCount(JsonElement usage, string name) =>
+        usage.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var count)
+            ? count
+            : null;
 
     private static TranslationError ClassifyStatus(HttpResponseMessage response, string body)
     {

@@ -42,6 +42,36 @@ public sealed class AccountCoordinator
     public string BaseUrl => _client.BaseUrl;
     public string NotesBaseUrl => _notes?.BaseUrl ?? _client.BaseUrl;
 
+    /// <summary>The gateway bills the per-device daily quota, so it must see the same fingerprint
+    /// sign-in used — otherwise every translation lands on a fresh anonymous device row.</summary>
+    public string DeviceFingerprint => _deviceFingerprint;
+
+    /// <summary>
+    /// Access token for a call this class does not own (the translation gateway). Rotates first
+    /// when the token is within a minute of expiring: a gateway request that dies on 401 costs a
+    /// whole wasted round trip in front of every translation.
+    /// </summary>
+    public async Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        if (_session is not { } session) return null;
+        var cutOff = DateTimeOffset.UtcNow.AddMinutes(1);
+        if (session.ExpiresAt > cutOff) return session.AccessToken;
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(true);
+        try
+        {
+            var current = _session;
+            if (current is null) return null;
+            if (current.ExpiresAt > cutOff) return current.AccessToken;
+            await RefreshAsync(current, cancellationToken).ConfigureAwait(true);
+            return _session?.AccessToken;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Raised whenever the session changes so any visible surface can re-render.</summary>
     public event Action? Changed;
 
@@ -126,7 +156,7 @@ public sealed class AccountCoordinator
         _client.RequestVerificationCodeAsync(email, cancellationToken);
 
     public Task<AccountApiResult<AccountUsage>> ReadUsageAsync(CancellationToken cancellationToken) =>
-        WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken), cancellationToken);
+        WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken, _deviceFingerprint), cancellationToken);
 
     /// <summary>
     /// Saves one pair. The whole notebook rides on the session wrapper so an expired access token

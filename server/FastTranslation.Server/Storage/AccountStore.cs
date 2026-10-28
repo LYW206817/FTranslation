@@ -4,7 +4,11 @@ using Microsoft.Data.Sqlite;
 
 namespace FastTranslation.Server.Storage;
 
-public sealed record UserRecord(Guid Id, string Email, string PasswordHash, PlanTier Plan, long CreatedAt, bool Disabled);
+/// <summary>
+/// <paramref name="PlanExpiresAt"/> null = granted without an end date. See Domain/Entitlement for
+/// why that means "active forever" rather than "expired".
+/// </summary>
+public sealed record UserRecord(Guid Id, string Email, string PasswordHash, PlanTier Plan, long? PlanExpiresAt, long CreatedAt, bool Disabled);
 
 public sealed record DeviceRecord(Guid Id, Guid UserId, string Fingerprint, string Name, long CreatedAt, long LastSeenAt);
 
@@ -20,7 +24,7 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, email, password_hash, plan, created_at, disabled FROM users WHERE email = $email";
+        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled FROM users WHERE email = $email";
         command.Parameters.AddWithValue("$email", NormalizeEmail(email));
 
         using var reader = command.ExecuteReader();
@@ -31,40 +35,56 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, email, password_hash, plan, created_at, disabled FROM users WHERE id = $id";
+        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled FROM users WHERE id = $id";
         command.Parameters.AddWithValue("$id", id.ToString("D"));
 
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadUser(reader) : null;
     }
 
-    public UserRecord CreateUser(string email, string passwordHash, PlanTier plan)
+    public UserRecord CreateUser(string email, string passwordHash, PlanTier plan, long? planExpiresAt = null)
     {
-        var record = new UserRecord(Guid.NewGuid(), NormalizeEmail(email), passwordHash, plan, database.NowUnix, false);
+        var record = new UserRecord(Guid.NewGuid(), NormalizeEmail(email), passwordHash, plan, planExpiresAt, database.NowUnix, false);
 
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO users (id, email, password_hash, plan, created_at, disabled)
-            VALUES ($id, $email, $hash, $plan, $createdAt, 0)
+            INSERT INTO users (id, email, password_hash, plan, plan_expires_at, created_at, disabled)
+            VALUES ($id, $email, $hash, $plan, $planExpiresAt, $createdAt, 0)
             """;
         command.Parameters.AddWithValue("$id", record.Id.ToString("D"));
         command.Parameters.AddWithValue("$email", record.Email);
         command.Parameters.AddWithValue("$hash", record.PasswordHash);
         command.Parameters.AddWithValue("$plan", (int)record.Plan);
+        command.Parameters.AddWithValue("$planExpiresAt", (object?)record.PlanExpiresAt ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", record.CreatedAt);
         command.ExecuteNonQuery();
         return record;
     }
 
-    public bool SetPlan(Guid userId, PlanTier plan)
+    /// <summary>
+    /// Grants a plan. <paramref name="expiresAtUnix"/> null clears any end date, which is what a
+    /// manual activation code wants: the account stays usable until an operator says otherwise.
+    /// </summary>
+    public bool SetPlan(Guid userId, PlanTier plan, long? expiresAtUnix = null)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE users SET plan = $plan WHERE id = $id";
+        command.CommandText = "UPDATE users SET plan = $plan, plan_expires_at = $expiresAt WHERE id = $id";
         command.Parameters.AddWithValue("$plan", (int)plan);
+        command.Parameters.AddWithValue("$expiresAt", (object?)expiresAtUnix ?? DBNull.Value);
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>Today's total spend across every account, in micro-yuan — the gateway's budget fuse.</summary>
+    public long ReadTodayCostMicros()
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(SUM(cost_micros), 0) FROM usage_events WHERE created_at >= $since";
+        command.Parameters.AddWithValue("$since", database.NowUnix - (database.NowUnix % 86_400));
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
     /// <summary>Returns the device for this fingerprint, creating it while the account is under the device cap.</summary>
@@ -138,6 +158,22 @@ public sealed class AccountStore(ServerDatabase database)
         return new DeviceResult(true, device, null);
     }
 
+    /// <summary>Read-only device lookup used on the gateway hot path (avoids a write per request).</summary>
+    public DeviceRecord? FindDeviceByFingerprint(Guid userId, string fingerprint)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, user_id, fingerprint, name, created_at, last_seen_at
+            FROM devices WHERE user_id = $userId AND fingerprint = $fingerprint
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$fingerprint", fingerprint.Trim());
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadDevice(reader) : null;
+    }
+
     public DeviceRecord? FindDevice(Guid userId, Guid deviceId)
     {
         using var connection = database.Open();
@@ -176,7 +212,7 @@ public sealed class AccountStore(ServerDatabase database)
         return new UsageSnapshot(monthly, daily, database.ThisMonthKey, database.TodayKey);
     }
 
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long now)
+    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now)
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
@@ -211,8 +247,8 @@ public sealed class AccountStore(ServerDatabase database)
         {
             entry.Transaction = transaction;
             entry.CommandText = """
-                INSERT INTO usage_events (user_id, device_id, model, chars, tokens_in, tokens_out, source, created_at)
-                VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, 'gateway', $now)
+                INSERT INTO usage_events (user_id, device_id, model, chars, tokens_in, tokens_out, cost_micros, source, created_at)
+                VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, $cost, 'gateway', $now)
                 """;
             entry.Parameters.AddWithValue("$userId", userId.ToString("D"));
             entry.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
@@ -220,6 +256,7 @@ public sealed class AccountStore(ServerDatabase database)
             entry.Parameters.AddWithValue("$chars", chars);
             entry.Parameters.AddWithValue("$tokensIn", tokensIn);
             entry.Parameters.AddWithValue("$tokensOut", tokensOut);
+            entry.Parameters.AddWithValue("$cost", costMicros);
             entry.Parameters.AddWithValue("$now", now);
             entry.ExecuteNonQuery();
         }
@@ -386,8 +423,9 @@ public sealed class AccountStore(ServerDatabase database)
         reader.GetString(1),
         reader.GetString(2),
         (PlanTier)reader.GetInt32(3),
-        reader.GetInt64(4),
-        reader.GetInt32(5) != 0);
+        reader.IsDBNull(4) ? null : reader.GetInt64(4),
+        reader.GetInt64(5),
+        reader.GetInt32(6) != 0);
 
     private static DeviceRecord ReadDevice(SqliteDataReader reader) => new(
         Guid.Parse(reader.GetString(0)),

@@ -169,6 +169,8 @@ public sealed class NotesApiClient
         {
             switch (error.GetString())
             {
+                case "subscription_required": return AccountErrorCode.SubscriptionRequired;
+                case "account_disabled": return AccountErrorCode.AccountDisabled;
                 case "notes_limit_reached": return AccountErrorCode.Server;
                 case "note_missing":
                 case "kind_invalid":

@@ -83,6 +83,25 @@ public class NotesApiClientTests
         Assert.Contains("\"kind\":\"phrase\"", handler.LastBody);
     }
 
+    [Theory]
+    [InlineData("subscription_required", AccountErrorCode.SubscriptionRequired)]
+    [InlineData("account_disabled", AccountErrorCode.AccountDisabled)]
+    [InlineData("notes_limit_reached", AccountErrorCode.Server)]
+    [InlineData("kind_invalid", AccountErrorCode.InvalidResponse)]
+    public async Task Save_surfaces_the_servers_error_code_instead_of_reading_403_as_disabled(
+        string error, AccountErrorCode expected)
+    {
+        // 订阅闸门与停用账号都用 403，只有响应体里的 error 能区分；映射错了会对着正常用户说“账号已停用”
+        var (client, _) = BuildClient(HttpStatusCode.Forbidden, $"{{\"error\":\"{error}\"}}");
+
+        var result = await client.SaveAsync(
+            "token-1", NoteKind.Word, "hello", "你好", "en", "zh", "qwen-mt-flash", "chrome",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(expected, result.Error!.Code);
+    }
+
     [Fact]
     public async Task Save_omits_kind_when_unknown_so_the_server_classifies()
     {

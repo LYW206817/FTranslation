@@ -157,8 +157,8 @@ public static class AuthEndpoints
             accessToken,
             refreshToken,
             SecondsUntil(expiresAt, database),
-            ToAccountDto(user),
-            ToUsageDto(store.ReadUsage(user.Id, null), user.Plan)));
+            ToAccountDto(user, database),
+            ToUsageDto(store.ReadUsage(user.Id, null), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix))));
     }
 
     private static IResult Logout(ClaimsPrincipal principal, AccountStore store)
@@ -183,19 +183,28 @@ public static class AuthEndpoints
             accessToken,
             refreshToken,
             SecondsUntil(expiresAt, database),
-            ToAccountDto(user),
-            ToUsageDto(store.ReadUsage(user.Id, device.Id), user.Plan));
+            ToAccountDto(user, database),
+            ToUsageDto(store.ReadUsage(user.Id, device.Id), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix)));
     }
 
     private static int SecondsUntil(DateTimeOffset expiresAt, ServerDatabase database)
         => (int)Math.Max(0, expiresAt.ToUnixTimeSeconds() - database.NowUnix);
 
-    internal static AccountDto ToAccountDto(UserRecord user) => new(
-        user.Id,
-        user.Email,
-        Plans.ToWire(user.Plan),
-        Plans.MonthlyQuota(user.Plan),
-        Plans.DailyQuota(user.Plan));
+    /// <summary>
+    /// An expired subscription reports as free: the client must not keep a paid label while the
+    /// server enforces free limits, or the user sees "标准版" next to a 10,000-character cap.
+    /// </summary>
+    internal static AccountDto ToAccountDto(UserRecord user, ServerDatabase database)
+    {
+        var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
+        return new AccountDto(
+            user.Id,
+            user.Email,
+            Plans.ToWire(tier),
+            Plans.MonthlyQuota(tier),
+            Plans.DailyQuota(tier),
+            tier == PlanTier.Free ? null : user.PlanExpiresAt);
+    }
 
     internal static UsageDto ToUsageDto(UsageSnapshot usage, PlanTier plan)
     {

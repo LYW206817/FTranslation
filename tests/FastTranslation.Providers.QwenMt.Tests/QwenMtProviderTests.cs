@@ -93,6 +93,52 @@ public class QwenMtProviderTests
     }
 
     [Fact]
+    public async Task Success_ReadsUsageFromTheSameBody()
+    {
+        using var server = new FakeQwenServer
+        {
+            Handler = _ => (200, """
+                {"choices":[{"message":{"content":"你好"}}],"usage":{"prompt_tokens":56,"completion_tokens":9,"total_tokens":65}}
+                """),
+        };
+        using var provider = new QwenMtProvider(() => "sk-test", new QwenMtOptions { BaseUrl = server.Url });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(56, result.Usage?.InputTokens);
+        Assert.Equal(9, result.Usage?.OutputTokens);
+        Assert.Equal(65, result.Usage?.TotalTokens);
+    }
+
+    [Fact]
+    public async Task Success_WithoutUsageLeavesItNull()
+    {
+        using var server = new FakeQwenServer();
+        using var provider = new QwenMtProvider(() => "sk-test", new QwenMtOptions { BaseUrl = server.Url });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        // Null means "unknown"; reporting 0 would silently claim the request was free.
+        Assert.Null(result.Usage);
+    }
+
+    [Fact]
+    public async Task Failure_CarriesNoUsage()
+    {
+        using var server = new FakeQwenServer
+        {
+            Handler = _ => (500, "{\"error\":{\"message\":\"boom\"}}"),
+        };
+        using var provider = new QwenMtProvider(() => "sk-bad", new QwenMtOptions { BaseUrl = server.Url });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(TranslationErrorCode.ServerError, result.Error?.Code);
+        Assert.Null(result.Usage);
+    }
+
+    [Fact]
     public async Task Unauthorized_MapsToAuthentication()
     {
         using var server = new FakeQwenServer
@@ -148,4 +194,52 @@ public class QwenMtProviderTests
         Assert.Equal(TranslationErrorCode.ContentTooLong, result.Error?.Code);
         Assert.Empty(server.Bodies);
     }
+[Fact]
+    public async Task GatewayQuotaRefusal_MapsToQuotaExhaustedWithoutRetry()
+    {
+        var calls = 0;
+        using var server = new FakeQwenServer
+        {
+            Handler = _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return (429, "{\"error\":\"monthly_quota_exhausted\"}");
+            },
+        };
+        using var provider = new QwenMtProvider(() => "token", new QwenMtOptions { BaseUrl = server.Url });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        // 额度用尽是"换个 Key 就行"，不是"稍后再试"，所以不能走 429 的重试分支
+        Assert.Equal(TranslationErrorCode.QuotaExhausted, result.Error?.Code);
+        Assert.Equal("本月额度已用完", result.Error?.Message);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task ExtraHeaders_AreAddedToTheRequest()
+    {
+        string? seen = null;
+        using var server = new FakeQwenServer
+        {
+            Handler = ctx =>
+            {
+                seen = ctx.Headers["X-FT-Device"];
+                return (200, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
+            },
+        };
+        using var provider = new QwenMtProvider(
+            () => "token",
+            new QwenMtOptions
+            {
+                BaseUrl = server.Url,
+                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = "fp-1" },
+            });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("fp-1", seen);
+    }
 }
+

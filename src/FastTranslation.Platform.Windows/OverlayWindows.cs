@@ -437,6 +437,8 @@ public sealed class ResultCardWindow : IDisposable
             Foreground = FtTheme.TextMuted,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
+            // 网关回落时会在这里多一句“这次用了你自己的 Key”，420 宽度下必须换行才不截断
+            TextWrapping = TextWrapping.Wrap,
         };
 
         _spinner = new Ellipse
@@ -607,7 +609,7 @@ public sealed class ResultCardWindow : IDisposable
         {
             _targetBlock.Foreground = FtTheme.TextPrimary;
             _targetBlock.Text = result.TranslatedText;
-            _statusBlock.Text = $"{result.Model} · {result.ElapsedMs}ms{(result.FromCache ? " · 缓存" : "")}";
+            _statusBlock.Text = StatusLine(result);
             var writable = selection.IsWritable;
             _replaceButton.Visibility = writable ? Visibility.Visible : Visibility.Collapsed;
             _insertButton.Visibility = writable ? Visibility.Visible : Visibility.Collapsed;
@@ -716,6 +718,15 @@ public sealed class ResultCardWindow : IDisposable
     {
         _saveButton.Content = "已保存";
         _saveButton.IsEnabled = false;
+    }
+
+    /// <summary>模型 · 耗时 · 缓存 · tokens，后面再跟上组合 provider 想说的那一句。</summary>
+    internal static string StatusLine(TranslationResult result)
+    {
+        var line = $"{result.Model} · {result.ElapsedMs}ms{(result.FromCache ? " · 缓存" : "")}";
+        if (result.Usage is { } usage) line += $" · {usage.TotalTokens} tokens";
+        if (!string.IsNullOrWhiteSpace(result.Notice)) line += " · " + result.Notice;
+        return line;
     }
 
     private static string TrimForDisplay(string text, int max) =>

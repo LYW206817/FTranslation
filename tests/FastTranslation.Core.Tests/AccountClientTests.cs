@@ -192,6 +192,17 @@ public class AccountClientTests
     }
 
     [Fact]
+    public async Task Usage_asks_for_this_device_when_a_fingerprint_is_known()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, UsageJson);
+
+        var result = await client.GetUsageAsync("access-1", CancellationToken.None, "fp-1");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("http://127.0.0.1:5199/api/v1/account/usage?fingerprint=fp-1", handler.LastUri!.ToString());
+    }
+
+    [Fact]
     public async Task Verification_disabled_means_the_form_skips_the_code()
     {
         var (client, _) = Build(HttpStatusCode.OK, """{"message":"verification_disabled"}""");
