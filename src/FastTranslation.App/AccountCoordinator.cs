@@ -1,5 +1,6 @@
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Notes;
 
 namespace FastTranslation.App;
 
@@ -11,6 +12,7 @@ namespace FastTranslation.App;
 public sealed class AccountCoordinator
 {
     private readonly AccountApiClient _client;
+    private readonly NotesApiClient? _notes;
     private readonly AccountSessionStore _store;
     private readonly string _deviceFingerprint;
     private readonly string _deviceName;
@@ -18,9 +20,14 @@ public sealed class AccountCoordinator
 
     private AccountSession? _session;
 
-    public AccountCoordinator(AccountApiClient client, ISecretStore secrets, string? deviceFingerprint = null)
+    public AccountCoordinator(
+        AccountApiClient client,
+        ISecretStore secrets,
+        string? deviceFingerprint = null,
+        NotesApiClient? notes = null)
     {
         _client = client;
+        _notes = notes;
         _store = new AccountSessionStore(secrets);
         _deviceFingerprint = string.IsNullOrWhiteSpace(deviceFingerprint)
             ? DeviceIdentity.LoadOrCreate(secrets)
@@ -30,7 +37,10 @@ public sealed class AccountCoordinator
 
     public AccountSession? Session => _session;
 
+    public bool IsSignedIn => _session is not null;
+
     public string BaseUrl => _client.BaseUrl;
+    public string NotesBaseUrl => _notes?.BaseUrl ?? _client.BaseUrl;
 
     /// <summary>Raised whenever the session changes so any visible surface can re-render.</summary>
     public event Action? Changed;
@@ -117,6 +127,50 @@ public sealed class AccountCoordinator
 
     public Task<AccountApiResult<AccountUsage>> ReadUsageAsync(CancellationToken cancellationToken) =>
         WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Saves one pair. The whole notebook rides on the session wrapper so an expired access token
+    /// is rotated instead of surfacing as "token expired" in a card the user just clicked.
+    /// </summary>
+    public Task<AccountApiResult<Note>> SaveNoteAsync(
+        NoteKind? kind,
+        string sourceText,
+        string targetText,
+        string sourceLang,
+        string targetLang,
+        string model,
+        string originApp,
+        CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<Note>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(
+            token => _notes.SaveAsync(
+                token, kind, sourceText, targetText, sourceLang, targetLang, model, originApp, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task<AccountApiResult<NotePage>> ListNotesAsync(
+        NoteKind? kind, string? query, int limit, int offset, CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<NotePage>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(
+            token => _notes.ListAsync(token, kind, query, limit, offset, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task<AccountApiResult<Note>> UpdateNoteAsync(
+        Guid id, NoteKind? kind, string? note, CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<Note>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(
+            token => _notes.UpdateAsync(token, id, kind, note, cancellationToken), cancellationToken);
+    }
+
+    public Task<AccountApiResult<NoteDeleted>> DeleteNoteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<NoteDeleted>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(token => _notes.DeleteAsync(token, id, cancellationToken), cancellationToken);
+    }
 
     public async Task SignOutAsync(CancellationToken cancellationToken)
     {

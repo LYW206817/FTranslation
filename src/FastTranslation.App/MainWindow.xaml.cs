@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly ISecretStore _secrets;
     private readonly Action _openSettings;
     private readonly Action? _openAccount;
+    private readonly Action? _openNotes;
     private readonly Action<bool> _setCaptureEnabled;
     private readonly Func<bool> _isCaptureEnabled;
     private CancellationTokenSource? _translateCts;
@@ -28,7 +29,8 @@ public partial class MainWindow : Window
         Action openSettings,
         Action<bool> setCaptureEnabled,
         Func<bool> isCaptureEnabled,
-        Action? openAccount = null)
+        Action? openAccount = null,
+        Action? openNotes = null)
     {
         InitializeComponent();
         WindowChrome.Apply(this);
@@ -43,6 +45,7 @@ public partial class MainWindow : Window
         _secrets = secrets;
         _openSettings = openSettings;
         _openAccount = openAccount;
+        _openNotes = openNotes;
         _setCaptureEnabled = setCaptureEnabled;
         _isCaptureEnabled = isCaptureEnabled;
 
@@ -80,6 +83,8 @@ public partial class MainWindow : Window
     }
 
     private void AccountButton_Click(object sender, RoutedEventArgs e) => _openAccount?.Invoke();
+
+    private void NotesButton_Click(object sender, RoutedEventArgs e) => _openNotes?.Invoke();
 
     private void RefreshKeyStatus()
     {

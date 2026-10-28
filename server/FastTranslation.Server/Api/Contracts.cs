@@ -54,3 +54,32 @@ public sealed record DeviceRequest(string? Fingerprint, string? Name);
 public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt);
 
 public sealed record PlanChangeRequest(string? Plan);
+
+// ---- notes (phase 1 notebook) ----
+
+public sealed record SaveNoteRequest(
+    string? Kind,
+    string? SourceText,
+    string? TargetText,
+    string? SourceLang,
+    string? TargetLang,
+    string? Model,
+    string? OriginApp);
+
+public sealed record UpdateNoteRequest(string? Kind, string? Note);
+
+public sealed record NoteDto(
+    Guid Id,
+    string Kind,
+    string SourceText,
+    string TargetText,
+    string SourceLang,
+    string TargetLang,
+    string Model,
+    string OriginApp,
+    string Note,
+    long CreatedAt,
+    long UpdatedAt);
+
+/// <summary>One page plus the account-wide total, so the client can show "1 / 20" without a second call.</summary>
+public sealed record NotePageResponse(IReadOnlyList<NoteDto> Items, int Total, int Limit, int Offset);

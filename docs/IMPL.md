@@ -699,3 +699,43 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - 邮件验证码的 SMTP 通道未接(未配置时只把验证码打进日志),所以**目前不能开 `RequireEmailVerification`**;阶段 2 做免费额度前必须先接上,否则刷号无门槛(设计 §7.4 三道闸的第一道)。
 - 服务器尚无 TLS 终止、无反向代理、无备份策略;数据库是单文件 WAL,适合百人级,千人级要重新评估。
 - 分档与网关(阶段 2)未做:现在所有人都是免费档,额度只被**展示**,没有任何地方真正扣减 —— `usage_events` 表与 `RecordUsage` 已就位但暂时没有调用方。
+
+## v44 学习功能:保存结果 + 单词本三视图(阶段1)✅
+
+**为什么这样改**
+
+阶段 0 只解决了「能注册、能看到额度」。真正让付费有理由的是「保存」:免费版给 1 万字符网关额度但**完全不能保存**(决策 D8,连本地也不存),要保存就升级 —— 保存是这一版唯一的付费闸门,所以它必须先在客户端成立,订阅校验留到阶段 2 一次加。产品也据此从「划词翻译工具」变成「英语教学工具」:划词出译文顺手存进单词本/短语本/语句本,以后再复习。设计见 `docs/superpowers/specs/2026-10-28-account-and-billing-design.md`(阶段 1 一节)。
+
+**服务端 `/api/v1/notes`**
+
+- 数据模型是**一张 `notes` 表 + `kind` 字段**,不是三张表:`id / user_id / kind / source_text / target_text / source_lang / target_lang / model / origin_app / note / created_at / updated_at / deleted_at`。三个「本」只是同一张表按 `kind` 过滤;索引 `ix_notes_user_kind(user_id, kind, created_at DESC)` 直接服务列表页,`ix_notes_user_live(user_id, deleted_at)` 服务计数与去重。`deleted_at` 是软删除,留给阶段 3 的跨设备同步用 —— 硬删除会让另一台设备永远不知道这条被删了。
+- `Domain/NoteClassifier.cs` 的类型判定**顺序有讲究**:先判句末标点(`. ! ?`)/长度 > 80 → 语句;再判「单个 CJK 字」或「不含空白且长度 ≤ 24」→ 单词;再判词数 2~6 → 短语;其余 → 语句。最初的写法是先判单词再判语句,`Really?`(无空白、11 字符)会被存进单词本,`她安静地离开了房间。` 同理 —— 这两条已经写进单元测试当回归锚点。
+- `POST /api/v1/notes/` 是**幂等**的:`FindLive(userId, kind, sourceText)` 命中就直接回既有行,不新建。滑动选词反复点保存是常态,前端不该出现重复行。单账号上限 `MaxNotesPerAccount = 20_000`,超了回 409 `notes_limit_reached`(而不是静默失败)。
+- `GET` 的 `q` 走 LIKE,且**必须转义**:把 `\` → `\\`、`%` → `\%`、`_` → `\_` 再配 `ESCAPE '\\'`;否则用户搜「100%」会把整库拉出来(下划线同理,单词里很常见)。
+- 所有文本入库前统一截断(源/目标 5000、备注 2000、model 64、originApp 128、语言 16),避免一条异常长文本把整行撑爆。
+- 端点文件 `Api/NotesEndpoints.cs` 挂在 `RequireAuthorization()` 组下;DTO 在 `Api/Contracts.cs`(`SaveNoteRequest` / `UpdateNoteRequest` / `NoteDto` / `NotePageResponse`)。
+
+**客户端**
+
+- `src/FastTranslation.Core/Notes/` 与 UI 无关、可单测:`NoteTypes.cs`(`NoteKind` / `Note` / `NotePage` / `NoteDeleted`)、`NoteClassifier.cs`、`NotesApiClient.cs`。类型判定在客户端**再实现一遍**是有意的 —— 卡片点保存要立刻显示「已保存到单词本」,不能等服务器回话;服务器仍是权威(不带 `kind` 时由它分类)。
+- `Note` 的备注属性叫 **`Annotation`** 而不是 `Note`:叫 `Note` 会撞 C# 的 CS0542「成员名不能与其封闭类型同名」。
+- `NoteDeleted` 这个只有 `bool Deleted` 的单字段 record 是被泛型逼出来的:`WithSessionAsync<T>` 有 `where T : class` 约束,`AccountApiResult<bool>` 编译不过。
+- `AccountCoordinator` 新增四个 notes 包装方法,全部走既有的 `WithSessionAsync`:access 令牌过期时**自动刷新并重试一次**,词本里点删除不会因为半小时没动就报「未登录」。构造参数加了 `string? deviceFingerprint = null, NotesApiClient? notes = null`,不传 notes 时四个方法统一回 `NotSignedIn`,不给调用方留 null 分支。
+- 结果卡(`src/FastTranslation.Platform.Windows/OverlayWindows.cs`)加第 4 个按钮「保存」,排在「插入译文」之前。它**始终可见**(不像替换/插入要看选区是否可写),因为「不能保存」本身就是要说给免费用户听的话:未登录点它 → 卡片切一行提示「先在账号里登录,保存的单词才能跨设备同步」并打开账号窗;已登录 → `SaveNoteAsync` 成功后 `MarkSaved()` 把按钮改成「已保存」并禁用(防连点),同时 `ShowNotice("已保存到语句本")`。
+- `origin_app` 取 `ForegroundInfo.ProcessName()`(进程名,不记窗口标题) —— 窗口标题常常就是文档名甚至聊天内容,记下来等于偷偷采集用户数据。
+- `NotesWindow`(新建)是 820x560 的非模态窗:顶部搜索框(320ms 防抖)+刷新,左侧三列「单词/短语/语句」书架,中间列表,右侧详情(原文/译文/改类型/备注/保存备注/删除/来源行)。改类型会换架,所以改完清空选中再重新拉列表。
+- 入口两处:托盘菜单「单词本」(id 1007,`TrayIcon.NotesRequested`)与主窗 footer 的「单词本」按钮,已开则前置复用。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**;`dotnet test` → **133 + 83 + 40 + 109 = 365 全绿**(阶段 0 基线 327,新增 38 个)。新增:`NoteClassifierTests`(14)、`NotesApiClientTests`(7,用 `StubHandler` 断言 method/URI/body)、`NotesEndpointTests`(17,含跨账号隔离与幂等)。
+- 真服务器 E2E(`ASPNETCORE_ENVIRONMENT=Development`、`http://127.0.0.1:5199`、账号 `e2e-stage1@example.com`):三条文本分别被自动判定为 word(`meticulous`)、sentence(`She left the room quietly.`)、phrase(`in the long run`);`GET /api/v1/notes/?kind=word` 只回 word 且 `total:3`;重复保存返回**同一个 id**,幂等成立。
+- UI 证据(`assets/qa/`,不入库):`notes-card-result.png` 735x266 显示结果卡按钮为「保存 / 复制」;`notes-card-saved.png` 735x159 显示点击后卡片变成 **「已保存到语句本」**,证明「卡片 → OnSaveRequested → 服务器 → MarkSaved」整条链路通;`notes-window-word/-phrase/-sentence.png` 1435x980 三视图 + `notes-window-detail.png` 详情面板(含类型下拉、备注框、删除);`notes-main-with-button.png` 主窗 footer 出现「单词本」。
+
+**残留风险**
+
+- **免费版现在也能保存** —— 阶段 1 明确不做订阅闸门,所有登录用户都能存。阶段 2 加闸门时必须把已有数据算成「存量」(老数据只读或给宽限),否则会一夜之间让已存了几百条的用户点不开自己的本子。
+- 列表一次拉 200 条、无分页游标;`total` 是账号总条数,翻页要等阶段 3 做同步时一起补。
+- 单词本没有离线缓存,断网就是空列表;用户会以为是「数据丢了」。要等阶段 3 的本地镜像。
+- 保存失败只提示「保存没成功,稍后再试一次」,没有区分网络与服务器错误 —— 现在够用,但用户量上来后需要能自查的文案。
+- `origin_app` 依赖前台进程名,`ForegroundInfo.ProcessName()` 失败时为空串,数据里会出现空来源。

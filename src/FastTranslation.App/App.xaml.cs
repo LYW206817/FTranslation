@@ -3,6 +3,7 @@ using System.Threading;
 using System.Windows;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
 
@@ -36,6 +37,7 @@ public partial class App : Application, IResultPresenter
     private UpdateCoordinator? _updates;
     private AccountCoordinator? _account;
     private AccountApiClient? _accountClient;
+    private NotesApiClient? _notesClient;
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -90,7 +92,10 @@ public partial class App : Application, IResultPresenter
         _accountClient = new AccountApiClient(
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
             _settings.AccountBaseUrl);
-        _account = new AccountCoordinator(_accountClient, _secrets);
+        _notesClient = new NotesApiClient(
+            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
+            _settings.AccountBaseUrl);
+        _account = new AccountCoordinator(_accountClient, _secrets, notes: _notesClient);
         _account.Changed += OnAccountChanged;
 
         var provider = new QwenMtProvider(
@@ -112,6 +117,7 @@ public partial class App : Application, IResultPresenter
         _card.CopyRequested += OnCopyRequested;
         _card.ReplaceRequested += OnReplaceRequested;
         _card.InsertRequested += OnInsertRequested;
+        _card.SaveRequested += OnSaveRequested;
 
         _capture = new WindowsSelectionCapture(
             Dispatcher,
@@ -160,6 +166,7 @@ public partial class App : Application, IResultPresenter
         _tray.MainWindowRequested += ShowMainWindow;
         _tray.UpdateRequested += () => _updates?.CheckAsync(interactive: true);
         _tray.AccountRequested += ShowAccount;
+        _tray.NotesRequested += ShowNotes;
         _tray.ExitRequested += ExitApp;
         _tray.Show("Fast Translation — 取词已开启");
 
@@ -199,7 +206,8 @@ public partial class App : Application, IResultPresenter
                 _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
             },
             () => _captureEnabled,
-            ShowAccount);
+            ShowAccount,
+            ShowNotes);
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
@@ -344,7 +352,9 @@ public partial class App : Application, IResultPresenter
                 try
                 {
                     _toolbar?.ShowAt(CapturedSelection.Empty(new ScreenPoint(200, 180)));
-                    _card?.ShowResult(new Core.TranslationResult(
+                    // through the presenter, not the card directly: the save handler reads
+                    // _lastResult/_lastSelection, which only ShowCard() records
+                    ShowCard(new Core.TranslationResult(
                         "the quick brown fox jumps over the lazy dog and keeps running",
                         "那只敏捷的棕色狐狸跳过了那只懒惰的狗,然后继续在草地上奔跑。",
                         "auto", "Chinese", "qwen-mt-flash", 531, false),
@@ -529,6 +539,52 @@ public partial class App : Application, IResultPresenter
         _card?.Hide();
     }
 
+    /// <summary>
+    /// 保存 from the result card. Signed out opens the account window instead of an error: the
+    /// notebook lives on the server, so "save" has no local meaning (D8 — the free tier cannot save).
+    /// </summary>
+    private async void OnSaveRequested()
+    {
+        if (_lastResult is not { Succeeded: true } result) return;
+        if (_account is null || !_account.IsSignedIn)
+        {
+            _card?.ShowNotice("先在账号里登录,保存的单词才能跨设备同步");
+            ShowAccount();
+            return;
+        }
+
+        var sourceText = string.IsNullOrWhiteSpace(result.RequestText)
+            ? _lastSelection.Text
+            : result.RequestText;
+        var originApp = ForegroundInfo.ProcessName();
+        try
+        {
+            var saved = await _account.SaveNoteAsync(
+                NoteClassifier.Classify(sourceText),
+                sourceText,
+                result.TranslatedText,
+                result.SourceLanguage,
+                result.TargetLanguage,
+                result.Model,
+                originApp,
+                CancellationToken.None);
+            if (saved.Succeeded)
+            {
+                _card?.MarkSaved();
+                _card?.ShowNotice("已保存到" + NoteKinds.Display(saved.Value!.Kind) + "本");
+                return;
+            }
+            _card?.ShowNotice(saved.Error!.Code == AccountErrorCode.NotSignedIn
+                ? "先在账号里登录,保存的单词才能跨设备同步"
+                : saved.Error!.Display);
+        }
+        catch (Exception ex)
+        {
+            Trace($"save note: {ex}");
+            _card?.ShowNotice("保存没成功,稍后再试一次");
+        }
+    }
+
     private async void OnReplaceRequested() => await WriteBackAsync(replace: true);
 
     private async void OnInsertRequested() => await WriteBackAsync(replace: false);
@@ -624,6 +680,28 @@ public partial class App : Application, IResultPresenter
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
         window.Show(); // modeless: a translation can still be started while it is open
+    }
+
+    private void ShowNotes()
+    {
+        if (_account is null) return;
+        var existing = Windows.OfType<NotesWindow>().FirstOrDefault();
+        if (existing is not null)
+        {
+            existing.Activate();
+            return;
+        }
+        var window = new NotesWindow(_account);
+        if (DialogOwner() is { } owner)
+        {
+            window.Owner = owner;
+            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        }
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+        window.Show(); // modeless: a translation can still be saved while the notebook is open
     }
 
     private void ShowSettings()
