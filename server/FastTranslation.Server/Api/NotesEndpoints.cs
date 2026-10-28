@@ -21,9 +21,28 @@ public static class NotesEndpoints
         group.MapDelete("/{id:guid}", Delete);
     }
 
-    private static IResult Save([FromBody] SaveNoteRequest request, ClaimsPrincipal principal, NoteStore store)
+    private static IResult Save(
+        [FromBody] SaveNoteRequest request,
+        ClaimsPrincipal principal,
+        NoteStore store,
+        AccountStore accounts,
+        ServerDatabase database)
     {
         var userId = principal.GetUserId();
+
+        // Saving is the paywall (design §5 phase 2 / D8). Checked before the idempotent lookup on
+        // purpose: a free account must not even learn that a matching note already exists.
+        var user = accounts.FindUserById(userId);
+        if (user is null || user.Disabled)
+        {
+            return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!Entitlement.AllowsNotebook(user.Plan, user.PlanExpiresAt, database.NowUnix))
+        {
+            return Results.Json(new ErrorResponse("subscription_required"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var source = (request.SourceText ?? string.Empty).Trim();
         if (source.Length == 0)
         {

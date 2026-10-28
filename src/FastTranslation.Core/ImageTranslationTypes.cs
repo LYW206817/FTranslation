@@ -16,6 +16,10 @@ public sealed record ImageTranslationResult(
     string RemoteUrl)
 {
     public TranslationError? Error { get; init; }
+
+    /// <summary>展示层额外的一句说明，例如网关额度用完、这次走了用户自己的 Key。</summary>
+    public string? Notice { get; init; }
+
     public bool Succeeded => Error is null;
 }
 

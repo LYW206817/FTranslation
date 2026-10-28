@@ -38,6 +38,7 @@ public partial class App : Application, IResultPresenter
     private AccountCoordinator? _account;
     private AccountApiClient? _accountClient;
     private NotesApiClient? _notesClient;
+    private HttpClient? _gatewayHttp;
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -98,7 +99,8 @@ public partial class App : Application, IResultPresenter
         _account = new AccountCoordinator(_accountClient, _secrets, notes: _notesClient);
         _account.Changed += OnAccountChanged;
 
-        var provider = new QwenMtProvider(
+        // 用户自己的 Key：既是不登录时的唯一链路，也是网关额度用完后的回落目标
+        var ownProvider = new QwenMtProvider(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName),
             new QwenMtOptions
             {
@@ -106,7 +108,10 @@ public partial class App : Application, IResultPresenter
                     ? new QwenMtOptions().BaseUrl
                     : _settings.OverrideBaseUrl,
             });
-        _translation = new TranslationService(provider);
+
+        // 网关与账号共用主机；单独一个 HttpClient，因为它的超时要盖住服务端自己的上游超时
+        _gatewayHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider));
 
         // stage-1 toolbar (复制/翻译) + stage-2 result card (复制/替换/插入/✕)
         _toolbar = new SelectionToolbar();
@@ -172,15 +177,17 @@ public partial class App : Application, IResultPresenter
 
         // 截屏翻译走独立的图片通道：端点、模型、返回（译图）都和文本翻译不同，
         // 所以不复用 _translation；key 仍然读同一个 secret，和文本 provider 完全一致。
-        _imageProvider = new QwenMtImageTranslator(
+        var ownImageProvider = new QwenMtImageTranslator(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
+        _imageProvider = new GatewayImageTranslationProvider(GatewayTranslateImageAsync, ownImageProvider);
         _imageWindow = new ImageResultWindow();
         _imageCoordinator = new ImageTranslationCoordinator(
             _imageProvider,
             () => _settings,
             result => _imageWindow?.ShowResult(
                 result.JpegBytes,
-                $"{result.SourceLanguage} → {result.TargetLanguage} · {result.Model} · {result.ElapsedMs}ms"),
+                $"{result.SourceLanguage} → {result.TargetLanguage} · {result.Model} · {result.ElapsedMs}ms"
+                + (string.IsNullOrWhiteSpace(result.Notice) ? "" : " · " + result.Notice)),
             message => _tray?.ShowBalloon("截图翻译失败", message));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
 
@@ -358,6 +365,30 @@ public partial class App : Application, IResultPresenter
                         "the quick brown fox jumps over the lazy dog and keeps running",
                         "那只敏捷的棕色狐狸跳过了那只懒惰的狗,然后继续在草地上奔跑。",
                         "auto", "Chinese", "qwen-mt-flash", 531, false),
+                        CapturedSelection.Empty(new ScreenPoint(200, 260)));
+                }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"uitest: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest == "overlays-fallback")
+        {
+            // FT_UITEST=overlays-fallback -> 结果卡的状态行要能同时容纳 token 用量和「回落」说明，
+            // 420 宽度下会换行；这张卡是设置里没有截图的唯一形态，靠 UIA 文本核对。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    ShowCard(new Core.TranslationResult(
+                        "the quick brown fox jumps over the lazy dog",
+                        "那只敏捷的棕色狐狸跳过了那只懒惰的狗。",
+                        "auto", "Chinese", "qwen-mt-flash", 486, false)
+                    {
+                        Usage = new Core.TokenUsage(56, 9),
+                        Notice = "本月额度已用完,这次用了你自己的 Key",
+                    },
                         CapturedSelection.Empty(new ScreenPoint(200, 260)));
                 }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"uitest: {ex}"); }
@@ -543,6 +574,63 @@ public partial class App : Application, IResultPresenter
     /// 保存 from the result card. Signed out opens the account window instead of an error: the
     /// notebook lives on the server, so "save" has no local meaning (D8 — the free tier cannot save).
     /// </summary>
+    /// <summary>
+    /// 走开发者网关的那一次翻译。返回 null 表示"这次别用网关"（没登录 / 没有令牌），
+    /// 组合 provider 会安静地改用用户自己的 Key，用户不需要知道网关存在。
+    /// </summary>
+    private async Task<TranslationResult?> GatewayTranslateAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_account is not { IsSignedIn: true } account) return null;
+        var token = await account.GetAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+
+        // 每次现造一个 provider：令牌会换，而 Authorization 是请求头，只能接着当前令牌拼。
+        // HttpClient 传进去（_ownsHttp = false），Dispose 不会把它一起关掉。
+        using var provider = new QwenMtProvider(
+            () => token,
+            new QwenMtOptions
+            {
+                BaseUrl = GatewayBaseUrl(),
+                TimeoutSeconds = 45,
+                // 设备指纹让服务端把日额度记到真正发请求的这台设备上
+                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+            },
+            _gatewayHttp);
+        return await provider.TranslateAsync(request, cancellationToken);
+    }
+
+    /// <summary>截图翻译走网关的 /v1/image；返回 null 表示这次别用网关（见文本链路的说明）。</summary>
+    private async Task<ImageTranslationResult?> GatewayTranslateImageAsync(
+        ImageTranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_account is not { IsSignedIn: true } account) return null;
+        var token = await account.GetAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+
+        using var provider = new QwenMtImageTranslator(
+            () => token,
+            new QwenMtImageOptions
+            {
+                // 图片端点是一整条 URL，网关不拼后缀，所以这里直接给到 /v1/image
+                BaseUrl = GatewayBaseUrl() + "/image",
+                TimeoutSeconds = 60,
+                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+            },
+            _gatewayHttp);
+        return await provider.TranslateImageAsync(request, cancellationToken);
+    }
+
+    private string GatewayBaseUrl()
+    {
+        var host = string.IsNullOrWhiteSpace(_settings.AccountBaseUrl)
+            ? AccountApiClient.DefaultBaseUrl
+            : _settings.AccountBaseUrl.TrimEnd('/');
+        return host + "/v1";
+    }
+
     private async void OnSaveRequested()
     {
         if (_lastResult is not { Succeeded: true } result) return;
@@ -572,6 +660,13 @@ public partial class App : Application, IResultPresenter
             {
                 _card?.MarkSaved();
                 _card?.ShowNotice("已保存到" + NoteKinds.Display(saved.Value!.Kind) + "本");
+                return;
+            }
+            if (saved.Error!.Code == AccountErrorCode.SubscriptionRequired)
+            {
+                // 订阅闸门：先说明为什么没存上，再把人送到能升级/兑换激活码的账号窗
+                _card?.ShowNotice(saved.Error!.Display);
+                ShowAccount();
                 return;
             }
             _card?.ShowNotice(saved.Error!.Code == AccountErrorCode.NotSignedIn
@@ -763,6 +858,8 @@ public partial class App : Application, IResultPresenter
         _hotkey?.Dispose();
         if (_account is not null) _account.Changed -= OnAccountChanged;
         _accountClient = null;
+        _gatewayHttp?.Dispose();
+        _gatewayHttp = null;
         _tray?.Dispose();
         _mainWindow?.Close();
         try { _mutex?.ReleaseMutex(); } catch { }

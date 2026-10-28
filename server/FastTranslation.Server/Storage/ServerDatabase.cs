@@ -50,12 +50,47 @@ public sealed class ServerDatabase
         using var command = connection.CreateCommand();
         command.CommandText = Schema;
         command.ExecuteNonQuery();
+
+        // CREATE TABLE IF NOT EXISTS never adds a column to an existing table, so every column we
+        // introduce after v43 needs an explicit, idempotent ALTER here. Skipping this silently
+        // leaves production databases on the old shape and the reads below start throwing.
+        EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
+        EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
+    }
+
+    /// <summary>Adds a column only when the table exists and does not already carry it.</summary>
+    private static void EnsureColumn(SqliteConnection connection, string table, string column, string definition)
+    {
+        using var probe = connection.CreateCommand();
+        probe.CommandText = $"PRAGMA table_info({table})";
+        using var reader = probe.ExecuteReader();
+        var present = false;
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+            {
+                present = true;
+                break;
+            }
+        }
+
+        reader.Close();
+        if (present)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+        alter.ExecuteNonQuery();
     }
 
     /// <summary>
     /// All timestamps are unix seconds (UTC). <c>users.plan</c> mirrors <see cref="Domain.PlanTier"/>.
+    /// <c>users.plan_expires_at</c> NULL means "granted without an end date" (see Domain/Entitlement).
     /// <c>usage_monthly</c> is per account, <c>usage_daily</c> is per device — the free tier's
     /// daily cap is per device by design, so that a shared account cannot pool it (design §7.4).
+    /// <c>usage_events.cost_micros</c> is micro-yuan so the whole spend ledger stays integer.
     /// </summary>
     private const string Schema = """
         PRAGMA journal_mode = WAL;
@@ -67,6 +102,7 @@ public sealed class ServerDatabase
             email         TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             plan          INTEGER NOT NULL DEFAULT 0,
+            plan_expires_at INTEGER,
             created_at    INTEGER NOT NULL,
             disabled      INTEGER NOT NULL DEFAULT 0
         );
@@ -105,6 +141,7 @@ public sealed class ServerDatabase
             chars      INTEGER NOT NULL,
             tokens_in  INTEGER NOT NULL DEFAULT 0,
             tokens_out INTEGER NOT NULL DEFAULT 0,
+            cost_micros INTEGER NOT NULL DEFAULT 0,
             source     TEXT NOT NULL DEFAULT 'gateway',
             created_at INTEGER NOT NULL
         );

@@ -31,6 +31,9 @@ public sealed class ServerOptions
     public int AuthRequestsPerMinute { get; set; } = 20;
 
     public SmtpOptions Smtp { get; set; } = new();
+
+    /// <summary>The proxy gateway that spends the developer's own DashScope key on free-tier users.</summary>
+    public GatewayOptions Gateway { get; set; } = new();
 }
 
 public sealed class SmtpOptions

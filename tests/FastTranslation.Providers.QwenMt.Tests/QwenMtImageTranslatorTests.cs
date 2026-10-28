@@ -263,4 +263,49 @@ public class QwenMtImageTranslatorTests
         var result = await translator.TranslateImageAsync(Request(), cts.Token);
         Assert.Equal(TranslationErrorCode.Cancelled, result.Error?.Code);
     }
+[Fact]
+    public async Task GatewayQuotaRefusal_MapsToQuotaExhausted()
+    {
+        using var server = new FakeQwenServer
+        {
+            Handler = _ => (429, "{\"error\":\"daily_quota_exhausted\"}"),
+        };
+        using var provider = new QwenMtImageTranslator(
+            () => "token",
+            new QwenMtImageOptions { BaseUrl = server.Url + "/image" });
+
+        var result = await provider.TranslateImageAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(TranslationErrorCode.QuotaExhausted, result.Error?.Code);
+        Assert.Equal("今日额度已用完", result.Error?.Message);
+        Assert.Single(server.Bodies);
+    }
+
+    [Fact]
+    public async Task ExtraHeaders_AreAddedToTheImageRequest()
+    {
+        string? seen = null;
+        using var server = ImageServer();
+        server.Handler = ctx =>
+        {
+            // 只有 POST 带设备头；后面下载译图的那次 GET 是普通 GET
+            if (ctx.HttpMethod == "POST") seen = ctx.Headers["X-FT-Device"];
+            return ctx.HttpMethod == "GET"
+                ? (200, "JPEGDATA")
+                : (200, SuccessBody(ctx.Url!.GetLeftPart(UriPartial.Authority)));
+        };
+        using var provider = new QwenMtImageTranslator(
+            () => "token",
+            new QwenMtImageOptions
+            {
+                BaseUrl = server.Url + "/image",
+                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = "fp-1" },
+            });
+
+        var result = await provider.TranslateImageAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("fp-1", seen);
+    }
 }
+

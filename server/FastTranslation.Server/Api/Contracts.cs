@@ -26,7 +26,9 @@ public sealed record AuthResponse(
     UsageDto Usage,
     string TokenType = "Bearer");
 
-public sealed record AccountDto(Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily);
+/// <summary><paramref name="PlanExpiresAt"/> is unix seconds; null on a paid plan means "no end date".</summary>
+public sealed record AccountDto(
+    Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily, long? PlanExpiresAt);
 
 public sealed record UsageDto(
     int UsedMonthlyChars,
@@ -53,7 +55,11 @@ public sealed record DeviceRequest(string? Fingerprint, string? Name);
 
 public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt);
 
-public sealed record PlanChangeRequest(string? Plan);
+/// <summary>
+/// <paramref name="Days"/> null leaves any existing end date alone; 0 clears it (permanent grant);
+/// a positive number sets expiry to now + that many days.
+/// </summary>
+public sealed record PlanChangeRequest(string? Plan, int? Days = null);
 
 // ---- notes (phase 1 notebook) ----
 

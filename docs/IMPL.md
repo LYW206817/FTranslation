@@ -739,3 +739,57 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - 单词本没有离线缓存,断网就是空列表;用户会以为是「数据丢了」。要等阶段 3 的本地镜像。
 - 保存失败只提示「保存没成功,稍后再试一次」,没有区分网络与服务器错误 —— 现在够用,但用户量上来后需要能自查的文案。
 - `origin_app` 依赖前台进程名,`ForegroundInfo.ProcessName()` 失败时为空串,数据里会出现空来源。
+## v45 账号变现:开发者网关 + 额度闸门 + 订阅闸门(阶段2)✅
+
+把「免费额度」从每个用户自带 Key 改成服务端用开发者自己的 Key 转发并记账,同时让「保存到单词本」成为第一个付费闸门。用户原话:*「给的免费额度直接走我的 API key 吧,给他们额度限制就行」* —— 不办执照、不接支付、不做手机号,付费靠激活码手动开通。
+
+**为什么这样改**
+
+- 以前免费用户想用就得自己申请百炼 Key,这是最大的流失点;开发者 Key 只有几十块成本,直接把门槛换成额度更划算。
+- 记账必须落在服务端,客户端不可能诚实上报用量。所以网关是唯一入口:`POST /v1/chat/completions` 与 `POST /v1/image`。
+- 额度耗尽时**不能报错卡住用户**:客户端要静默回落到用户自己的 Key,并在结果卡上说明一句。所以服务端返回 **429(不是 403)**,响应体 `{"error":"monthly_quota_exhausted"}` 加响应头 `X-FT-Quota-Reason` —— 403 会被客户端读成「账号被停用」。
+- 闸门放在保存接口的**最开头**:若放到幂等查询之后,免费账号就能通过「这条是否已存在」的返回值探知自己的数据,闸门等于没关。
+
+**服务端**
+
+- `GatewayOptions.cs`(项目根,不在 `Gateway/` 下)绑定 `Server:Gateway`:`Enabled`、`ApiKey`、`BaseUrl`、`ImageBaseUrl`、`Model`、`TimeoutSeconds=60`、`DailyBudgetMicros=5_000_000`(全站日预算 5 元)、`RequestsPerMinute=40`、`MaxRequestChars=5_000`、`ImageQuotaChars=1_000`;配置项全部在 `appsettings.json` 补了默认值。
+- `Gateway/GatewayEndpoints.cs`:`/v1` 组 `RequireAuthorization()`。聊天链路:503 `gateway_disabled` → 400 `text_required` → 413 `text_too_long` → 四道闸 → 转发 → 记账 → 原样返回上游体。**上游非 2xx 原样转发状态码且不记账**。四道闸顺序是 `rate_limited`(429) → `budget_exhausted`(429) → `account_disabled`(403) → 额度(429 + `X-FT-Quota-Reason`)。
+- `Gateway/DashScopeGateway.cs`:把客户端令牌**换成**开发者 Key 再上行,客户端令牌永远不出现在上游请求里(有测试断言这一点)。
+- token 记账:上游报了 `usage` 就用真实值,没报就按 `chars + 45` 估算输入(45 是 Qwen-MT 每次的固定前言),输出按 0。图片接口不报 usage,按 `ImageQuotaChars` 折成等效字符额度记账。
+- `Domain/Pricing.cs` 把 token 换成微元成本存进 `usage_events.cost_micros`,全站日预算是对这些成本求和。
+- `Domain/Entitlement.cs`:`plan_expires_at IS NULL` = 永久授权(手工开通不会因为没填到期时间就被锁死)。`EffectiveTier` 让**过期只降额度、不断服务**。
+- 订阅闸门:`NotesEndpoints.Save` 一开始就判 `Entitlement.AllowsNotebook`,拒绝时 403 `subscription_required`。读接口永远不加闸。
+- 管理面:激活码还没做,当前用 `POST /api/v1/admin/accounts/{email}/plan` 手动开通(`days` 是相对天数,0 表示永久)。
+
+**客户端**
+
+- `Core/TranslationTypes.cs` 新增 `TranslationErrorCode.QuotaExhausted`(刻意与 `RateLimited` 分开,组合 provider 靠它决定要不要回落)、`TokenUsage`、`TranslationResult.Usage` 与 `Notice`。
+- `Providers.QwenMt/QwenMtProvider.cs`:`QwenMtOptions.ExtraHeaders` 让同一个类同时服务 DashScope 直连与网关(网关要 `X-FT-Device`,DashScope 忽略未知头);失败分支先读 body 再看 `QuotaRefusal.Describe`,命中即 `QuotaExhausted` 且**不重试**(额度用完重试没意义,还会白白多一次请求)。
+- `GatewayTranslationProvider` / `GatewayImageTranslationProvider`:先走网关,成功即返回;网关返回 null(未登录/开关关)就只用自有 Key;网关拒绝时回落自有 Key,并在结果上写一句 `Notice` —— 用户看到的是「本月额度已用完,这次用了你自己的 Key」,而不是一条报错。
+- `AccountCoordinator` 暴露 `DeviceFingerprint` 与 `GetAccessTokenAsync`(距过期 1 分钟内先刷新),网关请求因此永远带新鲜令牌与**和登录时同一个**设备指纹。
+- 结果卡状态行(`OverlayWindows.StatusLine`)从「模型 · 耗时」扩成「模型 · 耗时 · 缓存 · N tokens · 一句说明」,并给 `_statusBlock` 加 `TextWrapping`,否则 420 宽度会把说明截掉。
+- 保存被闸门拒绝时,卡片先说明原因再打开账号窗,不再只弹一行文案。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**;`dotnet test` → **138 + 87 + 58 + 125 = 408 全绿**(阶段 1 基线 365,本阶段新增 43)。
+- 真服务器 E2E(`ASPNETCORE_ENVIRONMENT=Development`、`http://127.0.0.1:5199`、上游用本地桩,7 项全通过):
+  1. 免费账号经网关翻译成功,且**上游收到的是开发者 Key 而不是客户端令牌**;
+  2. 用量按 100 字符记到月/日两张表;
+  3. 免费账号保存 → 403 `subscription_required`;
+  4. 管理接口开 30 天轻享后,同一条保存 → 200 且能 round-trip;
+  5. 升级后账号的 `quotaDaily` 变 null(不再有日限),继续翻译正常;
+  6. 另一个免费账号花完 2,000 日额度 → **429 `daily_quota_exhausted` + `X-FT-Quota-Reason`**;
+  7. `usage_events` 保留上游报的 60/8 token,成本 **58 微元/次 ≈ 0.0097 元/人/月**(设计预估 0.035,实测更低)。
+- E2E 抓到一个真实缺陷并已修:网关把日额度记在**设备**上,但 `GET /api/v1/account/usage` 只认 `deviceId`,客户端只有指纹 → 账号窗「今日用量」恒为 0,而用户其实已被限流。现在该接口也接受 `fingerprint`(解析成 deviceId),`AccountApiClient.GetUsageAsync` 带上指纹,补了两侧测试。
+- UI 证据(`assets/qa/`,不入库):`card-fallback.png` 783x276,UIA 文本为 `qwen-mt-flash · 486ms · 65 tokens · 本月额度已用完,这次用了你自己的 Key`,证明用量与回落说明都能在 420 宽度下换行显示;取图脚本 `tools/qa/shot-card-fallback.ps1`(新增 `FT_UITEST=overlays-fallback` 钩子)。
+
+**残留风险**
+
+- **存量免费用户现在能保存,明天就不能了**:阶段 1 没有闸门,已经存了数据的账号升级后会看到「需要付费」。上线前必须决定老数据是只读还是给宽限,否则是数据层面的破坏性变更。
+- 全站日预算 5 元是**止损开关,不是防刷**:被刷爆的后果是所有人一起回落到自带 Key(还算体面),但当天免费体验就没了。没有 IP/设备级限速,只有每账号 40 请求/分钟。
+- 激活码还没做,`plan_expires_at` 只能靠管理接口手填;真开卖前必须补 `POST /api/v1/notes` 之外的兑换链路,否则每来一个用户都要手工改库。
+- 图片翻译按 `ImageQuotaChars=1000` 折字符记账,与真实成本(约 0.004 元/张)只是粗略对应;截图翻译量大时会低估消耗。
+- 网关让**所有**登录用户的翻译都经过服务器,香港国际型线路对内地用户有延迟与丢包(设计 §2.4 已记);单机 ASP.NET 没有水平扩展方案,用户量上来要先解决这个。
+- `GatewayOptions` 在项目根而不是 `Gateway/` 目录下,是历史遗留位置;找它时别只在子目录里搜。
+- 设计 §5 原本要求「保存按钮灰掉并给订阅入口」,实际做的是**不置灰**:订阅/激活码页面还不存在,置灰只会让免费用户点了没反应又不知道为什么。等激活码链路做完再改成置灰 + 引导按钮。

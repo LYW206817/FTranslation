@@ -16,19 +16,24 @@ public static class AccountEndpoints
         group.MapPost("/devices", RegisterDevice);
     }
 
-    private static IResult Me(ClaimsPrincipal principal, AccountStore store)
+    private static IResult Me(ClaimsPrincipal principal, AccountStore store, ServerDatabase database)
     {
         var user = store.FindUserById(principal.GetUserId());
         return user is null
             ? Results.NotFound(new ErrorResponse("account_missing"))
-            : Results.Ok(AuthEndpoints.ToAccountDto(user));
+            : Results.Ok(AuthEndpoints.ToAccountDto(user, database));
     }
 
     /// <summary>
     /// Usage is the client-visible consumption view (requirement: the user must be able to see what
     /// they have spent). The device id is optional — without it only the account-wide month is shown.
     /// </summary>
-    private static IResult Usage(ClaimsPrincipal principal, [FromQuery] Guid? deviceId, AccountStore store)
+    private static IResult Usage(
+        ClaimsPrincipal principal,
+        [FromQuery] Guid? deviceId,
+        [FromQuery] string? fingerprint,
+        AccountStore store,
+        ServerDatabase database)
     {
         var user = store.FindUserById(principal.GetUserId());
         if (user is null)
@@ -41,7 +46,16 @@ public static class AccountEndpoints
             return Results.NotFound(new ErrorResponse("device_missing"));
         }
 
-        return Results.Ok(AuthEndpoints.ToUsageDto(store.ReadUsage(user.Id, deviceId), user.Plan));
+        // The gateway bills the daily quota per device, so a client that only knows its fingerprint
+        // (every client does, it is what sign-in registers) must be able to ask for its own day.
+        if (deviceId is null && !string.IsNullOrWhiteSpace(fingerprint)
+            && store.FindDeviceByFingerprint(user.Id, fingerprint.Trim()) is { } resolved)
+        {
+            deviceId = resolved.Id;
+        }
+
+        var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
+        return Results.Ok(AuthEndpoints.ToUsageDto(store.ReadUsage(user.Id, deviceId), tier));
     }
 
     private static IResult RegisterDevice(
@@ -85,7 +99,8 @@ public static class AdminEndpoints
     private static IResult SetPlan(
         string email,
         [FromBody] PlanChangeRequest request,
-        AccountStore store)
+        AccountStore store,
+        ServerDatabase database)
     {
         if (!Plans.TryParse(request.Plan, out var plan))
         {
@@ -98,7 +113,16 @@ public static class AdminEndpoints
             return Results.NotFound(new ErrorResponse("account_missing"));
         }
 
-        store.SetPlan(user.Id, plan);
+        // Days is a relative length so the operator never has to compute a unix timestamp by hand.
+        long? expiresAt = request.Days switch
+        {
+            null => user.PlanExpiresAt,
+            0 => null,
+            { } days and > 0 => database.NowUnix + (days * 86_400L),
+            _ => null,
+        };
+
+        store.SetPlan(user.Id, plan, expiresAt);
         return Results.Ok(new MessageResponse("plan_updated"));
     }
 

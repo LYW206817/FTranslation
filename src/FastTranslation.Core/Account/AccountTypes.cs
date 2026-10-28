@@ -15,6 +15,7 @@ public enum AccountErrorCode
     RateLimited,
     Unauthorized,
     AccountDisabled,
+    SubscriptionRequired,
     Server,
     NotSignedIn,
 }
@@ -32,6 +33,7 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.RateLimited => "操作太频繁了,请稍后再试。",
         AccountErrorCode.Unauthorized => "登录状态已失效,请重新登录。",
         AccountErrorCode.AccountDisabled => "这个账号已被停用,请联系我们。",
+        AccountErrorCode.SubscriptionRequired => "这个功能需要付费套餐,升级后即可保存。",
         AccountErrorCode.NotSignedIn => "还没有登录账号。",
         _ => "账号服务器出错了,请稍后再试。",
     };

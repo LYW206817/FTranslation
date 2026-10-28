@@ -12,6 +12,9 @@ public sealed class QwenMtImageOptions
     public string BaseUrl { get; init; } = "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis";
     public string Model { get; init; } = "qwen-mt-image-2.0";
     public int TimeoutSeconds { get; init; } = 60;
+
+    /// <summary>只有开发者网关需要（X-FT-Device）；DashScope 会忽略未知请求头。</summary>
+    public IReadOnlyDictionary<string, string>? ExtraHeaders { get; init; }
 }
 
 /// <summary>
@@ -24,6 +27,8 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
 {
     /// <summary>文档标 RPM=1，所以 429/网络错误只重试一次并退避。</summary>
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(400);
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>();
 
     private readonly HttpClient _http;
     private readonly Func<string?> _apiKeyAccessor;
@@ -63,6 +68,10 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
             {
                 using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUri());
                 httpRequest.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                foreach (var header in _options.ExtraHeaders ?? EmptyHeaders)
+                {
+                    httpRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
                 httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
                 using var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
@@ -70,6 +79,10 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (QuotaRefusal.Describe(body) is { } quota)
+                    {
+                        return Fail(effective, new TranslationError(TranslationErrorCode.QuotaExhausted, quota), started);
+                    }
                     var error = ClassifyStatus((int)response.StatusCode, body);
                     if (error.Code == TranslationErrorCode.RateLimited && attempt == 0)
                     {

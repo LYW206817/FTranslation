@@ -96,8 +96,8 @@ public sealed class AccountStoreTests : IDisposable
         var user = CreateUser("usage@example.com");
         var device = _store.RegisterDevice(user.Id, "fp-u", "pc").Device!;
 
-        _store.RecordUsage(user.Id, device.Id, 100, "qwen-mt-flash", 10, 5, _database.NowUnix);
-        _store.RecordUsage(user.Id, device.Id, 250, "qwen-mt-flash", 20, 8, _database.NowUnix);
+        _store.RecordUsage(user.Id, device.Id, 100, "qwen-mt-flash", 10, 5, 0, _database.NowUnix);
+        _store.RecordUsage(user.Id, device.Id, 250, "qwen-mt-flash", 20, 8, 0, _database.NowUnix);
 
         var usage = _store.ReadUsage(user.Id, device.Id);
         Assert.Equal(350, usage.MonthlyChars);
@@ -171,7 +171,7 @@ public sealed class AccountStoreTests : IDisposable
         var light = _store.CreateUser("l@example.com", "hash", PlanTier.Light);
         _store.CreateUser("s@example.com", "hash", PlanTier.Standard);
         var device = _store.RegisterDevice(free.Id, "fp", "pc").Device!;
-        _store.RecordUsage(free.Id, device.Id, 10, "m", 0, 0, _database.NowUnix);
+        _store.RecordUsage(free.Id, device.Id, 10, "m", 0, 0, 0, _database.NowUnix);
 
         var metrics = _store.ReadAccountMetrics();
 
