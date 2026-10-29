@@ -31,12 +31,10 @@ public partial class MainWindow : Window
     private MainPage? _home;
     private PlanPage? _plan;
     private SettingsPage? _settingsPage;
+    private ReviewPage? _reviewPage;
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
-
-    /// <summary>The 复习 window is opened by App (it needs the coordinator, which this window does not own).</summary>
-    public event Action? ReviewRequested;
 
     /// <summary>Forwarded from the home page so App never has to reach into a page instance.</summary>
     public event Action? SettingsRequested;
@@ -143,6 +141,7 @@ public partial class MainWindow : Window
         MainPageId.Word => Notes(NoteKind.Word),
         MainPageId.Phrase => Notes(NoteKind.Phrase),
         MainPageId.Sentence => Notes(NoteKind.Sentence),
+        MainPageId.Review => Review(),
         MainPageId.Plan => Plan(),
         MainPageId.Settings => Settings(),
         _ => Placeholder(page),
@@ -156,14 +155,27 @@ public partial class MainWindow : Window
     {
         if (_shelves.TryGetValue(kind, out var cached)) return cached;
         var page = new NotesPage(_account, kind);
-        page.ReviewRequested += () => ReviewRequested?.Invoke();
+        page.ReviewRequested += () => ShowPage(MainPageId.Review);
         _shelves[kind] = page;
         return page;
     }
 
     /// <summary>
-    /// 复习 opens a window instead of a page, so nothing routes here today; the placeholder keeps an
-    /// unrouted id from throwing.
+    /// 复习 is a page now (v52, design D16): a separate window made the drill feel like leaving the
+    /// app. The page keeps its own session across navigation, so it is built once and reused.
+    /// </summary>
+    private ReviewPage Review()
+    {
+        if (_reviewPage is not null) return _reviewPage;
+        var page = new ReviewPage(_account);
+        page.NotesRequested += () => ShowPage(MainPageId.Word);
+        page.QueueSettled += () => _ = RefreshReviewBadgeAsync();
+        _reviewPage = page;
+        return page;
+    }
+
+    /// <summary>
+    /// Unrouted ids fall back here; every page in <see cref="MainPageId"/> has a factory above.
     /// </summary>
     private UserControl Placeholder(MainPageId page) => new()
     {
@@ -206,13 +218,6 @@ public partial class MainWindow : Window
 
     public void ShowPage(MainPageId page)
     {
-        // 复习 is not a page: it needs its own focus and keyboard, so it opens a window (design D15)
-        if (page == MainPageId.Review)
-        {
-            ReviewRequested?.Invoke();
-            return;
-        }
-
         // Refresh before the early return: pages are cached, so re-entering one is the only cue it
         // gets to reload what changed while it was hidden (quota, settings, server-side edits).
         switch (page)
@@ -222,6 +227,8 @@ public partial class MainWindow : Window
             case MainPageId.Word: _shelves.GetValueOrDefault(NoteKind.Word)?.Reload(); break;
             case MainPageId.Phrase: _shelves.GetValueOrDefault(NoteKind.Phrase)?.Reload(); break;
             case MainPageId.Sentence: _shelves.GetValueOrDefault(NoteKind.Sentence)?.Reload(); break;
+            // a sitting in progress survives a detour to a shelf and back; only the choose mode refetches
+            case MainPageId.Review: _reviewPage?.Reload(); break;
         }
 
         // Rebuilding the same page would throw away whatever is typed in it
