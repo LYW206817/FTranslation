@@ -1163,3 +1163,38 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - authorized_keys 现有两把:`ft-workstation`(RSA 3072)与 `ft-emergency-save-2026-10-29`(ed25519);`/etc/passwd` 里只有 `root` 有登录 shell
 
 **残留风险**: ①`Match Address` 的可信度依赖来源 IP 不被伪造 —— 100.104.0.0/16 是阿里云内网服务段,不可从公网路由,但仍属「按 IP 白名单放行弱面」的折中。②Ubuntu 26.04 默认开 `PerSourcePenalties`,日志里 `198.51.100.10` 的大量连接被判 `connections without attempting authentication` 丢弃;若 Workbench 复用同一批来源 IP,文件管理可能出现偶发失败,届时需对该段关掉罚分。③实例密码仍可用于控制台 VNC 与 `sudo`,这两条路不受本改动影响。④上一版把「实例没设密码」当成事实是错的,实测 `passwd -S root` = `P 2026-10-29`。
+
+## v54 复习进页内 + 套餐与设置改两列 ✅
+
+**为什么**:v51 把复习做成一扇独立窗口,从单窗口外壳点出去再弹新窗,和「一扇窗七页」的其余部分不一致;套餐页与设置页则各自把一个 720/760 宽的竖列靠左摆,窗口右侧整片空白,像没做完。两件事都是「形状和内容不匹配」,一起改。
+
+**复习改成页内**(`feat(复习): 复习改成主窗口内的一页`,2eadbef)
+- 流程:侧栏「复习」→ 页内列出今天要看的条目(单词/短语/语句混排,原文 + 译文 + 「今天到期」或「今日新词」)→ 每行复选框 + 顶部全选 →「开始复习(6)」→ 同一页进入逐卡复习(空格揭示,1-4 评四档,跳过不算评过)→ 「这一轮过完了」可「再选一批」或回单词本
+- 新增 `src/FastTranslation.Core/Notes/ReviewSession.cs`:`ReviewSession` 只持有「勾选了哪些卡、当前第几张」,界面不管顺序;12 个单测覆盖跳过、评完、越界、空队列
+- 删除 `ReviewWindow.xaml(.cs)`;`App.xaml.cs` 去掉 `ShowReview`;`MainWindow` 去掉 `ReviewRequested`,`ShowPage(MainPageId.Review)` 就是入口
+- 键盘:页面宿主的空格/1-4 靠 `PreviewKeyDown` 隧道处理,只在卡片模式接管;否则在列表页打字会被吃掉
+- 四档按钮条 `MaxWidth=620` 居中。满宽铺开时四个按钮各 320px,像工具栏;`HorizontalAlignment=Center` 又会退化成内容宽度(一排小按钮),正确写法是保留 Stretch 只加 MaxWidth —— WPF 在 Stretch + MaxWidth 受约束时居中排布
+
+**套餐与设置改两列**(`feat(界面): 套餐与设置改成两列`,93ff05a)
+- 两页都用 `MaxWidth=980` 的居中容器;依据 ui-ux-pro-max 的「正文行宽 65-75ch、不要让文本铺满视口」——不是把内容拉满屏,而是把宽度用在两列上
+- 套餐页:横跨顶部的账号卡(邮箱/套餐/刷新用量/退出登录)+ 左列「能买什么」(套餐卡、月付年付、订阅)+ 右列「用了多少」(本月/今日用量、激活码)
+- 套餐页未登录态:左列登录表单,右列新增「登录后有什么不一样」三条(免费额度按账号算 / 生词本存在服务端 / 复习进度跟着账号走),原来这半边是空的
+- 设置页:左列「它怎么给我翻译」(翻译与外观、取词与写回、系统),右列「它连到哪里」(服务、排除应用);底部动作条加「这些设置只存在这台机器上,不随账号同步」
+
+**顺带修掉的两个真 bug**
+1. `MainWindow.ShowPage` 只在「页面已缓存」时调 `Reload`,第一次进入的页面是 `Build` 出来的、从没读过数据。表现是套餐页首访用量空白(要点一次「刷新用量」才出数字)、单词本首访永远显示不出内容(点「刷新」才有空态文案)。改成 `Build` 之后也走一次 `RefreshPage`,缓存命中与新建两条路径用同一个方法。
+2. `PlanPage.OnAccountChanged` 只重画不重取用量。启动时的会话恢复是异步的,账号晚到就再也不会补取,用量卡一直空白。现在账号变化时一并 `LoadUsageAsync`。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误
+- `dotnet test` → 548 全绿(Core 199 / Platform.Windows 87 / QwenMt 87 / Server 175)
+- 截图(1820×1155 = 1040×660 逻辑 × 175% DPI,取样即在整张窗口图上直读):
+  - `assets/qa/layout-plan.png`:左列套餐卡,右列用量卡(首访即有 `0 / 10,000 字符(本月)`)与激活码卡
+  - `assets/qa/layout-settings.png`:左列三个分组,右列两个分组,两列底边基本齐平
+  - `assets/qa/layout-word.png`:首访即显示「这一栏还是空的」空态,而不是空白列表
+  - `assets/qa/review-pick.png` / `review-card.png` / `review-revealed-inpage.png` / `review-done.png` / `review-pick-empty.png`:复习五态
+- 本地开发服务端:`Server__SigningKey=ft-dev-signing-key-0123456789abcdef`、DB `publish/devserver/qa.db`、`http://127.0.0.1:5199`;客户端设置页「账号服务地址」指向它,截图里的账号是 `qa-layout@example.com`(免费版)
+
+**兼容性**:服务端零改动,数据库零改动;`ReviewWindow` 删除后不再有机型依赖。客户端设置的键名未变,老 `settings.json` 直接可用。
+
+**残留风险**:①复习页的键盘处理只覆盖空格/1-4/回车/Esc,输入法组合键仍会先到输入框(页面里没有可聚焦输入框,实际无影响)。②两列宽度按 1040 逻辑宽设计,窗口拖到很窄时两列会各让一半宽度,未做断点折叠。③`ReviewSession` 只保证顺序,重复点击「开始复习」不会重新洗牌,题目顺序恒为队列顺序。
