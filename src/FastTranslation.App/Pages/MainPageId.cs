@@ -11,6 +11,7 @@ public enum MainPageId
     Phrase,
     Sentence,
     Review,
+    Account,
     Plan,
     Settings,
 }

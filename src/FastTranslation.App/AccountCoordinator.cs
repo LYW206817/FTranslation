@@ -177,6 +177,47 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
+    /// The display name lives on the profile, so a successful save has to replace the stored profile
+    /// as well — the sidebar and the account card draw their label from the session, not from a
+    /// second copy of the name.
+    /// </summary>
+    public async Task<AccountApiResult<AccountProfile>> UpdateDisplayNameAsync(
+        string displayName, CancellationToken cancellationToken)
+    {
+        var result = await WithSessionAsync(
+            token => _client.UpdateProfileAsync(token, displayName, cancellationToken),
+            cancellationToken).ConfigureAwait(true);
+        if (result.Succeeded && _session is { } session)
+        {
+            var updated = session with { Profile = result.Value! };
+            _store.Save(updated);
+            SetSession(updated);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Changing the password revokes every session on the server, so the reply carries a new token
+    /// pair for this device: the caller must apply it, or this client would be the one that got
+    /// logged out.
+    /// </summary>
+    public async Task<AccountApiResult<AccountSignIn>> ChangePasswordAsync(
+        string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        var result = await WithSessionAsync(
+            token => _client.ChangePasswordAsync(
+                token, currentPassword, newPassword, _deviceFingerprint, _deviceName, cancellationToken),
+            cancellationToken).ConfigureAwait(true);
+        if (result.Succeeded)
+        {
+            Apply(result.Value!);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Saves one pair. The whole notebook rides on the session wrapper so an expired access token
     /// is rotated instead of surfacing as "token expired" in a card the user just clicked.
     /// </summary>

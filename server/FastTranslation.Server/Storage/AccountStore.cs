@@ -8,7 +8,7 @@ namespace FastTranslation.Server.Storage;
 /// <paramref name="PlanExpiresAt"/> null = granted without an end date. See Domain/Entitlement for
 /// why that means "active forever" rather than "expired".
 /// </summary>
-public sealed record UserRecord(Guid Id, string Email, string PasswordHash, PlanTier Plan, long? PlanExpiresAt, long CreatedAt, bool Disabled);
+public sealed record UserRecord(Guid Id, string Email, string PasswordHash, PlanTier Plan, long? PlanExpiresAt, long CreatedAt, bool Disabled, string DisplayName = "");
 
 public sealed record DeviceRecord(Guid Id, Guid UserId, string Fingerprint, string Name, long CreatedAt, long LastSeenAt);
 
@@ -24,7 +24,7 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled FROM users WHERE email = $email";
+        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled, display_name FROM users WHERE email = $email";
         command.Parameters.AddWithValue("$email", NormalizeEmail(email));
 
         using var reader = command.ExecuteReader();
@@ -35,7 +35,7 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled FROM users WHERE id = $id";
+        command.CommandText = "SELECT id, email, password_hash, plan, plan_expires_at, created_at, disabled, display_name FROM users WHERE id = $id";
         command.Parameters.AddWithValue("$id", id.ToString("D"));
 
         using var reader = command.ExecuteReader();
@@ -73,6 +73,30 @@ public sealed class AccountStore(ServerDatabase database)
         command.CommandText = "UPDATE users SET plan = $plan, plan_expires_at = $expiresAt WHERE id = $id";
         command.Parameters.AddWithValue("$plan", (int)plan);
         command.Parameters.AddWithValue("$expiresAt", (object?)expiresAtUnix ?? DBNull.Value);
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// The display name is optional decoration: an empty string means "show the email instead", so
+    /// clearing it is a valid update rather than a validation failure.
+    /// </summary>
+    public bool SetDisplayName(Guid userId, string displayName)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE users SET display_name = $name WHERE id = $id";
+        command.Parameters.AddWithValue("$name", displayName);
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public bool SetPasswordHash(Guid userId, string passwordHash)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE users SET password_hash = $hash WHERE id = $id";
+        command.Parameters.AddWithValue("$hash", passwordHash);
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
         return command.ExecuteNonQuery() > 0;
     }
@@ -425,7 +449,8 @@ public sealed class AccountStore(ServerDatabase database)
         (PlanTier)reader.GetInt32(3),
         reader.IsDBNull(4) ? null : reader.GetInt64(4),
         reader.GetInt64(5),
-        reader.GetInt32(6) != 0);
+        reader.GetInt32(6) != 0,
+        reader.GetString(7));
 
     private static DeviceRecord ReadDevice(SqliteDataReader reader) => new(
         Guid.Parse(reader.GetString(0)),

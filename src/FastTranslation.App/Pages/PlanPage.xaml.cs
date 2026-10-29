@@ -5,9 +5,9 @@ using FastTranslation.Core.Account;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The account page: sign in / sign up when signed out, quota meters and the subscription card
-/// when signed in. Same two panels as the old account window — a separate "usage page" would
-/// duplicate the same async states — but hosted in the shell instead of its own window.
+/// The 套餐 page: price, what the plan includes, the meters, how those meters reset, and the
+/// activation code. Identity and password live on the 账号 page — the two used to share one page
+/// and both halves suffered for it.
 ///
 /// <para>
 /// There is no payment channel in this build. The subscribe button records the choice and says so;
@@ -17,10 +17,8 @@ namespace FastTranslation.App.Pages;
 public partial class PlanPage : UserControl
 {
     private readonly AccountCoordinator _account;
-    private bool _registerMode;
     private bool _busy;
     private bool _yearly = true;
-    private bool _verificationRequired = true;
 
     public PlanPage(AccountCoordinator account)
     {
@@ -31,19 +29,15 @@ public partial class PlanPage : UserControl
         Render();
     }
 
-    /// <summary>
-    /// Called by the host every time the page is shown: pages are cached, so <c>Loaded</c> fires
-    /// once and would leave stale quota meters after a long session.
-    /// </summary>
+    /// <summary>Called by the host every time the page is shown; cached pages go stale otherwise.</summary>
     public void Reload()
     {
         Render();
         if (_account.Session is not null) _ = LoadUsageAsync();
     }
 
-    // the session can arrive after this page was first opened (restore at startup is async), and
-    // Reload already ran by then — so a late account change has to re-ask for usage as well,
-    // otherwise the usage card stays blank until someone presses 刷新用量
+    // the session can arrive after this page was first opened (startup restore is async), so a late
+    // change has to re-render the price card and re-ask for usage
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         Render();
@@ -53,110 +47,63 @@ public partial class PlanPage : UserControl
     private void Render()
     {
         var session = _account.Session;
-        SignedOutPanel.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
-        SignedInPanel.Visibility = session is null ? Visibility.Collapsed : Visibility.Visible;
-        if (session is null) return;
+        var signedIn = session is not null;
 
-        AccountEmail.Text = session.Profile.Email;
-        PlanText.Text = session.Profile.PlanDisplay + " · " + session.Profile.QuotaMonthly.ToString("N0") + " 字符/月"
-            + (session.Profile.QuotaDaily is { } daily ? ",每日 " + daily.ToString("N0") : string.Empty)
-            + (session.Profile.ExpiryLine is { } expiry ? " · " + expiry : string.Empty);
+        SignedOutHint.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        DailyRow.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        if (!signedIn)
+        {
+            MonthlyText.Text = "登录后显示";
+            MonthlyLeftText.Text = string.Empty;
+            MonthlyBar.Value = 0;
+            DailyText.Text = string.Empty;
+            DailyLeftText.Text = string.Empty;
+            DailyBar.Value = 0;
+            SubscribeTitle.Text = "订阅后解锁单词本与四档复习";
+            SubscribeButton.Content = "订阅";
+            return;
+        }
 
         // a paid plan makes the pitch redundant: the card becomes "what you already have"
-        var paid = !string.Equals(session.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
+        var paid = !string.Equals(session!.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
         SubscribeButton.Content = paid ? "续订" : "订阅";
         // the same card serves both audiences: a subscriber should not read "subscribe to unlock"
         // for a feature they already paid for
-        SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与复习";
-        if (paid && SubscribeHint.Text.StartsWith("付款渠道", StringComparison.Ordinal))
+        SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与四档复习";
+        if (paid)
         {
-            SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay + ",续订会顺延到期时间。付款渠道尚未接通。";
+            SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay
+                + ",续订会顺延到期时间。付款渠道尚未接通。";
         }
     }
 
-    private void Switch_Click(object sender, RoutedEventArgs e)
-    {
-        _registerMode = !_registerMode;
-        SwitchButton.Content = _registerMode ? "去登录" : "去注册";
-        SubmitButton.Content = _registerMode ? "注册并登录" : "登录";
-        CodeRow.Visibility = _registerMode && _verificationRequired ? Visibility.Visible : Visibility.Collapsed;
-        ModeHint.Text = _registerMode
-            ? "注册后自动登录,免费额度立刻可用。"
-            : "登录后就能看到自己的免费额度用量。";
-        SetError(null);
-    }
+    private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
 
-    private async void SendCode_Click(object sender, RoutedEventArgs e)
+    private async Task LoadUsageAsync()
     {
-        var email = EmailBox.Text.Trim();
-        if (email.Length == 0) { SetError("请先填写邮箱。"); return; }
-
-        SendCodeButton.IsEnabled = false;
-        try
+        if (_account.Session is null) return;
+        UsageError.Visibility = Visibility.Collapsed;
+        var result = await _account.ReadUsageAsync(CancellationToken.None);
+        if (!result.Succeeded)
         {
-            var result = await _account.RequestCodeAsync(email, CancellationToken.None);
-            if (!result.Succeeded)
-            {
-                SetError(result.Error!.Display);
-                return;
-            }
-            if (!result.Value!.VerificationRequired)
-            {
-                // this server does not verify email: stop asking for a code that will never arrive
-                _verificationRequired = false;
-                CodeRow.Visibility = Visibility.Collapsed;
-                SetError(null);
-                CodeHint.Text = "这个服务器不需要邮箱验证码,直接注册即可。";
-                return;
-            }
-            CodeHint.Text = "验证码已发送,10 分钟内有效。";
-            SetError(null);
+            UsageError.Text = result.Error!.Display;
+            UsageError.Visibility = Visibility.Visible;
+            return;
         }
-        finally
+
+        var usage = result.Value!;
+        MonthlyText.Text = usage.MonthlyLine;
+        MonthlyLeftText.Text = "还剩 " + usage.RemainingMonthlyChars.ToString("N0") + " 字符";
+        MonthlyBar.Value = usage.MonthlyFraction;
+
+        DailyRow.Visibility = usage.HasDaily ? Visibility.Visible : Visibility.Collapsed;
+        if (usage.HasDaily)
         {
-            // a resend is rate limited server-side too; the local cooldown just avoids a dead click
-            await Task.Delay(TimeSpan.FromSeconds(60));
-            SendCodeButton.IsEnabled = true;
+            DailyText.Text = usage.DailyLine;
+            DailyLeftText.Text = "还剩 " + (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符";
+            DailyBar.Value = usage.DailyFraction;
         }
     }
-
-    private async void Submit_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy) return;
-        var email = EmailBox.Text.Trim();
-        var password = PasswordBox.Password;
-        if (email.Length == 0) { SetError("请填写邮箱。"); return; }
-        if (password.Length == 0) { SetError("请填写密码。"); return; }
-
-        SetBusy(true);
-        try
-        {
-            if (_registerMode)
-            {
-                var code = _verificationRequired ? CodeBox.Text.Trim() : null;
-                var result = await _account.RegisterAsync(email, password, code, CancellationToken.None);
-                if (!result.Succeeded) { SetError(RegisterError(result.Error!)); return; }
-                PasswordBox.Clear();
-                await LoadUsageAsync();
-                return;
-            }
-            var signIn = await _account.SignInAsync(email, password, CancellationToken.None);
-            if (!signIn.Succeeded) { SetError(signIn.Error!.Display); return; }
-            PasswordBox.Clear();
-            await LoadUsageAsync();
-        }
-        finally
-        {
-            SetBusy(false);
-        }
-    }
-
-    private static string RegisterError(AccountError error) => error.Code switch
-    {
-        AccountErrorCode.EmailTaken => error.Display,
-        AccountErrorCode.Verification => "验证码不正确或已过期,点「获取验证码」重新发送。",
-        _ => error.Display,
-    };
 
     private async void Redeem_Click(object sender, RoutedEventArgs e)
     {
@@ -164,7 +111,7 @@ public partial class PlanPage : UserControl
         var code = RedeemBox.Text.Trim();
         if (code.Length == 0)
         {
-            SetError("先把激活码填进来。");
+            RedeemHint.Text = "先把激活码填进来。";
             return;
         }
 
@@ -188,47 +135,6 @@ public partial class PlanPage : UserControl
         {
             SetBusy(false);
         }
-    }
-
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
-
-    private async Task LoadUsageAsync()
-    {
-        if (_account.Session is null) return;
-        UsageError.Visibility = Visibility.Collapsed;
-        var result = await _account.ReadUsageAsync(CancellationToken.None);
-        if (!result.Succeeded)
-        {
-            UsageError.Text = result.Error!.Display;
-            UsageError.Visibility = Visibility.Visible;
-            return;
-        }
-        var usage = result.Value!;
-        MonthlyText.Text = usage.MonthlyLine;
-        MonthlyBar.Value = usage.MonthlyFraction;
-        DailyRow.Visibility = usage.HasDaily ? Visibility.Visible : Visibility.Collapsed;
-        if (usage.HasDaily)
-        {
-            DailyText.Text = usage.DailyLine;
-            DailyBar.Value = usage.DailyFraction;
-        }
-    }
-
-    private async void SignOut_Click(object sender, RoutedEventArgs e)
-    {
-        SetBusy(true);
-        try
-        {
-            await _account.SignOutAsync(CancellationToken.None);
-        }
-        finally
-        {
-            SetBusy(false);
-        }
-        _registerMode = false;
-        SwitchButton.Content = "去注册";
-        SubmitButton.Content = "登录";
-        SetError(null);
     }
 
     private void Year_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(true);
@@ -255,28 +161,30 @@ public partial class PlanPage : UserControl
             : System.Windows.Media.Brushes.Transparent;
     }
 
-    private void Subscribe_Click(object sender, RoutedEventArgs e) =>
+    private void Subscribe_Click(object sender, RoutedEventArgs e)
+    {
+        if (_account.Session is null)
+        {
+            SubscribeHint.Text = "先到「账号」页登录,再用激活码开通。";
+            return;
+        }
+
         SubscribeHint.Text = "已记录你的选择(" + (_yearly ? "年付" : "月付")
             + ")。付款渠道上线后会通知你。";
+    }
 
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        SubmitButton.IsEnabled = !busy;
-        SwitchButton.IsEnabled = !busy;
-        SignOutButton.IsEnabled = !busy;
-        RefreshButton.IsEnabled = !busy;
         RedeemButton.IsEnabled = !busy;
-        SubmitButton.Content = busy ? "请稍候…" : _registerMode ? "注册并登录" : "登录";
+        SubscribeButton.IsEnabled = !busy;
     }
 
-    private void SetError(string? message)
+    private void Input_Changed(object sender, TextChangedEventArgs e)
     {
-        ErrorText.Text = message ?? string.Empty;
-        ErrorText.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+        if (RedeemHint.Text.StartsWith("先把激活码", StringComparison.Ordinal))
+        {
+            RedeemHint.Text = "买到激活码后填在这里,兑换后套餐立刻生效。";
+        }
     }
-
-    private void Input_Changed(object sender, TextChangedEventArgs e) => SetError(null);
-
-    private void Password_Changed(object sender, RoutedEventArgs e) => SetError(null);
 }

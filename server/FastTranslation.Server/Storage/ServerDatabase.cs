@@ -57,6 +57,10 @@ public sealed class ServerDatabase
         EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
         EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
 
+        // A display name is the only user-editable profile field (account page). Empty means "use the
+        // email local part", so old rows and new rows behave the same without a backfill.
+        EnsureColumn(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''");
+
         // Review state (design §4.1). All six columns are NOT NULL DEFAULT so an old database
         // migrates in place: every existing note becomes an ungraded card at stage 0.
         EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
@@ -121,7 +125,8 @@ public sealed class ServerDatabase
             plan          INTEGER NOT NULL DEFAULT 0,
             plan_expires_at INTEGER,
             created_at    INTEGER NOT NULL,
-            disabled      INTEGER NOT NULL DEFAULT 0
+            disabled      INTEGER NOT NULL DEFAULT 0,
+            display_name  TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS devices (
