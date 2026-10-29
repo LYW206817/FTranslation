@@ -16,6 +16,8 @@ assets/qa/
 settings.json
 install.log
 *.wixpdb
+# server production secrets (the example file is tracked, the real one is not)
+appsettings.Production.json
 # server runtime state (SQLite database + WAL files are local, never committed)
 server/**/data/
 *.db
