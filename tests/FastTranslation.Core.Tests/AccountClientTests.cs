@@ -262,6 +262,7 @@ public class AccountClientTests
     [Theory]
     [InlineData("redeem_code_invalid", AccountErrorCode.CodeInvalid)]
     [InlineData("redeem_code_used", AccountErrorCode.CodeUsed)]
+    [InlineData("redeem_code_revoked", AccountErrorCode.CodeRevoked)]
     [InlineData("redeem_plan_downgrade", AccountErrorCode.PlanDowngrade)]
     public async Task Redeem_errors_are_not_confused_with_the_email_verification_codes(
         string wire, AccountErrorCode expected)

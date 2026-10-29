@@ -61,6 +61,10 @@ public sealed class ServerDatabase
         // email local part", so old rows and new rows behave the same without a backfill.
         EnsureColumn(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''");
 
+        // A code that was mis-typed or leaked before it ever sold has to be killable, otherwise the
+        // only way out is deleting the row and losing the audit trail.
+        EnsureColumn(connection, "redeem_codes", "revoked_at", "INTEGER");
+
         // Review state (design §4.1). All six columns are NOT NULL DEFAULT so an old database
         // migrates in place: every existing note becomes an ungraded card at stage 0.
         EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
@@ -221,7 +225,8 @@ public sealed class ServerDatabase
             note        TEXT NOT NULL DEFAULT '',
             created_at  INTEGER NOT NULL,
             redeemed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-            redeemed_at INTEGER
+            redeemed_at INTEGER,
+            revoked_at  INTEGER
         );
 
         CREATE INDEX IF NOT EXISTS ix_redeem_codes_redeemed ON redeem_codes(redeemed_at);
