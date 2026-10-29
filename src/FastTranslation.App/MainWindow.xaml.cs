@@ -218,8 +218,27 @@ public partial class MainWindow : Window
 
     public void ShowPage(MainPageId page)
     {
-        // Refresh before the early return: pages are cached, so re-entering one is the only cue it
-        // gets to reload what changed while it was hidden (quota, settings, server-side edits).
+        // Rebuilding the same page would throw away whatever is typed in it, so a cached page is
+        // only refreshed — and that refresh is also the first-visit load, which is why it runs
+        // after Build as well: a page that was just constructed has never read anything.
+        if (_current == page && PageHost.Content is not null)
+        {
+            RefreshPage(page);
+            return;
+        }
+
+        _current = page;
+        PageHost.Content = Build(page);
+        SyncSidebar();
+        RefreshPage(page);
+    }
+
+    /// <summary>
+    /// Re-reads whatever a page shows from settings/account/server. Runs on every visit, including
+    /// the one that just built the page.
+    /// </summary>
+    private void RefreshPage(MainPageId page)
+    {
         switch (page)
         {
             case MainPageId.Plan: _plan?.Reload(); break;
@@ -229,14 +248,8 @@ public partial class MainWindow : Window
             case MainPageId.Sentence: _shelves.GetValueOrDefault(NoteKind.Sentence)?.Reload(); break;
             // a sitting in progress survives a detour to a shelf and back; only the choose mode refetches
             case MainPageId.Review: _reviewPage?.Reload(); break;
+            case MainPageId.Home: _home?.RefreshKeyStatus(); break;
         }
-
-        // Rebuilding the same page would throw away whatever is typed in it
-        if (_current == page && PageHost.Content is not null) return;
-        _current = page;
-        PageHost.Content = Build(page);
-        SyncSidebar();
-        if (page == MainPageId.Home) _home?.RefreshKeyStatus();
     }
 
     private void SyncSidebar()

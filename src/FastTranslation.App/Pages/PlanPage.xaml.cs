@@ -41,7 +41,14 @@ public partial class PlanPage : UserControl
         if (_account.Session is not null) _ = LoadUsageAsync();
     }
 
-    private void OnAccountChanged() => Dispatcher.BeginInvoke(Render);
+    // the session can arrive after this page was first opened (restore at startup is async), and
+    // Reload already ran by then — so a late account change has to re-ask for usage as well,
+    // otherwise the usage card stays blank until someone presses 刷新用量
+    private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
+    {
+        Render();
+        if (_account.Session is not null) _ = LoadUsageAsync();
+    });
 
     private void Render()
     {
