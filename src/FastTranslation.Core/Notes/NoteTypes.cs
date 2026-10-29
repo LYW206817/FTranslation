@@ -89,6 +89,20 @@ public sealed record Note(
         }
     }
 
+    /// <summary>True when the card is due today or overdue — the list tints that line to say "open me".</summary>
+    public bool DueNow
+    {
+        get
+        {
+            if (Stage == 0 || DueAt == 0) return false;
+            var today = DateTimeOffset.Now.Date;
+            return DateTimeOffset.FromUnixTimeSeconds(DueAt).ToLocalTime().Date <= today;
+        }
+    }
+
+    /// <summary>"chrome · 10-28 · 今天到期" — the provenance line plus the schedule, never a window title.</summary>
+    public string MetaLine => OriginLine + " · " + DueLine;
+
     /// <summary>"chrome · 10-28" — the provenance line under a card, never the window title.</summary>
     public string OriginLine
     {

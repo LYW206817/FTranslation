@@ -5,33 +5,41 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using FastTranslation.Core.Account;
 using FastTranslation.Core.Notes;
-using FastTranslation.Platform.Windows;
 
-namespace FastTranslation.App;
+namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The notebook: three shelves (单词 / 短语 / 语句) over one table, a list, and a detail pane that
-/// can re-file an entry or annotate it. Every mutation goes to the server — there is no local copy,
-/// so the three views are the same rows filtered by <see cref="NoteKind"/>.
+/// One shelf of the notebook (单词 / 短语 / 语句). The three shelves are the same rows filtered by
+/// <see cref="NoteKind"/>, so this is one page built three times with a different shelf; the sidebar
+/// owns the switching that <c>NotesWindow</c> used to do with its own buttons.
+///
+/// Every mutation goes to the server — there is no local copy. The detail pane can re-file an entry,
+/// annotate it, and grade it on the same four-grade scale the review window uses (design D12).
 /// </summary>
-public partial class NotesWindow : Window
+public partial class NotesPage : UserControl
 {
     private readonly AccountCoordinator _account;
+    private readonly NoteKind _shelf;
     private readonly ObservableCollection<Note> _items = new();
     private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(320) };
 
-    private NoteKind _shelf = NoteKind.Word;
     private Note? _selected;
     private bool _loading;
+    private bool _grading;
     private bool _suppressKindChange;
+    private bool _subscribed;
     private CancellationTokenSource? _loadCts;
     private string _search = string.Empty;
+    private int _total;
 
-    public NotesWindow(AccountCoordinator account)
+    /// <summary>Raised when the user asks for the review window; it reviews the whole queue, not this row.</summary>
+    public event Action? ReviewRequested;
+
+    public NotesPage(AccountCoordinator account, NoteKind shelf)
     {
         InitializeComponent();
-        WindowChrome.Apply(this);
         _account = account;
+        _shelf = shelf;
         NotesList.ItemsSource = _items;
         _searchTimer.Tick += (_, _) =>
         {
@@ -39,20 +47,37 @@ public partial class NotesWindow : Window
             _search = SearchBox.Text.Trim();
             _ = LoadAsync();
         };
-        _account.Changed += OnAccountChanged;
-        Closed += (_, _) =>
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object _, RoutedEventArgs e)
+    {
+        if (!_subscribed)
+        {
+            _account.Changed += OnAccountChanged;
+            _subscribed = true;
+        }
+        // Pages are cached, so coming back to a shelf must not show what the server no longer has
+        _ = LoadAsync();
+    }
+
+    private void OnUnloaded(object _, RoutedEventArgs e)
+    {
+        if (_subscribed)
         {
             _account.Changed -= OnAccountChanged;
-            _loadCts?.Cancel();
-            _loadCts?.Dispose();
-        };
-        Loaded += (_, _) => _ = LoadAsync();
+            _subscribed = false;
+        }
+        _loadCts?.Cancel();
     }
+
+    /// <summary>Public so App can refresh the visible shelf after a save from the result card.</summary>
+    public void Reload() => _ = LoadAsync();
 
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (!_account.IsSignedIn) Render();
-
     });
 
     private async Task LoadAsync()
@@ -65,6 +90,7 @@ public partial class NotesWindow : Window
         if (!_account.IsSignedIn)
         {
             _items.Clear();
+            _total = 0;
             Render();
             DetailStatus.Text = string.Empty;
             return;
@@ -80,12 +106,14 @@ public partial class NotesWindow : Window
             if (page.Succeeded)
             {
                 foreach (var note in page.Value!.Items) _items.Add(note);
+                _total = page.Value.Total;
                 EmptyText.Text = string.IsNullOrEmpty(_search)
                     ? "这一栏还是空的。翻译时点结果卡上的「保存」就会出现在这里。"
                     : "没有匹配「" + _search + "」的条目。";
             }
             else
             {
+                _total = 0;
                 EmptyText.Text = page.Error!.Display;
             }
         }
@@ -96,6 +124,7 @@ public partial class NotesWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("notes load: " + ex);
+            _total = 0;
             EmptyText.Text = "加载失败,稍后再试一次。";
         }
         finally
@@ -110,20 +139,9 @@ public partial class NotesWindow : Window
 
     private void Render()
     {
-        Headline.Text = _account.IsSignedIn ? "单词本" : "单词本(未登录)";
+        Headline.Text = NoteKinds.Display(_shelf) + "本" + (_account.IsSignedIn ? string.Empty : "(未登录)");
+        CountLabel.Text = _total > 0 ? "共 " + _total + " 条" : string.Empty;
         EmptyText.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var active = _shelf switch
-        {
-            NoteKind.Word => WordButton,
-            NoteKind.Phrase => PhraseButton,
-            _ => SentenceButton,
-        };
-        foreach (var button in new[] { WordButton, PhraseButton, SentenceButton })
-        {
-            button.Style = ReferenceEquals(button, active)
-                ? (Style)FindResource("ShelfButtonActive")
-                : (Style)FindResource("ShelfButton");
-        }
 
         if (_loading && _items.Count == 0) EmptyText.Text = "正在加载…";
         if (!_account.IsSignedIn)
@@ -134,6 +152,8 @@ public partial class NotesWindow : Window
 
         DetailEmpty.Visibility = _selected is null ? Visibility.Visible : Visibility.Collapsed;
         DetailPanel.Visibility = _selected is null ? Visibility.Collapsed : Visibility.Visible;
+        var canGrade = _selected is not null && _account.IsSignedIn && !_grading;
+        SetGradeEnabled(canGrade);
     }
 
     private void ShowDetail(Note note)
@@ -143,6 +163,9 @@ public partial class NotesWindow : Window
         DetailOrigin.Text = note.OriginLine + (string.IsNullOrWhiteSpace(note.Model) ? string.Empty : " · " + note.Model);
         NoteBox.Text = note.Annotation;
         DetailStatus.Text = string.Empty;
+
+        // the grade line doubles as the schedule preview: what was it last time, when is it back
+        GradeLine.Text = note.GradeDisplay + " · " + note.DueLine;
 
         _suppressKindChange = true;
         try
@@ -160,15 +183,12 @@ public partial class NotesWindow : Window
         }
     }
 
-    private void Shelf_Click(object sender, RoutedEventArgs e)
+    private void SetGradeEnabled(bool enabled)
     {
-        var wire = (sender as Button)?.Tag as string;
-        if (!NoteKinds.TryParse(wire, out var kind)) return;
-        _shelf = kind;
-        _selected = null;
-        _items.Clear();
-        Render();
-        _ = LoadAsync();
+        ForgotButton.IsEnabled = enabled;
+        FuzzyButton.IsEnabled = enabled;
+        FamiliarButton.IsEnabled = enabled;
+        KnownButton.IsEnabled = enabled;
     }
 
     private void Search_Changed(object sender, TextChangedEventArgs e)
@@ -180,11 +200,45 @@ public partial class NotesWindow : Window
 
     private void Refresh_Click(object _, RoutedEventArgs e) => _ = LoadAsync();
 
+    private void Review_Click(object _, RoutedEventArgs e) => ReviewRequested?.Invoke();
+
     private void Notes_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         _selected = NotesList.SelectedItem as Note;
         if (_selected is not null) ShowDetail(_selected);
         Render();
+    }
+
+    /// <summary>
+    /// Grading from the detail pane is the "mark it while I am here" path (design D12). It patches
+    /// the row instead of reloading the list: a reload would drop the selection and scroll to top.
+    /// </summary>
+    private async void Grade_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null || _grading) return;
+        if (sender is not Button { Tag: string wire }) return;
+        if (!ReviewSchedule.TryParseGrade(wire, out var grade)) return;
+
+        _grading = true;
+        SetGradeEnabled(false);
+        try
+        {
+            var result = await _account.GradeNoteAsync(_selected.Id, grade, CancellationToken.None);
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                ReplaceRow(updated);
+                ShowDetail(updated);
+            }
+            else
+            {
+                GradeLine.Text = "打分没成功,稍后再试一次";
+            }
+        }
+        finally
+        {
+            _grading = false;
+            Render();
+        }
     }
 
     private async void Kind_Changed(object sender, SelectionChangedEventArgs e)
@@ -213,9 +267,7 @@ public partial class NotesWindow : Window
         try
         {
             var result = await _account.UpdateNoteAsync(note.Id, null, NoteBox.Text.Trim(), CancellationToken.None);
-            DetailStatus.Text = result.Succeeded
-                ? "备注已保存。"
-                : result.Error!.Display;
+            DetailStatus.Text = result.Succeeded ? "备注已保存。" : result.Error!.Display;
             if (result.Succeeded) ReplaceRow(result.Value!);
         }
         finally
@@ -238,6 +290,7 @@ public partial class NotesWindow : Window
             }
             _selected = null;
             _items.Remove(note);
+            _total = Math.Max(0, _total - 1);
             Render();
         }
         finally

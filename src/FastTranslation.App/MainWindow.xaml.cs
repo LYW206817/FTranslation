@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly Func<bool> _isCaptureEnabled;
 
     private readonly Dictionary<MainPageId, UserControl> _pages = [];
+    private readonly Dictionary<NoteKind, NotesPage> _shelves = [];
     private MainPage? _home;
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
@@ -102,12 +103,28 @@ public partial class MainWindow : Window
     private UserControl Create(MainPageId page) => page switch
     {
         MainPageId.Home => Home(),
+        MainPageId.Word => Notes(NoteKind.Word),
+        MainPageId.Phrase => Notes(NoteKind.Phrase),
+        MainPageId.Sentence => Notes(NoteKind.Sentence),
         _ => Placeholder(page),
     };
 
     /// <summary>
-    /// Until Task 7/8 land their pages, the other six are labelled placeholders so the shell can
-    /// be built and screenshotted on its own. They disappear page by page.
+    /// The three shelves are the same page with a different filter, so they are cached per kind:
+    /// switching 单词 → 短语 → 单词 must not rebuild (and re-fetch) the same list.
+    /// </summary>
+    private NotesPage Notes(NoteKind kind)
+    {
+        if (_shelves.TryGetValue(kind, out var cached)) return cached;
+        var page = new NotesPage(_account, kind);
+        page.ReviewRequested += () => ReviewRequested?.Invoke();
+        _shelves[kind] = page;
+        return page;
+    }
+
+    /// <summary>
+    /// 套餐 and 设置 still land here until Task 8 builds them; they are labelled so the shell can be
+    /// screenshotted page by page without pretending the page exists.
     /// </summary>
     private UserControl Placeholder(MainPageId page) => new()
     {
