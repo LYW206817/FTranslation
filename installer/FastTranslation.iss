@@ -4,7 +4,7 @@
 ; Per-user install (no UAC) so an automatic update never shows a consent prompt.
 
 #define AppName "Fast Translation"
-#define AppVersion "1.3.1"
+#define AppVersion "1.3.2"
 #define AppPublisher "FastTranslation Project"
 #define AppExeName "FastTranslation.exe"
 
