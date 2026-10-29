@@ -1,0 +1,18 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Server": {
+    "SigningKey": "__BASE64_32_BYTES__",
+    "AdminToken": "__LONG_RANDOM_ADMIN_TOKEN__",
+    "RequireEmailVerification": false,
+    "Gateway": {
+      "Enabled": true,
+      "ApiKey": "__DASHSCOPE_API_KEY__",
+      "DailyBudgetMicros": 5000000
+    }
+  }
+}

@@ -5,3 +5,7 @@
 *.zip binary
 *.msi binary
 *.wixpdb binary
+
+# deployment assets must stay LF: scp copies the working tree verbatim, and
+# bash refuses a shebang line that ends in CRLF.
+deploy/* text eol=lf

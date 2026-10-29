@@ -1,0 +1,49 @@
+# Fast Translation - static site plus API reverse proxy.
+#
+# Replace the two placeholders before enabling:
+#   __DOMAIN__         the real host name (only routable after ICP filing is approved)
+#   __ACME_EMAIL__     a mailbox that can receive certificate-expiry warnings
+#
+# Ports 80 and 443 must be open in the ECS security group: Caddy needs 80 for the
+# ACME HTTP challenge and then redirects everything to 443.
+{
+	email __ACME_EMAIL__
+	admin off
+}
+
+__DOMAIN__ {
+	encode zstd gzip
+
+	# Static assets keep their names forever, so let browsers cache them for a year.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# The HTML shell must be revalidated, otherwise a deploy stays invisible.
+	@document path / /index.html /robots.txt
+	header @document Cache-Control "no-cache"
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Account API, developer gateway and the health probe all terminate on the same
+	# Kestrel instance, which listens on loopback only.
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:5080
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5080
+	}
+	handle /health {
+		reverse_proxy 127.0.0.1:5080
+	}
+
+	handle {
+		root * /var/www/fasttranslation
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -1,0 +1,40 @@
+[Unit]
+Description=Fast Translation account and translation gateway
+Documentation=https://github.com/LYW206817/FTranslation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ftserver
+Group=ftserver
+WorkingDirectory=/opt/fasttranslation
+
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
+Environment=DOTNET_NOLOGO=1
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+# The SQLite file must live outside the read-only application directory.
+Environment=Server__DatabasePath=/var/lib/fasttranslation/fasttranslation.db
+
+ExecStart=/opt/fasttranslation/FastTranslation.Server
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+# The process may only write to its own state directory. Everything else on the
+# box stays read-only for it, so a bug in the server cannot toast the system.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/fasttranslation
+
+[Install]
+WantedBy=multi-user.target
