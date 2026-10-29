@@ -463,6 +463,63 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "image-result")
+        {
+            // FT_UITEST=image-result -> open the screenshot-translation card with a synthetic
+            // capture. The real path starts with a full-screen region overlay, which is a layered
+            // window: PrintWindow sees nothing but black, so a QA box can never photograph the
+            // card through it. The card itself is what needs evidence (four pills + editable OCR).
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    _imageWindow?.ShowResult(
+                        BuildSampleCapture(),
+                        "截图翻译 · 3 行 · qwen-mt-image",
+                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                        true);
+                }
+                catch (Exception ex) { Trace($"image-result: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+    }
+
+    /// <summary>
+    /// Draws a stand-in for a captured screen region, so the QA hook can photograph the
+    /// screenshot-translation card without going through the region overlay.
+    /// </summary>
+    private static byte[] BuildSampleCapture()
+    {
+        var visual = new System.Windows.Controls.Border
+        {
+            Width = 760,
+            Height = 300,
+            Background = System.Windows.Media.Brushes.White,
+            Padding = new System.Windows.Thickness(26),
+            Child = new System.Windows.Controls.TextBlock
+            {
+                Text = "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                FontSize = 20,
+                LineHeight = 44,
+                Foreground = System.Windows.Media.Brushes.Black,
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+            },
+        };
+        var render = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            760, 300, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        // A visual that was never measured or arranged renders as an empty bitmap: layout has to
+        // run before RenderTargetBitmap can see anything.
+        visual.Measure(new System.Windows.Size(760, 300));
+        visual.Arrange(new System.Windows.Rect(0, 0, 760, 300));
+        render.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(render));
+        using var stream = new System.IO.MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
     }
 
     private static void Trace(string message)
