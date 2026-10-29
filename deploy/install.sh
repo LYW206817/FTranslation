@@ -17,22 +17,34 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 APP_DIR=/opt/fasttranslation
 WEB_DIR=/var/www/fasttranslation
 
-echo "==> binary"
-install -d -o root -g ftserver -m 0755 "$APP_DIR"
-cp -r "$HERE/server/." "$APP_DIR/"
-chown -R root:ftserver "$APP_DIR"
-chmod 755 "$APP_DIR/FastTranslation.Server"
-
 echo "==> configuration"
 if [ ! -f "$APP_DIR/appsettings.Production.json" ]; then
 	echo "    !! $APP_DIR/appsettings.Production.json is missing."
 	echo "    !! Copy appsettings.Production.json.example there, fill in SigningKey,"
 	echo "    !! AdminToken and Gateway:ApiKey, then re-run this script."
-	echo "    (nothing else has been started yet)"
+	echo "    (nothing has been copied or stopped yet)"
 	exit 1
 fi
 chown root:ftserver "$APP_DIR/appsettings.Production.json"
 chmod 640 "$APP_DIR/appsettings.Production.json"
+
+echo "==> stop the service"
+# Checked before the copy, not after: Linux refuses to write over a running
+# executable (ETXTBSY), and the first real upgrade attempt died right there with
+# "cp: cannot create regular file '/opt/fasttranslation/./FastTranslation.Server':
+# Text file busy". The last section starts it again.
+if systemctl is-active --quiet fasttranslation; then
+	systemctl stop fasttranslation
+	echo "    stopped for the duration of the copy"
+else
+	echo "    not running"
+fi
+
+echo "==> binary"
+install -d -o root -g ftserver -m 0755 "$APP_DIR"
+cp -r "$HERE/server/." "$APP_DIR/"
+chown -R root:ftserver "$APP_DIR"
+chmod 755 "$APP_DIR/FastTranslation.Server"
 
 echo "==> systemd unit"
 install -m 0644 "$HERE/fasttranslation.service" /etc/systemd/system/fasttranslation.service
