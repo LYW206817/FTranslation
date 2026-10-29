@@ -1,0 +1,242 @@
+<UserControl x:Class="FastTranslation.App.Pages.NotesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource WindowBgBrush}"
+             FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
+  <UserControl.Resources>
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="NoteRow" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0,0,0,2"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <!-- without this the row name falls back to record ToString(), which a screen reader
+           would read out as raw field assignments -->
+      <Setter Property="AutomationProperties.Name" Value="{Binding SourceText}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="bd" Background="Transparent" CornerRadius="7" Padding="10,7">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="NotesList" TargetType="ListBox">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="ItemContainerStyle" Value="{StaticResource NoteRow}"/>
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBox">
+            <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}"
+                          VerticalScrollBarVisibility="Auto">
+              <ItemsPresenter/>
+            </ScrollViewer>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- the four grades: one row, equal width, quiet until hovered (design D12) -->
+    <Style x:Key="GradeButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+
+  <Grid Margin="22,18,22,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <!-- header: title + count on the left, refresh on the right -->
+    <DockPanel Grid.Row="0" Margin="0,0,0,14">
+      <!-- the review window is a separate window, but the entry point belongs here too:
+           you land on a shelf, notice you have reviews due, and want one click out of it -->
+      <Button x:Name="ReviewButton" Content="去复习" DockPanel.Dock="Right" Padding="14,5"
+              Margin="0,0,8,0" VerticalAlignment="Center" Click="Review_Click"/>
+      <Button x:Name="RefreshButton" Content="刷新" DockPanel.Dock="Right" Padding="14,5"
+              VerticalAlignment="Center" Click="Refresh_Click"/>
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock x:Name="Headline" FontSize="17" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+        <TextBlock x:Name="CountLabel" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,2"
+                   Foreground="{DynamicResource TextMutedBrush}" FontSize="12"/>
+      </StackPanel>
+    </DockPanel>
+
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="320" MinWidth="240"/>
+        <ColumnDefinition Width="16"/>
+        <ColumnDefinition Width="*" MinWidth="260"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- left: search + the list -->
+      <Grid Grid.Column="0">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+          <TextBox x:Name="SearchBox" AutomationProperties.Name="搜索" TextChanged="Search_Changed"/>
+          <!-- a TextBox has no watermark of its own; the overlay hides as soon as there is text -->
+          <TextBlock x:Name="SearchHint" Text="搜索原文或译文…" IsHitTestVisible="False" Margin="11,0,0,0"
+                     VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMutedBrush}">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                    <Setter Property="Visibility" Value="Visible"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </Grid>
+
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
+                BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="6,8,6,6">
+          <Grid>
+            <ListBox x:Name="NotesList" Style="{StaticResource NotesList}"
+                     SelectionChanged="Notes_SelectionChanged">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel>
+                    <TextBlock Text="{Binding SourceText}" FontSize="13" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="{Binding TargetText}" FontSize="12" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding MetaLine}" FontSize="11" Margin="0,3,0,0">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding DueNow}" Value="True">
+                              <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" MaxWidth="230"
+                       TextAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- right: detail -->
+      <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
+              BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="16,14,16,16">
+        <Grid>
+          <TextBlock x:Name="DetailEmpty" Text="从左边选一条看看。" FontSize="12"
+                     Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
+          <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+              <TextBlock Text="原文" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
+              <TextBlock x:Name="DetailSource" FontSize="14" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Text="译文" Style="{StaticResource FieldLabel}" Margin="0,14,0,6"/>
+              <TextBlock x:Name="DetailTarget" FontSize="14" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+              <!-- 四档：顺手标一下（D12），与复习窗的四个按钮同一套调度 -->
+              <TextBlock Text="复习" Style="{StaticResource FieldLabel}" Margin="0,16,0,6"/>
+              <StackPanel x:Name="GradePanel" Orientation="Horizontal">
+                <Button x:Name="ForgotButton" Style="{StaticResource GradeButton}" Tag="forgot"
+                        Content="忘记" Width="60" Click="Grade_Click"/>
+                <Button x:Name="FuzzyButton" Style="{StaticResource GradeButton}" Tag="fuzzy"
+                        Content="模糊" Width="60" Margin="6,0,0,0" Click="Grade_Click"/>
+                <Button x:Name="FamiliarButton" Style="{StaticResource GradeButton}" Tag="familiar"
+                        Content="熟悉" Width="60" Margin="6,0,0,0" Click="Grade_Click"/>
+                <Button x:Name="KnownButton" Style="{StaticResource GradeButton}" Tag="known"
+                        Content="记住" Width="60" Margin="6,0,0,0" Click="Grade_Click"/>
+              </StackPanel>
+              <TextBlock x:Name="GradeLine" Style="{StaticResource Hint}"/>
+
+              <TextBlock Text="类型" Style="{StaticResource FieldLabel}" Margin="0,10,0,6"/>
+              <ComboBox x:Name="KindCombo" SelectionChanged="Kind_Changed">
+                <ComboBoxItem Content="单词" Tag="word"/>
+                <ComboBoxItem Content="短语" Tag="phrase"/>
+                <ComboBoxItem Content="语句" Tag="sentence"/>
+              </ComboBox>
+
+              <TextBlock Text="备注" Style="{StaticResource FieldLabel}"/>
+              <TextBox x:Name="NoteBox" AcceptsReturn="True" TextWrapping="Wrap" Height="72"
+                       VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                       AutomationProperties.Name="备注"/>
+
+              <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Button x:Name="SaveNoteButton" Content="保存备注" Padding="14,5" Click="SaveNote_Click"/>
+                <Button x:Name="DeleteButton" Content="删除" Padding="14,5" Click="Delete_Click"/>
+              </StackPanel>
+              <TextBlock x:Name="DetailStatus" Style="{StaticResource Hint}"/>
+
+              <TextBlock Text="来源" Style="{StaticResource FieldLabel}"/>
+              <TextBlock x:Name="DetailOrigin" FontSize="12" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

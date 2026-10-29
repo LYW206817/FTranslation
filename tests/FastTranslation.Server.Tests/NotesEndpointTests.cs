@@ -102,15 +102,19 @@ public class NotesEndpointTests : IClassFixture<ServerFactory>
         var words = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/?kind=word");
         Assert.Single(words!.Items);
         Assert.Equal("meticulous", words.Items[0].SourceText);
+        // the total is what the shelf header prints, so it has to follow the same filter
+        Assert.Equal(1, words.Total);
 
         var phrases = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/?kind=phrase");
         Assert.Single(phrases!.Items);
+        Assert.Equal(1, phrases.Total);
 
         var all = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/");
         Assert.Equal(3, all!.Total);
 
         var found = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/?q=quiet");
         Assert.Single(found!.Items);
+        Assert.Equal(1, found.Total);
     }
 
     [Fact]

@@ -93,12 +93,28 @@ public sealed class NoteStore(ServerDatabase database)
         return reader.Read() ? ReadNote(reader) : null;
     }
 
-    public int CountLive(Guid userId)
+    /// <summary>
+    /// Live rows for one account. The shelf and search filters exist so a page's total matches the
+    /// rows it was asked for: without them the 单词 shelf reported the count of every shelf.
+    /// </summary>
+    public int CountLive(Guid userId, NoteKind? kind = null, string? query = null)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM notes WHERE user_id = $userId AND deleted_at IS NULL";
+        var sql = new System.Text.StringBuilder(
+            "SELECT COUNT(*) FROM notes WHERE user_id = $userId AND deleted_at IS NULL");
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        if (kind is { } shelf)
+        {
+            sql.Append(" AND kind = $kind");
+            command.Parameters.AddWithValue("$kind", NoteKinds.ToWire(shelf));
+        }
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            sql.Append(" AND (source_text LIKE $query ESCAPE '\\' OR target_text LIKE $query ESCAPE '\\')");
+            command.Parameters.AddWithValue("$query", "%" + EscapeLike(query.Trim()) + "%");
+        }
+        command.CommandText = sql.ToString();
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 

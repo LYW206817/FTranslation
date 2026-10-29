@@ -104,7 +104,7 @@ public static class NotesEndpoints
         var take = Math.Clamp(limit ?? 100, 1, 500);
         var skip = Math.Max(0, offset ?? 0);
         var items = store.List(principal.GetUserId(), shelf, query, take, skip).Select(ToDto).ToList();
-        return Results.Ok(new NotePageResponse(items, store.CountLive(principal.GetUserId()), take, skip));
+        return Results.Ok(new NotePageResponse(items, store.CountLive(principal.GetUserId(), shelf, query), take, skip));
     }
 
     private static IResult Update(
