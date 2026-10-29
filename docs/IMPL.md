@@ -1149,3 +1149,17 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 3. **备案没下来之前 80/443 是开着的**(ufw 与安全组都放行),只是 Caddy disabled 无进程监听。备案号到手后要按 README 的 sed 替换域名并 enable caddy,顺带把 `site/index.html` 的 `__ICP_NUMBER__` 填掉。
 4. **`/swapfile` 是镜像自带的 4G**,脚本不校验已存在那份的权限与 fstab 条目;换镜像或换可用区时这条要重看。
 5. **单实例单进程**。SQLite WAL + `ProtectSystem=strict` 决定了这台机器不能横向加副本,升级期间会有一两秒的 502 窗口(`Restart=always` / `RestartSec=3`),对翻译工具可以接受。
+
+## v53 部署:控制台文件管理与密钥单点(2026-10-29) ✅
+
+**为什么这样改**: 引导脚本把 `PasswordAuthentication no` 一刀切之后,阿里云 Workbench 的「文件管理」报 `login.error.passwordAuthenticationIsProhibited` 打不开。日志(`journalctl -u ssh`)显示这些会话来自 `100.104.86.13` / `100.104.86.48` —— **文件管理走的是真实 sshd 会话并用实例密码认证**,和「免密连接」(云助手 `aliyun` agent)是两条路。同时查 `/root/.ssh/authorized_keys` 发现加固前**只有一把密钥**,就是开发机笔记本上的 `ft-workstation` —— 换电脑或重装系统就只能走控制台重置密码,是单点。
+
+**改了什么**: 不整体回退,而是**按来源放行**。在 `/etc/ssh/sshd_config.d/99-ft.conf` 末尾加 `Match Address 100.104.0.0/16` 段(`PasswordAuthentication yes` + `PermitRootLogin yes`),阿里云内网段可用实例密码,公网仍只认密钥。`deploy/bootstrap.sh` 的 drop-in 同步补上这段(脚本用 `if [ ! -f ]` 守卫,已有该文件的机器不会自动补,需手工加,本次就是手工加的)。另外新建一把 ed25519 应急密钥 `ft-emergency-save-2026-10-29` 入 authorized_keys,私钥在开发机 `~/.ssh/ft-emergency`(另存一份 `publish/ft-emergency-copy-put-this-off-this-laptop`,**需拷到别的设备才算兜底**)。
+
+**怎么验证**:
+- `sshd -T -C user=root,host=<hostname>,addr=203.0.113.9` → `permitrootlogin prohibit-password`、`passwordauthentication no`(公网)
+- `sshd -T -C user=root,host=<hostname>,addr=100.104.86.13` → `permitrootlogin yes`、`passwordauthentication yes`(阿里云内网)
+- 笔记本强制品种 `-o PreferredAuthentications=password` 连公网:仍 `Permission denied (publickey)`;带密钥连:正常;`sshd -t` 通过后 `systemctl reload ssh`
+- authorized_keys 现有两把:`ft-workstation`(RSA 3072)与 `ft-emergency-save-2026-10-29`(ed25519);`/etc/passwd` 里只有 `root` 有登录 shell
+
+**残留风险**: ①`Match Address` 的可信度依赖来源 IP 不被伪造 —— 100.104.0.0/16 是阿里云内网服务段,不可从公网路由,但仍属「按 IP 白名单放行弱面」的折中。②Ubuntu 26.04 默认开 `PerSourcePenalties`,日志里 `198.51.100.10` 的大量连接被判 `connections without attempting authentication` 丢弃;若 Workbench 复用同一批来源 IP,文件管理可能出现偶发失败,届时需对该段关掉罚分。③实例密码仍可用于控制台 VNC 与 `sudo`,这两条路不受本改动影响。④上一版把「实例没设密码」当成事实是错的,实测 `passwd -S root` = `P 2026-10-29`。
