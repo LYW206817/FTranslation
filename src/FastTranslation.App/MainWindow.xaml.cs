@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<MainPageId, UserControl> _pages = [];
     private readonly Dictionary<NoteKind, NotesPage> _shelves = [];
     private MainPage? _home;
+    private AccountPage? _accountPage;
     private PlanPage? _plan;
     private SettingsPage? _settingsPage;
     private ReviewPage? _reviewPage;
@@ -142,6 +143,7 @@ public partial class MainWindow : Window
         MainPageId.Phrase => Notes(NoteKind.Phrase),
         MainPageId.Sentence => Notes(NoteKind.Sentence),
         MainPageId.Review => Review(),
+        MainPageId.Account => Account(),
         MainPageId.Plan => Plan(),
         MainPageId.Settings => Settings(),
         _ => Placeholder(page),
@@ -201,6 +203,19 @@ public partial class MainWindow : Window
         return page;
     }
 
+    /// <summary>
+    /// 账号 and 套餐 are two pages now: identity, name and password belong to 账号, price, meters
+    /// and the activation code to 套餐. The link between them is one event, not a shared instance.
+    /// </summary>
+    private AccountPage Account()
+    {
+        if (_accountPage is not null) return _accountPage;
+        var page = new AccountPage(_account);
+        page.PlanRequested += () => ShowPage(MainPageId.Plan);
+        _accountPage = page;
+        return page;
+    }
+
     private PlanPage Plan()
     {
         if (_plan is not null) return _plan;
@@ -241,6 +256,7 @@ public partial class MainWindow : Window
     {
         switch (page)
         {
+            case MainPageId.Account: _accountPage?.Reload(); break;
             case MainPageId.Plan: _plan?.Reload(); break;
             case MainPageId.Settings: _settingsPage?.ReloadFromSettings(); break;
             case MainPageId.Word: _shelves.GetValueOrDefault(NoteKind.Word)?.Reload(); break;

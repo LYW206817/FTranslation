@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
 using Xunit;
@@ -271,6 +272,69 @@ public class AccountClientTests
         var result = await client.RedeemAsync("access-1", "FT-4G7M-2XQP-9HKV-3WTA", CancellationToken.None);
 
         Assert.Equal(expected, result.Error!.Code);
+    }
+    private const string AccountJson = """
+    { "id": "8f1a2c3d-0000-4000-8000-000000000001", "email": "a@b.test", "plan": "light",
+      "quotaMonthly": 50000, "quotaDaily": null, "planExpiresAt": null, "displayName": "永威" }
+    """;
+
+    [Fact]
+    public async Task UpdateProfile_patches_the_profile_path_with_the_new_name()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, AccountJson, baseUrl: "https://api.example.com/");
+
+        var result = await client.UpdateProfileAsync("access-1", "永威", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/account/profile", handler.LastUri!.ToString());
+        Assert.Equal("PATCH", handler.LastMethod);
+        Assert.Equal("Bearer", handler.LastAuthorization!.Scheme);
+        // the contract field is displayName; an empty string is how the UI clears the name
+        using var sent = JsonDocument.Parse(handler.LastBody);
+        Assert.Equal("永威", sent.RootElement.GetProperty("displayName").GetString());
+        Assert.Equal("永威", result.Value!.DisplayName);
+        Assert.Equal("永威", result.Value.DisplayNameOrEmail);
+    }
+
+    [Fact]
+    public async Task UpdateProfile_surfaces_the_server_rejection()
+    {
+        var (client, _) = Build(HttpStatusCode.BadRequest, """{"error":"display_name_too_long"}""");
+
+        var result = await client.UpdateProfileAsync("access-1", new string('x', 25), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        // the account page shows a sentence per code, so the wire code has to survive the mapping
+        Assert.Equal(AccountErrorCode.InvalidProfile, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ChangePassword_posts_every_field_the_server_needs()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, AuthJson, baseUrl: "https://api.example.com/");
+
+        var result = await client.ChangePasswordAsync(
+            "access-1", "password123", "brand-new-123", "fp-1", "PC", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/account/password", handler.LastUri!.ToString());
+        Assert.Equal("POST", handler.LastMethod);
+        Assert.Contains("\"currentPassword\":\"password123\"", handler.LastBody);
+        Assert.Contains("\"newPassword\":\"brand-new-123\"", handler.LastBody);
+        // the device that changed the password gets a fresh pair back, not a 401
+        Assert.Equal("refresh-1", result.Value!.Session.RefreshToken);
+    }
+
+    [Fact]
+    public async Task ChangePassword_maps_a_wrong_current_password()
+    {
+        var (client, _) = Build(HttpStatusCode.BadRequest, """{"error":"password_mismatch"}""");
+
+        var result = await client.ChangePasswordAsync(
+            "access-1", "nope", "brand-new-123", "fp-1", "PC", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AccountErrorCode.PasswordMismatch, result.Error!.Code);
     }
 }
 

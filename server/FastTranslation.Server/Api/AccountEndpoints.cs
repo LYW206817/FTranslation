@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FastTranslation.Server.Auth;
 using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +15,8 @@ public static class AccountEndpoints
         group.MapGet("/me", Me);
         group.MapGet("/usage", Usage);
         group.MapPost("/devices", RegisterDevice);
+        group.MapPatch("/profile", UpdateProfile);
+        group.MapPost("/password", ChangePassword);
     }
 
     private static IResult Me(ClaimsPrincipal principal, AccountStore store, ServerDatabase database)
@@ -56,6 +59,89 @@ public static class AccountEndpoints
 
         var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
         return Results.Ok(AuthEndpoints.ToUsageDto(store.ReadUsage(user.Id, deviceId), tier));
+    }
+
+    /// <summary>
+    /// The only editable profile field. Length and control characters are checked here because the
+    /// value is rendered in the window title area and in the sidebar, where a newline or a 200-char
+    /// name breaks the layout rather than just looking odd.
+    /// </summary>
+    private static IResult UpdateProfile(
+        [FromBody] UpdateProfileRequest request,
+        ClaimsPrincipal principal,
+        AccountStore store,
+        ServerDatabase database)
+    {
+        var user = store.FindUserById(principal.GetUserId());
+        if (user is null)
+        {
+            return Results.NotFound(new ErrorResponse("account_missing"));
+        }
+
+        var name = (request.DisplayName ?? string.Empty).Trim();
+        if (name.Length > 24)
+        {
+            return Results.BadRequest(new ErrorResponse("display_name_too_long"));
+        }
+
+        if (name.Any(char.IsControl))
+        {
+            return Results.BadRequest(new ErrorResponse("display_name_invalid"));
+        }
+
+        store.SetDisplayName(user.Id, name);
+        var updated = store.FindUserById(user.Id)!;
+        return Results.Ok(AuthEndpoints.ToAccountDto(updated, database));
+    }
+
+    /// <summary>
+    /// Changing the password revokes every refresh token and immediately issues this device a new
+    /// pair: other devices have to sign in again, the one that made the change does not get kicked
+    /// out mid-session. Access tokens already handed out stay valid until they expire (30 minutes).
+    /// </summary>
+    private static IResult ChangePassword(
+        [FromBody] ChangePasswordRequest request,
+        ClaimsPrincipal principal,
+        AccountStore store,
+        TokenService tokens,
+        ServerOptions options,
+        ServerDatabase database)
+    {
+        var user = store.FindUserById(principal.GetUserId());
+        if (user is null)
+        {
+            return Results.NotFound(new ErrorResponse("account_missing"));
+        }
+
+        if (!PasswordHasher.Verify(request.CurrentPassword ?? string.Empty, user.PasswordHash))
+        {
+            return Results.Json(new ErrorResponse("password_mismatch"), statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var next = request.NewPassword ?? string.Empty;
+        if (next.Length < 8)
+        {
+            return Results.BadRequest(new ErrorResponse("password_too_short"));
+        }
+
+        if (PasswordHasher.Verify(next, user.PasswordHash))
+        {
+            return Results.BadRequest(new ErrorResponse("password_unchanged"));
+        }
+
+        store.SetPasswordHash(user.Id, PasswordHasher.Hash(next));
+        store.RevokeAllRefreshTokens(user.Id);
+
+        var device = store.RegisterDevice(
+            user.Id,
+            string.IsNullOrWhiteSpace(request.DeviceFingerprint) ? "password-change" : request.DeviceFingerprint.Trim(),
+            request.DeviceName ?? string.Empty);
+        if (device.Device is not { } registered)
+        {
+            return Results.BadRequest(new ErrorResponse(device.Error!));
+        }
+
+        return Results.Ok(AuthEndpoints.IssueTokens(store, tokens, options, database, user, registered));
     }
 
     private static IResult RegisterDevice(
@@ -164,7 +250,7 @@ public static class AdminEndpoints
         return Results.Ok(new CreateCodesResponse(generated, Plans.ToWire(plan), days));
     }
 
-    private static async ValueTask<object?> RequireAdminToken(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    internal static async ValueTask<object?> RequireAdminToken(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var configured = context.HttpContext.RequestServices.GetRequiredService<ServerOptions>().AdminToken;
         var provided = context.HttpContext.Request.Headers[HeaderName].ToString();

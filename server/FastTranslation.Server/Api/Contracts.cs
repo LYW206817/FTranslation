@@ -28,7 +28,23 @@ public sealed record AuthResponse(
 
 /// <summary><paramref name="PlanExpiresAt"/> is unix seconds; null on a paid plan means "no end date".</summary>
 public sealed record AccountDto(
-    Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily, long? PlanExpiresAt);
+    Guid Id,
+    string Email,
+    string Plan,
+    int QuotaMonthly,
+    int? QuotaDaily,
+    long? PlanExpiresAt,
+    string DisplayName = "");
+
+/// <summary>An empty <c>DisplayName</c> clears it: the UI then falls back to the email.</summary>
+public sealed record UpdateProfileRequest(string? DisplayName);
+
+/// <summary>
+/// Changing the password returns a fresh token pair, so the device that did it stays signed in
+/// while every other refresh token is revoked.
+/// </summary>
+public sealed record ChangePasswordRequest(
+    string? CurrentPassword, string? NewPassword, string? DeviceFingerprint, string? DeviceName);
 
 public sealed record UsageDto(
     int UsedMonthlyChars,

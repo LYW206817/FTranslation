@@ -167,7 +167,7 @@ public static class AuthEndpoints
         return Results.Ok(new MessageResponse("logged_out"));
     }
 
-    private static AuthResponse IssueTokens(
+    internal static AuthResponse IssueTokens(
         AccountStore store,
         TokenService tokens,
         ServerOptions options,
@@ -203,7 +203,8 @@ public static class AuthEndpoints
             Plans.ToWire(tier),
             Plans.MonthlyQuota(tier),
             Plans.DailyQuota(tier),
-            tier == PlanTier.Free ? null : user.PlanExpiresAt);
+            tier == PlanTier.Free ? null : user.PlanExpiresAt,
+            user.DisplayName);
     }
 
     internal static UsageDto ToUsageDto(UsageSnapshot usage, PlanTier plan)

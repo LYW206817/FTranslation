@@ -86,7 +86,47 @@ public sealed class AccountApiClient
         var response = await SendAsync(HttpMethod.Get, "api/v1/account/me", accessToken, null, cancellationToken)
             .ConfigureAwait(false);
         return await ReadAsync<AccountResponse, AccountProfile>(
-            response, body => new AccountProfile(body.Id, body.Email, body.Plan, body.QuotaMonthly, body.QuotaDaily),
+            response, body => body.ToProfile(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Saves the display name. An empty string clears it, which the UI draws as the email — that is
+    /// a legitimate update, not a validation failure, so it is sent as-is.
+    /// </summary>
+    public async Task<AccountApiResult<AccountProfile>> UpdateProfileAsync(
+        string accessToken, string displayName, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Patch, "api/v1/account/profile", accessToken, new ProfileBody(displayName), cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<AccountResponse, AccountProfile>(
+            response, body => body.ToProfile(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces the password. The server answers with a fresh token pair because it revokes every
+    /// refresh token: other devices must sign in again, this one keeps working.
+    /// </summary>
+    public async Task<AccountApiResult<AccountSignIn>> ChangePasswordAsync(
+        string accessToken,
+        string currentPassword,
+        string newPassword,
+        string? deviceFingerprint,
+        string? deviceName,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post,
+            "api/v1/account/password",
+            accessToken,
+            new PasswordBody(currentPassword, newPassword, deviceFingerprint, deviceName),
+            cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<AuthResponse, AccountSignIn>(
+            response,
+            auth => new AccountSignIn(
+                new AccountSession(auth.AccessToken, auth.RefreshToken,
+                    DateTimeOffset.UtcNow.AddSeconds(auth.ExpiresInSeconds), auth.Account.ToProfile()),
+                auth.Usage.ToUsage()),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -232,6 +272,11 @@ public sealed class AccountApiClient
                 case "redeem_code_invalid": return AccountErrorCode.CodeInvalid;
                 case "redeem_code_used": return AccountErrorCode.CodeUsed;
                 case "redeem_plan_downgrade": return AccountErrorCode.PlanDowngrade;
+                case "password_mismatch": return AccountErrorCode.PasswordMismatch;
+                case "password_too_short": return AccountErrorCode.PasswordTooShort;
+                case "password_unchanged": return AccountErrorCode.PasswordUnchanged;
+                case "display_name_too_long":
+                case "display_name_invalid": return AccountErrorCode.InvalidProfile;
             }
         }
         return status switch
@@ -283,6 +328,11 @@ public sealed class AccountApiClient
 
     private sealed record RedeemBody(string Code);
 
+    private sealed record ProfileBody(string DisplayName);
+
+    private sealed record PasswordBody(
+        string CurrentPassword, string NewPassword, string? DeviceFingerprint, string? DeviceName);
+
 
     private sealed record EmptyBody;
 
@@ -309,8 +359,10 @@ public sealed class AccountApiClient
         [JsonPropertyName("quotaMonthly")] public int QuotaMonthly { get; init; }
         [JsonPropertyName("quotaDaily")] public int? QuotaDaily { get; init; }
         [JsonPropertyName("planExpiresAt")] public long? PlanExpiresAt { get; init; }
+        [JsonPropertyName("displayName")] public string DisplayName { get; init; } = string.Empty;
 
-        public AccountProfile ToProfile() => new(Id, Email, Plan, QuotaMonthly, QuotaDaily, PlanExpiresAt);
+        public AccountProfile ToProfile() =>
+            new(Id, Email, Plan, QuotaMonthly, QuotaDaily, PlanExpiresAt, DisplayName);
     }
 
     private sealed class UsageResponse

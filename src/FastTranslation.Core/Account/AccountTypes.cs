@@ -21,6 +21,10 @@ public enum AccountErrorCode
     PlanDowngrade,
     Server,
     NotSignedIn,
+    PasswordMismatch,
+    PasswordTooShort,
+    PasswordUnchanged,
+    InvalidProfile,
 }
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
@@ -41,13 +45,32 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.CodeUsed => "这个激活码已经被用过了。",
         AccountErrorCode.PlanDowngrade => "你现在的套餐更贵,这张码用不上,先留着吧。",
         AccountErrorCode.NotSignedIn => "还没有登录账号。",
+        AccountErrorCode.PasswordMismatch => "当前密码不对。",
+        AccountErrorCode.PasswordTooShort => "新密码至少 8 位。",
+        AccountErrorCode.PasswordUnchanged => "新密码和当前密码一样,换一个吧。",
+        AccountErrorCode.InvalidProfile => "名字最多 24 个字,不能包含换行等特殊字符。",
         _ => "账号服务器出错了,请稍后再试。",
     };
 }
 
 public sealed record AccountProfile(
-    Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily, long? PlanExpiresAtUnix = null)
+    Guid Id,
+    string Email,
+    string Plan,
+    int QuotaMonthly,
+    int? QuotaDaily,
+    long? PlanExpiresAtUnix = null,
+    string DisplayName = "")
 {
+    /// <summary>What the UI shows as the account's name: the display name when set, else the email.</summary>
+    public string DisplayNameOrEmail => string.IsNullOrWhiteSpace(DisplayName) ? Email : DisplayName;
+
+    /// <summary>One character for the round avatar. Falls back to "?" for an address that cannot
+    /// start a name (an empty email only happens on a malformed response).</summary>
+    public string Initial => DisplayNameOrEmail.Length == 0
+        ? "?"
+        : DisplayNameOrEmail[..1].ToUpperInvariant();
+
     public string PlanDisplay => Plan switch
     {
         "light" => "轻享版",

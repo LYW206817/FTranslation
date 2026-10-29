@@ -1,0 +1,266 @@
+<UserControl x:Class="FastTranslation.App.Pages.AccountPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource WindowBgBrush}"
+             FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
+  <UserControl.Resources>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="14,12,14,14"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+
+    <Style x:Key="CardTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+
+    <Style x:Key="FieldLabelTight" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+    </Style>
+
+    <Style x:Key="MeterBar" TargetType="ProgressBar">
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Minimum" Value="0"/>
+      <Setter Property="Maximum" Value="1"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Border Background="{TemplateBinding Background}" CornerRadius="3" ClipToBounds="True">
+              <Border x:Name="PART_Track" Background="Transparent">
+                <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}"
+                        CornerRadius="3" HorizontalAlignment="Left"/>
+              </Border>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                Focusable="False">
+    <Grid MaxWidth="980" Margin="24,18,24,26">
+      <StackPanel>
+        <TextBlock x:Name="Headline" Text="账号" FontSize="17" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+
+        <!-- ================= signed out ================= -->
+        <Grid x:Name="SignedOutPanel">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="18"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0">
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock x:Name="EmailLabel" Text="邮箱" Style="{StaticResource FieldLabelTight}"/>
+                <TextBox x:Name="EmailBox" AutomationProperties.Name="邮箱" TextChanged="Input_Changed"/>
+                <TextBlock Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="密码"
+                             PasswordChanged="Password_Changed"/>
+                <TextBlock x:Name="PasswordHint" Style="{StaticResource Hint}"
+                           Text="至少 8 位。忘记密码暂时需要联系我们重置。"/>
+
+                <StackPanel x:Name="CodeRow" Visibility="Collapsed">
+                  <TextBlock Text="邮箱验证码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="CodeBox" AutomationProperties.Name="验证码" MaxLength="6"/>
+                    <Button x:Name="SendCodeButton" Grid.Column="1" Content="获取验证码" Margin="8,0,0,0"
+                            Style="{StaticResource SmallButton}" Click="SendCode_Click"/>
+                  </Grid>
+                  <TextBlock x:Name="CodeHint" Style="{StaticResource Hint}"
+                             Text="验证码 10 分钟内有效,会发到上面的邮箱。"/>
+                </StackPanel>
+
+                <TextBlock x:Name="ErrorText" Style="{StaticResource Hint}"
+                           Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                  <Button x:Name="SwitchButton" Content="去注册" Click="Switch_Click"/>
+                  <Button x:Name="SubmitButton" Content="登录" MinWidth="96" Margin="0"
+                          Style="{StaticResource PrimaryButton}" Click="Submit_Click"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="ModeHint" Style="{StaticResource Hint}" Margin="2,0,2,0"
+                       Text="登录后就能看到自己的免费额度用量。"/>
+          </StackPanel>
+
+          <Border Grid.Column="2" Style="{StaticResource Card}" VerticalAlignment="Top">
+            <StackPanel>
+              <TextBlock Text="登录后有什么不一样" Style="{StaticResource CardTitle}"/>
+
+              <TextBlock Text="· 免费额度按账号算" FontSize="12" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Text="不登录也能翻译,但用量记在本机上,换一台机器就找不回来了。"
+                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+
+              <TextBlock Text="· 生词本存在服务端" FontSize="12" FontWeight="SemiBold" Margin="0,14,0,0"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Text="保存的单词、短语、语句都在账号里,重装或换机器都还在。"
+                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+
+              <TextBlock Text="· 复习进度跟着账号走" FontSize="12" FontWeight="SemiBold" Margin="0,14,0,0"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Text="每条记到第几档、下次什么时候再看,都记在账号上。"
+                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <!-- ================= signed in ================= -->
+        <StackPanel x:Name="SignedInPanel" Visibility="Collapsed">
+
+          <!-- identity: avatar, name, address, plan badge, and the one destructive action -->
+          <Border Style="{StaticResource Card}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+
+              <Border Width="44" Height="44" CornerRadius="22" VerticalAlignment="Center"
+                      Background="{DynamicResource BrandFillBrush}">
+                <TextBlock x:Name="AvatarText" FontSize="18" FontWeight="SemiBold"
+                           Foreground="{DynamicResource BrandBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="NameText" FontSize="15" FontWeight="SemiBold"
+                             Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                  <Border x:Name="PlanBadge" Margin="8,0,0,0" VerticalAlignment="Center" CornerRadius="9"
+                          Background="{DynamicResource BrandFillBrush}" Padding="7,2">
+                    <TextBlock x:Name="PlanBadgeText" FontSize="11"
+                               Foreground="{DynamicResource BrandBrush}"/>
+                  </Border>
+                </StackPanel>
+                <TextBlock x:Name="EmailText" Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+              </StackPanel>
+
+              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="RefreshButton" Content="刷新" Style="{StaticResource SmallButton}"
+                        Click="Refresh_Click"/>
+                <Button x:Name="SignOutButton" Content="退出登录" Margin="0" Click="SignOut_Click"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="16"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+              <!-- the plan summary: name, validity, what is left. Buying lives on the 套餐 page -->
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="当前套餐" Style="{StaticResource CardTitle}"/>
+                  <TextBlock x:Name="PlanNameText" FontSize="15" FontWeight="SemiBold"
+                             Foreground="{DynamicResource TextPrimaryBrush}"/>
+                  <TextBlock x:Name="PlanValidityText" Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+
+                  <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
+                          Margin="0,12,0,10"/>
+
+                  <TextBlock Text="本月剩余" Style="{StaticResource FieldLabelTight}"/>
+                  <TextBlock x:Name="MonthlyLeftText" FontSize="13"
+                             Foreground="{DynamicResource TextPrimaryBrush}"/>
+                  <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
+
+                  <StackPanel x:Name="DailyRow" Margin="0,12,0,0">
+                    <TextBlock Text="今日剩余" Style="{StaticResource FieldLabelTight}"/>
+                    <TextBlock x:Name="DailyLeftText" FontSize="13"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>
+                  </StackPanel>
+
+                  <Button x:Name="GotoPlanButton" Content="看套餐与价格" HorizontalAlignment="Left"
+                          Style="{StaticResource SmallButton}" Margin="0,14,0,0" Click="GotoPlan_Click"/>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="修改名称" Style="{StaticResource CardTitle}"/>
+                  <TextBox x:Name="NameBox" AutomationProperties.Name="名称" MaxLength="24"
+                           TextChanged="Input_Changed"/>
+                  <TextBlock Text="最多 24 个字。留空就用邮箱当地址显示。" Style="{StaticResource Hint}"/>
+                  <Button x:Name="SaveNameButton" Content="保存名称" HorizontalAlignment="Left"
+                          Style="{StaticResource SmallButton}" Margin="0,10,0,0" Click="SaveName_Click"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="修改密码" Style="{StaticResource CardTitle}"/>
+                  <TextBlock Text="当前密码" Style="{StaticResource FieldLabelTight}"/>
+                  <PasswordBox x:Name="CurrentPasswordBox" AutomationProperties.Name="当前密码"/>
+
+                  <TextBlock Text="新密码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                  <PasswordBox x:Name="NewPasswordBox" AutomationProperties.Name="新密码"/>
+
+                  <TextBlock Text="再输一次" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                  <PasswordBox x:Name="ConfirmPasswordBox" AutomationProperties.Name="确认新密码"/>
+
+                  <TextBlock Text="至少 8 位。改完之后其他设备要重新登录,这台不用。"
+                             Style="{StaticResource Hint}"/>
+                  <Button x:Name="SavePasswordButton" Content="保存密码" HorizontalAlignment="Left"
+                          Style="{StaticResource SmallButton}" Margin="0,10,0,0" Click="SavePassword_Click"/>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="数据" Style="{StaticResource CardTitle}"/>
+                  <TextBlock Text="生词本、复习进度都存在服务端,退出登录不会删掉,换机器登录同一个账号就能拿回来。"
+                             Style="{StaticResource Hint}" Margin="0"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Grid>
+
+          <TextBlock x:Name="StatusText" Style="{StaticResource Hint}" Margin="2,0,2,0"/>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
+</UserControl>
