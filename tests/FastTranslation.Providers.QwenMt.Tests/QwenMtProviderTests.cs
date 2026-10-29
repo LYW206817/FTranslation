@@ -1,4 +1,5 @@
-using System.Net;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using FastTranslation.Core;
 using FastTranslation.Providers.QwenMt;
@@ -241,5 +242,61 @@ public class QwenMtProviderTests
         Assert.True(result.Succeeded);
         Assert.Equal("fp-1", seen);
     }
-}
 
+    /// <summary>统计发送次数并按给定异常失败；用来分辨"重试了一次"和"一次就放弃"。</summary>
+    private sealed class FailingHandler(Func<Exception> fail) : HttpMessageHandler
+    {
+        public int Sends { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Sends++;
+            throw fail();
+        }
+    }
+
+    [Fact]
+    public async Task ConnectionRefused_IsNotRetried()
+    {
+        // Windows 上连一个没人监听的端口最快也要几百毫秒（带过滤驱动的机器上要两秒），
+        // 而"积极拒绝"重试一次结果一模一样，纯粹让用户多等一轮
+        var handler = new FailingHandler(() => new HttpRequestException("refused", new SocketException((int)SocketError.ConnectionRefused)));
+        using var http = new HttpClient(handler);
+        using var provider = new QwenMtProvider(() => "k", new QwenMtOptions { BaseUrl = "http://127.0.0.1:9/v1" }, http);
+
+        var result = await provider.TranslateAsync(new TranslationRequest("hi", "auto", "zh", "qwen-mt-flash"), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(TranslationErrorCode.Network, result.Error?.Code);
+        Assert.Equal(1, handler.Sends);
+    }
+
+    [Fact]
+    public async Task ConnectionReset_IsStillRetriedOnce()
+    {
+        // 连接被重置可能是瞬时的，这种才值得再试一次
+        var handler = new FailingHandler(() => new HttpRequestException("reset", new SocketException((int)SocketError.ConnectionReset)));
+        using var http = new HttpClient(handler);
+        using var provider = new QwenMtProvider(() => "k", new QwenMtOptions { BaseUrl = "http://127.0.0.1:9/v1" }, http);
+
+        var result = await provider.TranslateAsync(new TranslationRequest("hi", "auto", "zh", "qwen-mt-flash"), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, handler.Sends);
+    }
+
+    [Fact]
+    public async Task InjectedHttpClient_KeepsItsOwnTimeout()
+    {
+        // HttpClient 发过请求之后再改 Timeout 会抛 InvalidOperationException；网关那条链路每个
+        // 请求都新建一个 provider 并复用同一个 HttpClient，原先就是在这里静默炸掉、让网关永远
+        // 只被问一次
+        var handler = new FailingHandler(() => new HttpRequestException("boom"));
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(7) };
+        await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync("http://127.0.0.1:9/"));
+
+        using var provider = new QwenMtProvider(() => "k", new QwenMtOptions { TimeoutSeconds = 45 }, http);
+
+        Assert.Equal(TimeSpan.FromSeconds(7), http.Timeout);
+    }
+}

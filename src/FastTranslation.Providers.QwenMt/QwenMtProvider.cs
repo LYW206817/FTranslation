@@ -44,8 +44,10 @@ public sealed class QwenMtProvider : ITranslationProvider
         _apiKeyAccessor = apiKeyAccessor ?? (() => null);
         _options = options ?? new QwenMtOptions();
         _ownsHttp = http is null;
-        _http = http ?? new HttpClient();
-        _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+        // 传进来的 client 可能已经发过请求，而 HttpClient 在那之后拒绝再改 Timeout
+        // （InvalidOperationException: This instance has already started one or more requests）。
+        // 自己造的那一个才归我们设超时；别人给的按别人的策略来。
+        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds) };
     }
 
     public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken ct)
@@ -122,7 +124,7 @@ public sealed class QwenMtProvider : ITranslationProvider
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException)
             {
-                if (attempt == 0) { await DelayAsync(attempt, ct).ConfigureAwait(false); continue; }
+                if (attempt == 0 && IsWorthRetrying(ex)) { await DelayAsync(attempt, ct).ConfigureAwait(false); continue; }
                 return Fail(request, TranslationError.Network(ex.Message), started);
             }
         }
@@ -207,6 +209,15 @@ public sealed class QwenMtProvider : ITranslationProvider
     {
         try { return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
         catch { return string.Empty; }
+    }
+
+    /// <summary>
+    /// 连接被拒、域名解析不出来，重试一次不会变好，只会让用户多等一轮；超时和连接被重置才值得重试。
+    /// </summary>
+    private static bool IsWorthRetrying(Exception exception)
+    {
+        var socket = exception as SocketException ?? exception.InnerException as SocketException;
+        return socket?.SocketErrorCode is not (SocketError.ConnectionRefused or SocketError.HostNotFound or SocketError.NoData);
     }
 
     private static Task DelayAsync(int attempt, CancellationToken ct) => Task.Delay(400 * (attempt + 1), ct);

@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+﻿using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Windows;
 using FastTranslation.App.Pages;
@@ -41,6 +42,12 @@ public partial class App : Application, IResultPresenter
     private AccountApiClient? _accountClient;
     private NotesApiClient? _notesClient;
     private HttpClient? _gatewayHttp;
+
+    // 网关连不上时先记一段时间，别再让每次翻译都白等一次连接（在带过滤驱动/代理的机器上，
+    // 连一个没人监听的本地端口要 2 秒才拿到 RST，这两个 2 秒全算在用户第一次翻译的等待里）
+    private long _gatewayDownUntil;
+
+    private const long GatewayDownWindowMs = 60_000;
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -92,12 +99,15 @@ public partial class App : Application, IResultPresenter
 
         // account service: one HttpClient for the process, 20 s so a dead host surfaces as a
         // network error instead of a button that never comes back
+        var accountBase = string.IsNullOrWhiteSpace(_settings.AccountBaseUrl)
+            ? AccountApiClient.DefaultBaseUrl
+            : _settings.AccountBaseUrl;
         _accountClient = new AccountApiClient(
-            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
-            _settings.AccountBaseUrl);
+            CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
+            accountBase);
         _notesClient = new NotesApiClient(
-            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
-            _settings.AccountBaseUrl);
+            CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
+            accountBase);
         _account = new AccountCoordinator(_accountClient, _secrets, notes: _notesClient);
         _account.Changed += OnAccountChanged;
 
@@ -112,7 +122,7 @@ public partial class App : Application, IResultPresenter
             });
 
         // 网关与账号共用主机；单独一个 HttpClient，因为它的超时要盖住服务端自己的上游超时
-        _gatewayHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        _gatewayHttp = CreateApiHttpClient(TimeSpan.FromSeconds(45), GatewayBaseUrl());
         _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider));
 
         // stage-1 toolbar (复制/翻译) + stage-2 result card (复制/替换/插入/✕)
@@ -259,6 +269,7 @@ public partial class App : Application, IResultPresenter
         // restore the stored session in the background: a dead network must not delay startup,
         // and nothing on screen blocks on it
         _ = RestoreAccountAsync();
+        _ = Task.Run(ProbeGatewayAsync);
 
         // updater last: it only schedules a timer, and a check that runs before the UI exists
         // would have nowhere to put its dialog
@@ -466,24 +477,42 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "translate")
         {
-            // FT_UITEST=translate -> run one real translation through the production provider
-            // chain (gateway first, own key as fallback) without simulating a selection. The card
-            // is then on screen with whatever the chain actually produced.
+            // FT_UITEST=translate -> 连续跑三次真实链路（先 ShowLoading 再 TranslateAsync 再
+            // ShowCard，和生产路径同序），每次用不同文本绕开 LRU 缓存。第一次与后面几次的
+            // 差值就是启动代价（TLS 握手、JIT、JSON 首次序列化、DPAPI 解密都算在里面）。
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += async (_, _) =>
             {
                 uiTimer.Stop();
-                try
+                string[] samples =
+                [
+                    "The quick brown fox jumps over the lazy dog.",
+                    "Translation latency is what this probe measures.",
+                    "Warm connections are why the second call is quicker.",
+                ];
+                for (var i = 0; i < samples.Length; i++)
                 {
-                    const string sample = "The quick brown fox jumps over the lazy dog.";
                     var origin = CapturedSelection.Empty(
                         FastTranslation.Platform.Windows.WindowsSelectionCapture.CurrentCursorPoint());
-                    ShowLoading(sample, origin);           // 真实路径先挂载 loading 态，再换成结果
-                    var result = await _translation.TranslateAsync(sample, _settings);
-                    Trace($"translate hook: ok={result.Succeeded} err={result.Error?.Code}/{result.Error?.Message} notice={result.Notice} out={result.TranslatedText}");
-                    ShowCard(result, origin);
+                    var wall = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        var loadStart = wall.ElapsedMilliseconds;
+                        ShowLoading(samples[i], origin);
+                        var loadEnd = wall.ElapsedMilliseconds;
+                        var result = await _translation.TranslateAsync(samples[i], _settings);
+                        var callEnd = wall.ElapsedMilliseconds;
+                        Trace($"translate hook [{i}]: loading={loadEnd - loadStart}ms call={callEnd - loadEnd}ms provider={result.ElapsedMs}ms ok={result.Succeeded} cache={result.FromCache} err={result.Error?.Code}/{result.Error?.Message}");
+                        ShowCard(result, origin);
+                        wall.Stop();
+                        Trace($"translate hook [{i}]: card={wall.ElapsedMilliseconds - callEnd}ms total={wall.ElapsedMilliseconds}ms");
+                    }
+                    catch (Exception ex)
+                    {
+                        wall.Stop();
+                        Trace($"translate hook [{i}] threw after {wall.ElapsedMilliseconds}ms: {ex}");
+                    }
                 }
-                catch (Exception ex) { Trace($"translate hook threw: {ex}"); }
             };
             uiTimer.Start();
         }
@@ -679,6 +708,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken)
     {
         if (_account is not { IsSignedIn: true } account) return null;
+        if (Environment.TickCount64 < _gatewayDownUntil) return null;
         var token = await account.GetAccessTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -694,7 +724,9 @@ public partial class App : Application, IResultPresenter
                 ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
             },
             _gatewayHttp);
-        return await provider.TranslateAsync(request, cancellationToken);
+        var gatewayResult = await provider.TranslateAsync(request, cancellationToken);
+        NoteGatewayFailure(gatewayResult.Error);
+        return gatewayResult;
     }
 
     /// <summary>截图翻译走网关的 /v1/image；返回 null 表示这次别用网关（见文本链路的说明）。</summary>
@@ -703,6 +735,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken)
     {
         if (_account is not { IsSignedIn: true } account) return null;
+        if (Environment.TickCount64 < _gatewayDownUntil) return null;
         var token = await account.GetAccessTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -716,7 +749,9 @@ public partial class App : Application, IResultPresenter
                 ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
             },
             _gatewayHttp);
-        return await provider.TranslateImageAsync(request, cancellationToken);
+        var imageResult = await provider.TranslateImageAsync(request, cancellationToken);
+        NoteGatewayFailure(imageResult.Error);
+        return imageResult;
     }
 
     /// <summary>
@@ -728,6 +763,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken)
     {
         if (_account is not { IsSignedIn: true } account) return null;
+        if (Environment.TickCount64 < _gatewayDownUntil) return null;
         var token = await account.GetAccessTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -740,7 +776,9 @@ public partial class App : Application, IResultPresenter
                 ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
             },
             _gatewayHttp);
-        return await client.RecognizeAsync(request, cancellationToken);
+        var ocrResult = await client.RecognizeAsync(request, cancellationToken);
+        NoteGatewayFailure(ocrResult.Error);
+        return ocrResult;
     }
 
     /// <summary>译图窗标题栏：来源进程 + 文本链路的异常（有才拼）。</summary>
@@ -808,6 +846,24 @@ public partial class App : Application, IResultPresenter
             _tray?.ShowBalloon("Fast Translation", "保存没成功,稍后再试一次");
         }
     }
+
+    /// <summary>
+    /// 发往本机或内网地址的请求不该走系统代理：Windows 上每个请求会先做一次代理自动探测，
+    /// 而本机网关根本不需要代理。探测失败/被拒的代价直接算在用户第一次翻译的等待里。
+    /// </summary>
+    private static HttpClient CreateApiHttpClient(TimeSpan timeout, string baseUrl)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            UseProxy = !IsLocalAddress(baseUrl),
+        };
+        return new HttpClient(handler) { Timeout = timeout };
+    }
+
+    private static bool IsLocalAddress(string baseUrl) =>
+        Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+        && (uri.IsLoopback || (IPAddress.TryParse(uri.Host, out var address) && IPAddress.IsLoopback(address)));
 
     private string GatewayBaseUrl()
     {
@@ -927,6 +983,41 @@ public partial class App : Application, IResultPresenter
         var profile = _account?.Session?.Profile;
         _mainWindow?.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
         _ = _mainWindow?.RefreshReviewBadgeAsync();
+    }
+
+    /// <summary>
+    /// 启动时探一次网关有没有人在听。连不上就先标记不可用 60 秒，让启动后的第一次翻译不必把
+    /// 两秒花在一个注定被拒的连接上；连得上就清掉标记。
+    /// </summary>
+    private async Task ProbeGatewayAsync()
+    {
+        if (!Uri.TryCreate(GatewayBaseUrl(), UriKind.Absolute, out var uri)) return;
+        // 先假定连不上：探测本身就要两秒（连接被拒也要等），不先占位的话，启动后头几秒里
+        // 发生的第一次翻译仍会把这两秒吃进去。探通了立刻放开。
+        _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
+        try
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await client.ConnectAsync(uri.Host, uri.Port, timeout.Token).ConfigureAwait(false);
+            _gatewayDownUntil = 0;
+            Trace($"gateway probe: {uri.Authority} reachable");
+        }
+        catch (Exception ex)
+        {
+            _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
+            Trace($"gateway probe: {uri.Authority} unreachable ({ex.GetType().Name}), skipping it for {GatewayDownWindowMs / 1000}s");
+        }
+    }
+
+    /// <summary>
+    /// 只有"连不上"才值得歇一会；429、额度用完、401 都是网关活着并且在回答，下次照样要问。
+    /// </summary>
+    private void NoteGatewayFailure(TranslationError? error)
+    {
+        if (error?.Code != TranslationErrorCode.Network) return;
+        _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
+        Trace($"gateway down for {GatewayDownWindowMs / 1000}s: {error.Message}");
     }
 
     private async Task RestoreAccountAsync()
