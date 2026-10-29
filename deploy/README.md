@@ -39,15 +39,15 @@ cp -r publish/server-linux publish/ftdeploy/server
 cp -r site publish/ftdeploy/site
 
 # 3) 上传(IP 换成你的)
-scp -r publish/ftdeploy root@114.55.166.224:/tmp/ftdeploy
+scp -r publish/ftdeploy root@114.55.166.224:/root/ftdeploy
 
 # 4) 服务器:装系统依赖
-ssh root@114.55.166.224 'bash /tmp/ftdeploy/bootstrap.sh'
+ssh root@114.55.166.224 'bash /root/ftdeploy/bootstrap.sh'
 
 # 5) 服务器:填生产配置(见下节),再跑安装脚本
-ssh root@114.55.166.224 'cp /tmp/ftdeploy/appsettings.Production.json.example /opt/fasttranslation/appsettings.Production.json'
+ssh root@114.55.166.224 'cp /root/ftdeploy/appsettings.Production.json.example /opt/fasttranslation/appsettings.Production.json'
 # ...编辑该文件填 SigningKey / AdminToken / Gateway:ApiKey...
-ssh root@114.55.166.224 'bash /tmp/ftdeploy/install.sh'
+ssh root@114.55.166.224 'bash /root/ftdeploy/install.sh'
 ```
 
 第 5 步的 `install.sh` 会做幂等安装,最后打印健康检查结果。Caddy 只有在 `Caddyfile` 的占位符被替换后才会被启用 —— 这是刻意的,见下文。`bootstrap.sh` 里的 SSH 加固只在 `/root/.ssh/authorized_keys` 非空时才动手(否则它会把自己锁在门外);不想动 sshd 和防火墙就加 `FT_SKIP_HARDEN=1`。
@@ -143,14 +143,14 @@ systemctl start fasttranslation
 
 ```bash
 bash deploy/build-server.sh
-rm -rf /tmp/ftup && mkdir -p /tmp/ftup
+rm -rf /root/ftup && mkdir -p /root/ftup
 cp deploy/bootstrap.sh deploy/install.sh deploy/fasttranslation.service \
-   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron /tmp/ftup/
-cp -r publish/server-linux /tmp/ftup/server
-cp -r site /tmp/ftup/site
-tar czf /tmp/ftup.tgz -C /tmp/ftup .
-scp /tmp/ftup.tgz root@114.55.166.224:/tmp/
-ssh root@114.55.166.224 'rm -rf /tmp/ftdeploy && mkdir -p /tmp/ftdeploy && tar xzf /tmp/ftup.tgz -C /tmp/ftdeploy && bash /tmp/ftdeploy/install.sh'
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron /root/ftup/
+cp -r publish/server-linux /root/ftup/server
+cp -r site /root/ftup/site
+tar czf /root/ftup.tgz -C /root/ftup .
+scp /root/ftup.tgz root@114.55.166.224:/tmp/
+ssh root@114.55.166.224 'rm -rf /root/ftdeploy && mkdir -p /root/ftdeploy && tar xzf /root/ftup.tgz -C /root/ftdeploy && bash /root/ftdeploy/install.sh'
 ```
 
 `/opt/fasttranslation/appsettings.Production.json` 不在上传目录里,升级不会覆盖服务器上的生产配置。
