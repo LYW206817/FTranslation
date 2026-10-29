@@ -11,8 +11,8 @@ using FastTranslation.Providers.QwenMt;
 namespace FastTranslation.App;
 
 /// <summary>
-/// The single window (v48, design D13): a sidebar that never changes, and one page host that
-/// swaps content. All the translation work lives in <see cref="MainPage"/>; this class is a shell.
+/// 唯一的窗口（v48，设计 D13）：一个永不变化的侧边栏，加一个负责换内容的页面宿主。
+/// 所有翻译工作都在 <see cref="MainPage"/> 里；这个类只是外壳。
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -37,13 +37,13 @@ public partial class MainWindow : Window
     private bool _suppressCaptureToggle;
     private bool _ready;
 
-    /// <summary>Forwarded from the home page so App never has to reach into a page instance.</summary>
+    /// <summary>从首页转发过来，这样 App 不必伸手去拿某个页面实例。</summary>
     public event Action? SettingsRequested;
 
-    /// <summary>Screenshot capture is owned by App; the home page only asks for it.</summary>
+    /// <summary>截图取词归 App 所有；首页只是发起请求。</summary>
     public event Action? ScreenshotRequested;
 
-    /// <summary>App's FT_UITEST hooks read the home page's controls; Build() keeps that safe before show.</summary>
+    /// <summary>App 的 FT_UITEST 钩子会读首页的控件；Build() 保证在显示前已就绪。</summary>
     public MainPage PageHome => Build(MainPageId.Home) as MainPage ?? throw new InvalidOperationException("Home is a MainPage.");
 
     public MainWindow(
@@ -74,14 +74,14 @@ public partial class MainWindow : Window
         _setCaptureEnabled = setCaptureEnabled;
         _isCaptureEnabled = isCaptureEnabled;
 
-        // The capture switch raises Checked while InitializeComponent applies IsChecked="True",
-        // long before the callbacks exist. Everything that touches them waits for this flag.
+        // InitializeComponent 应用 IsChecked="True" 时就会触发 Checked，那时回调还不存在。
+        // 所有会碰这些回调的代码都等这个标志。
         _ready = true;
         ApplyCaptureState();
         ShowPage(MainPageId.Home);
     }
 
-    /// <summary>Shown in the sidebar footer so the signed-in state is visible without opening anything.</summary>
+    /// <summary>显示在侧边栏底部，这样不打开任何界面也能看到登录状态。</summary>
     public void RefreshAccountStatus(string? email, string? planDisplay)
     {
         AccountStatus.Text = email is null
@@ -91,9 +91,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Sidebar count of cards waiting today. Best effort: signed out or offline just means no badge,
-    /// and the review window says why on its own. Never awaited from <see cref="ShowPage"/>: a page
-    /// switch must not wait on the network.
+    /// 侧边栏上今天等待复习的卡片数。尽力而为：未登录或离线就不显示角标，复习窗口自己会
+    /// 说明原因。绝不在 <see cref="ShowPage"/> 里 await：切页面不能等网络。
     /// </summary>
     public async Task RefreshReviewBadgeAsync()
     {
@@ -111,7 +110,7 @@ public partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // a badge is decoration; an exception here must not escape onto the Dispatcher
+            // 角标只是装饰；这里的异常不能逃到 Dispatcher 上
             return;
         }
 
@@ -125,8 +124,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Pages are built lazily and cached: the settings page alone pulls in five groups of controls,
-    /// and most sessions never open it (design D13).
+    /// 页面按需构建并缓存：光设置页就拉进五组控件，而大多数会话根本不会打开它（设计 D13）。
     /// </summary>
     private UserControl Build(MainPageId page)
     {
@@ -150,8 +148,8 @@ public partial class MainWindow : Window
     };
 
     /// <summary>
-    /// The three shelves are the same page with a different filter, so they are cached per kind:
-    /// switching 单词 → 短语 → 单词 must not rebuild (and re-fetch) the same list.
+    /// 三层书架是同一个页面换个过滤条件，所以按种类分别缓存：在 单词 → 短语 → 单词 之间
+    /// 切换时，不能重建（并重新拉取）同一份列表。
     /// </summary>
     private NotesPage Notes(NoteKind kind)
     {
@@ -163,8 +161,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 复习 is a page now (v52, design D16): a separate window made the drill feel like leaving the
-    /// app. The page keeps its own session across navigation, so it is built once and reused.
+    /// 复习现在是一个页面了（v52，设计 D16）：独立窗口让练习感觉像离开了应用。
+    /// 页面在导航之间保留自己的会话，所以只构建一次并复用。
     /// </summary>
     private ReviewPage Review()
     {
@@ -177,7 +175,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Unrouted ids fall back here; every page in <see cref="MainPageId"/> has a factory above.
+    /// 没有匹配到的 id 会落到这里；上面每个 <see cref="MainPageId"/> 里的页面都有对应工厂。
     /// </summary>
     private UserControl Placeholder(MainPageId page) => new()
     {
@@ -204,8 +202,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 账号 and 套餐 are two pages now: identity, name and password belong to 账号, price, meters
-    /// and the activation code to 套餐. The link between them is one event, not a shared instance.
+    /// 账号和套餐现在是两个页面：身份、名字和密码归账号，价格、计量和激活码归套餐。
+    /// 两者之间的连接是一个事件，而不是共享实例。
     /// </summary>
     private AccountPage Account()
     {
@@ -233,9 +231,9 @@ public partial class MainWindow : Window
 
     public void ShowPage(MainPageId page)
     {
-        // Rebuilding the same page would throw away whatever is typed in it, so a cached page is
-        // only refreshed — and that refresh is also the first-visit load, which is why it runs
-        // after Build as well: a page that was just constructed has never read anything.
+        // 重建同一个页面会丢掉里面已经输入的内容，所以缓存页面只做刷新——而这次刷新
+        // 同时也是首次访问的加载，这就是它在 Build 之后也跑的原因：刚构造出来的页面
+        // 还从没读过任何东西。
         if (_current == page && PageHost.Content is not null)
         {
             RefreshPage(page);
@@ -249,8 +247,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Re-reads whatever a page shows from settings/account/server. Runs on every visit, including
-    /// the one that just built the page.
+    /// 重新读取页面展示的来自设置/账号/服务端的内容。每次访问都会跑，包括刚刚构建出
+    /// 页面的那一次。
     /// </summary>
     private void RefreshPage(MainPageId page)
     {
@@ -262,7 +260,7 @@ public partial class MainWindow : Window
             case MainPageId.Word: _shelves.GetValueOrDefault(NoteKind.Word)?.Reload(); break;
             case MainPageId.Phrase: _shelves.GetValueOrDefault(NoteKind.Phrase)?.Reload(); break;
             case MainPageId.Sentence: _shelves.GetValueOrDefault(NoteKind.Sentence)?.Reload(); break;
-            // a sitting in progress survives a detour to a shelf and back; only the choose mode refetches
+            // 进行中的练习要能在绕去书架再回来之后存活；只有选题模式会重新拉取
             case MainPageId.Review: _reviewPage?.Reload(); break;
             case MainPageId.Home: _home?.RefreshKeyStatus(); break;
         }
@@ -300,7 +298,7 @@ public partial class MainWindow : Window
         ApplyCaptureState();
     }
 
-    /// <summary>Writes the switch from state without letting the write ring back into the callback.</summary>
+    /// <summary>把开关的显示从状态写出，同时不让这次写入再回环到回调里。</summary>
     private void ApplyCaptureState()
     {
         var enabled = _isCaptureEnabled();

@@ -9,10 +9,10 @@ public enum CoordinatorState
 }
 
 /// <summary>
-/// Heart of the flow: trigger → capture (UIA, clipboard fallback) → translate → present.
-/// Platform bits are injected; this class never touches Win32/WPF.
-/// M0-derived rules: empty capture stays silent; pill click retries capture;
-/// translation errors surface on the card; write-back only on user action.
+/// 流程核心：触发 → 取词（UIA，失败走剪贴板兜底）→ 翻译 → 展示。
+/// 平台相关的部分靠注入；本类从不直接碰 Win32/WPF。
+/// M0 定下的规则：取词为空保持安静；点击工具条重新取词；
+/// 翻译错误显示在结果卡上；写回只在用户主动操作时发生。
 /// </summary>
 public sealed class SelectionCoordinator : IDisposable
 {
@@ -46,11 +46,11 @@ public sealed class SelectionCoordinator : IDisposable
         _ = HandleTriggerAsync(trigger);
     }
 
-    public CoordinatorState State => CoordinatorState.Idle; // per-request now; kept for compat
+    public CoordinatorState State => CoordinatorState.Idle; // 现在改为按请求维护；为兼容保留
 
     /// <summary>
-    /// Translate an already-captured selection (toolbar path). A new call CANCELS any
-    /// in-flight session — rapid re-triggers must never be silently dropped (user feedback).
+    /// 翻译一段已取到的选区文本（工具条入口）。新调用会取消任何在途会话——
+    /// 快速连续触发绝不能被静默丢弃（用户反馈过这个问题）。
     /// </summary>
     public Task TranslateCapturedAsync(CapturedSelection selection) => RunSessionAsync(selection);
 
@@ -84,7 +84,7 @@ public sealed class SelectionCoordinator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // superseded or shutting down — nothing to show
+            // 被取代或正在关闭——不需要展示
         }
         catch (Exception ex)
         {
@@ -122,7 +122,7 @@ public sealed class SelectionCoordinator : IDisposable
         return false;
     }
 
-    /// <summary>Ctrl+C in a console host is SIGINT — never simulate it there.</summary>
+    /// <summary>在控制台宿主里 Ctrl+C 就是 SIGINT——那里绝不能模拟按键。</summary>
     public static bool IsClipboardRisky(string processName) => processName.Trim().ToLowerInvariant() is
         "windowsterminal" or "wt" or "cmd" or "powershell" or "pwsh" or "conhost" or "openconsole";
 

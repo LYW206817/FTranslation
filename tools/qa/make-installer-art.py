@@ -1,4 +1,4 @@
-# Generates the installer wizard art in the app palette: cream white with a blue tint.
+# 生成安装器向导配图，使用应用调色板：奶白底加一点蓝。
 from PIL import Image, ImageDraw, ImageFilter
 import os
 
@@ -35,7 +35,7 @@ def wizard_strip(w, h):
     glow = glow.point(lambda v: int(v * 0.34))
     img = Image.composite(Image.new('RGB', (w, h), GLOW), img, glow)
 
-    # the app mark (a droplet) as a faint watermark low in the strip
+    # 应用标记（水滴）作为浅水印压在条带靠下的位置
     mark = Image.open(ICON).convert('RGBA')
     side = int(w * 0.86)
     mark = mark.resize((side, side), Image.LANCZOS)
@@ -48,7 +48,7 @@ def wizard_strip(w, h):
 
 
 def badge(size):
-    # The app icon itself, plus a hairline outline so its cream plate keeps an edge on a #F7F9FC page.
+    # 应用图标本身，外加一圈细描边，让奶白底盘在 #F7F9FC 页面上仍有边缘。
     s = size * 4
     art = Image.open(ICON).convert('RGBA').resize((s, s), Image.LANCZOS)
     d = ImageDraw.Draw(art)

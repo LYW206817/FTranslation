@@ -1,6 +1,6 @@
-# Scroll benchmark for the settings window: measures UI-thread cost of one full-window
-# repaint per scroll step (the app forces software rendering, so scroll cost == repaint cost).
-# ASCII only (Chinese via [char]0xXXXX) so a BOM-less .ps1 is not mangled.
+﻿# 设置窗口的滚动基准测试：测量每滚动一步做一次整窗重绘在 UI 线程上的开销
+# （应用强制走软件渲染，所以滚动开销就等于重绘开销）。
+# 仅用 ASCII（中文用 [char]0xXXXX 表示），避免无 BOM 的 .ps1 中文乱码。
 param(
   [string]$Exe = (Join-Path $env:LOCALAPPDATA 'Programs\FastTranslation\FastTranslation.exe'),
   [int]$Steps = 40,
@@ -50,15 +50,15 @@ try {
   $r = $sv.Current.BoundingRectangle
   Write-Host ('scrollviewer rect=' + [int]$r.X + ',' + [int]$r.Y + ' ' + [int]$r.Width + 'x' + [int]$r.Height)
 
-  # RTI: title bar + border overhead is not part of the scroll cost, but the repaint is
-  # whole-window; report window rect too.
+  # RTI：标题栏和边框的开销不算滚动开销，但重绘是整窗的，
+  # 所以窗口矩形也一并报出来。
   $wr = $sw.Current.BoundingRectangle
   Write-Host ('window rect=' + [int]$wr.X + ',' + [int]$wr.Y + ' ' + [int]$wr.Width + 'x' + [int]$wr.Height)
 
   $sp.SetScrollPercent(-1, 0)
   Start-Sleep -Milliseconds $SettleMs
 
-  # idle baseline: the app runs a hotkey hook + tray icon, so establish the noise floor first
+  # 空闲基线：应用一直挂着热键钩子和托盘图标，先量出噪声底
   $idle0 = (Get-Process -Id $app.Id).TotalProcessorTime.TotalMilliseconds
   Start-Sleep -Milliseconds 1000
   $idle1 = (Get-Process -Id $app.Id).TotalProcessorTime.TotalMilliseconds

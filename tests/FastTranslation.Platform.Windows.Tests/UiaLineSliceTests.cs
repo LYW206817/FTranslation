@@ -6,7 +6,7 @@ namespace FastTranslation.Platform.Windows.Tests;
 
 public class UiaLineSliceTests
 {
-    // a 100px-wide line box holding 10 chars => exactly 10px per character
+    // 100px 宽的行框容纳 10 个字符 => 每个字符正好 10px
     private static readonly Rect Line = new(0, 0, 100, 20);
 
     [Fact]
@@ -26,7 +26,7 @@ public class UiaLineSliceTests
     [Fact]
     public void MiddleSpanSelected_ReturnsInnerSlice()
     {
-        // x 30..70 of a 10-char line => chars 3..7
+        // 10 字符行的 x 30..70 => 字符 3..7
         var rects = new[] { new Rect(30, 0, 40, 20) };
         Assert.Equal("defg", UiaSelectionReader.SliceLine(Line, "abcdefghij", rects));
     }
@@ -34,14 +34,14 @@ public class UiaLineSliceTests
     [Fact]
     public void UnselectedLine_ReturnsNull()
     {
-        var rects = new[] { new Rect(0, 60, 100, 20) }; // a different line entirely
+        var rects = new[] { new Rect(0, 60, 100, 20) }; // 完全不同的另一行
         Assert.Null(UiaSelectionReader.SliceLine(Line, "abcdefghij", rects));
     }
 
     [Fact]
     public void SlightVerticalBleed_StillCounts()
     {
-        // overlaps the line box by 12px, well over the 40% * 20px = 8px threshold
+        // 与行框重叠 12px,远超 40% * 20px = 8px 的阈值
         var rects = new[] { new Rect(0, -8, 100, 20) };
         Assert.Equal("abcdefghij", UiaSelectionReader.SliceLine(Line, "abcdefghij", rects));
     }
@@ -49,7 +49,7 @@ public class UiaLineSliceTests
     [Fact]
     public void MarginalVerticalBleed_IsRejected()
     {
-        // only 2px of overlap, under the 8px threshold
+        // 只重叠 2px,低于 8px 阈值
         var rects = new[] { new Rect(0, -18, 100, 20) };
         Assert.Null(UiaSelectionReader.SliceLine(Line, "abcdefghij", rects));
     }
@@ -57,7 +57,7 @@ public class UiaLineSliceTests
     [Fact]
     public void SelectionExtendingPastTheLine_ClampsToLineBox()
     {
-        // a selection rect dragging past the right edge cannot produce an out-of-range index
+        // 拖过右边缘的选区矩形不能产生越界索引
         var rects = new[] { new Rect(-20, 0, 400, 20) };
         Assert.Equal("abcdefghij", UiaSelectionReader.SliceLine(Line, "abcdefghij", rects));
     }

@@ -12,9 +12,8 @@ public enum TranslationErrorCode
     Cancelled,
 
     /// <summary>
-    /// The gateway declined to serve this request because the account is out of quota (or the
-    /// developer's free tier is not switched on). It is deliberately distinct from
-    /// <see cref="RateLimited"/>: the composite provider treats it as "try the user's own key".
+    /// 网关因账户额度用尽（或开发者的免费档未开通）拒绝服务这次请求。它刻意与
+    /// <see cref="RateLimited"/> 区分开：组合 provider 会把它当作「改用用户自己的 Key」。
     /// </summary>
     QuotaExhausted,
 
@@ -37,8 +36,8 @@ public sealed record TranslationRequest(string Text, string SourceLanguage, stri
 }
 
 /// <summary>
-/// What one request cost, as reported by the service that served it. Optional because a provider
-/// that talks to a user's own key may not report usage, and because failures cost nothing.
+/// 一次请求的用量，由实际提供服务的那个服务上报。之所以可选：直连用户自己 Key 的 provider
+/// 可能不上报用量，而且失败的请求不产生费用。
 /// </summary>
 public sealed record TokenUsage(long InputTokens, long OutputTokens)
 {
@@ -56,12 +55,12 @@ public sealed record TranslationResult(
 {
     public TranslationError? Error { get; init; }
 
-    /// <summary>Token accounting when the provider reported it; null otherwise.</summary>
+    /// <summary>provider 上报时的 token 用量统计，否则为 null。</summary>
     public TokenUsage? Usage { get; init; }
 
     /// <summary>
-    /// One extra sentence for the card, such as "the plan quota is spent, this one used your own
-    /// key". Providers leave it null when the answer needs no explanation.
+    /// 结果卡上多显示的一句说明，例如「套餐额度已用完，这次用了你自己的 Key」。
+    /// 不需要解释时 provider 留 null。
     /// </summary>
     public string? Notice { get; init; }
 

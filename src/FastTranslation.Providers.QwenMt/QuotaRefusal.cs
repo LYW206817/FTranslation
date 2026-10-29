@@ -3,10 +3,9 @@ using System.Text.Json;
 namespace FastTranslation.Providers.QwenMt;
 
 /// <summary>
-/// Recognises the developer gateway declining a request for money reasons. The gateway answers
-/// these with 429/503 plus <c>{"error":"&lt;code&gt;"}</c> — the same status a genuine DashScope
-/// throttle uses — so only the body can tell "your quota is spent, use your own key" apart from
-/// "the server is busy, wait and retry".
+/// 识别开发者网关因费用原因拒绝请求。网关用 429/503 加 <c>{"error":"&lt;code&gt;"}</c> 作答——
+/// 与 DashScope 真实限流用的状态码相同——所以只能靠响应体区分
+/// 「额度用完，改用你自己的 Key」与「服务端繁忙，等一下重试」。
 /// </summary>
 internal static class QuotaRefusal
 {
@@ -14,7 +13,7 @@ internal static class QuotaRefusal
     internal const string DailyQuota = "daily_quota_exhausted";
     internal const string BudgetExhausted = "budget_exhausted";
 
-    /// <summary>Short cause for the user, or null when this body is not a refusal of that kind.</summary>
+    /// <summary>给用户看的简短原因；响应体不属于这类拒绝时返回 null。</summary>
     internal static string? Describe(string? body)
     {
         var code = ReadErrorCode(body);

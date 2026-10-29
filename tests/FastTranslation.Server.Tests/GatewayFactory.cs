@@ -10,13 +10,11 @@ using FastTranslation.Server.Gateway;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>One recorded call the gateway made upstream, so tests can assert what it forwarded.</summary>
+/// <summary>网关向上游发出的一次已记录调用,便于测试断言它转发了什么。</summary>
 public sealed record UpstreamCall(string Url, string Body, string? Authorization);
 
-/// <summary>
-/// Stands in for DashScope: no network, no key, and every answer is scriptable. The gateway is the
-/// only thing under test, so the seam is deliberately the HTTP handler rather than a fake provider.
-/// </summary>
+/// <summary>代替 DashScope:不联网、不需要 Key,每个回答都可编排。被测的只有
+/// 网关本身,所以接缝刻意选在 HTTP handler,而不是伪造 provider。</summary>
 public sealed class StubUpstreamHandler : HttpMessageHandler
 {
     private readonly List<UpstreamCall> _calls = [];
@@ -44,10 +42,8 @@ public sealed class StubUpstreamHandler : HttpMessageHandler
     }
 }
 
-/// <summary>
-/// Boots the app with the gateway enabled and DashScope replaced by <see cref="StubUpstreamHandler"/>.
-/// Everything else (database, auth, quota tables) is the production wiring.
-/// </summary>
+/// <summary>启动启用了网关、DashScope 被 <see cref="StubUpstreamHandler"/> 替换的应用。
+/// 其余部分(数据库、认证、额度表)都是生产接线。</summary>
 public class GatewayFactory : WebApplicationFactory<Program>
 {
     private readonly string _databasePath = Path.Combine(
@@ -59,7 +55,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
 
     public StubUpstreamHandler Upstream { get; } = new();
 
-    /// <summary>Defaults to effectively unlimited; the budget test lowers it.</summary>
+    /// <summary>默认实际上不设上限;预算测试会把它调低。</summary>
     protected virtual long DailyBudgetMicros => 5_000_000;
 
     protected virtual int RequestsPerMinute => 1000;
@@ -105,7 +101,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
                 }
                 catch (IOException)
                 {
-                    // Best effort cleanup.
+                    // 尽力而为地清理。
                 }
             }
         }

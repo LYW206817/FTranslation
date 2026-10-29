@@ -9,20 +9,19 @@ using FastTranslation.Core.Notes;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// 复习 as a page (v52, design D16). Two modes in the same page, because a separate window made
-/// the review feel like leaving the app: first a list of what is waiting today with a checkbox per
-/// card (translations visible — you are choosing what to drill, not what to guess), then the drill
-/// itself, card by card, in the page's own content area.
+/// 复习是一个页面了（v52，设计 D16）。两种模式放在同一页里，因为以前独立窗口让复习
+/// 感觉像离开了应用：先列出今天等着复习的卡片、每张带一个复选框（译文可见——你是在挑
+/// 要练什么，不是猜什么），然后就在页面自己的内容区里逐张卡片进行练习。
 ///
-/// The page owns no scheduling: <see cref="ReviewSchedule"/> on the server decides the next due
-/// date, this only forwards the grade and advances <see cref="ReviewSession"/>.
+/// 页面不做排程：下次到期日由服务端的 <see cref="ReviewSchedule"/> 决定，这里只转发
+/// 评分并推进 <see cref="ReviewSession"/>。
 /// </summary>
 public partial class ReviewPage : UserControl
 {
-    /// <summary>Server default: how many not-yet-seen cards to mix in per day.</summary>
+    /// <summary>服务端默认值：每天混入多少张还没见过的卡。</summary>
     private const int NewLimit = 20;
 
-    /// <summary>Server default: how many cards one sitting asks for.</summary>
+    /// <summary>服务端默认值：一次练习要多少张卡。</summary>
     private const int QueueLimit = 50;
 
     private readonly AccountCoordinator _account;
@@ -36,10 +35,10 @@ public partial class ReviewPage : UserControl
     private Window? _host;
     private bool _loaded;
 
-    /// <summary>Raised when the user wants the notebook instead; the shell owns navigation.</summary>
+    /// <summary>用户想改去单词本时触发；导航由外壳负责。</summary>
     public event Action? NotesRequested;
 
-    /// <summary>Raised when the queue changed under the sidebar badge (graded, skipped, abandoned).</summary>
+    /// <summary>侧边栏角标下的队列发生变化（评分、跳过、放弃）时触发。</summary>
     public event Action? QueueSettled;
 
     public ReviewPage(AccountCoordinator account)
@@ -61,8 +60,8 @@ public partial class ReviewPage : UserControl
             _subscribed = true;
         }
 
-        // The keys have to work no matter where focus sits: clicking the sidebar leaves it on that
-        // button, so the page itself would never see Space. Tunnelling from the window catches it.
+        // 无论焦点在哪，快捷键都必须生效：点过侧边栏后焦点留在那个按钮上，
+        // 页面自己就永远收不到 Space。从窗口层隧道下来才能兜住。
         if (_host is null && Window.GetWindow(this) is { } host)
         {
             _host = host;
@@ -91,9 +90,8 @@ public partial class ReviewPage : UserControl
     });
 
     /// <summary>
-    /// Called every time the shell brings this page to the front. Mid-sitting it must not throw the
-    /// session away (the user may have glanced at a word and come back), so only the choose mode
-    /// refetches.
+    /// 外壳每次把本页切到前台时调用。练习进行中不能把会话丢掉（用户可能只是瞟了一眼
+    /// 某个词又回来），所以只有选题模式会重新拉取。
     /// </summary>
     public void Reload()
     {
@@ -103,8 +101,8 @@ public partial class ReviewPage : UserControl
             return;
         }
 
-        // A finished session stays on its done screen: re-entering the page is exactly when the
-        // user wants to pick the next batch, and refetching would silently replace that decision.
+        // 已结束的练习停留在完成页：重新进入页面正是用户想挑下一批的时候，
+        // 重新拉取会悄悄替掉这个决定。
         if (_session is { IsFinished: true } && SessionHost.Visibility == Visibility.Visible)
         {
             ShowDone();
@@ -133,7 +131,7 @@ public partial class ReviewPage : UserControl
 
         var queue = result.Value!;
         _picks.Clear();
-        // Due first: a card that was promised for today outranks a brand-new one.
+        // 到期优先：今天该复习的卡排在全新的卡前面。
         foreach (var note in queue.All)
         {
             _picks.Add(new ReviewPickItem(note));
@@ -160,7 +158,7 @@ public partial class ReviewPage : UserControl
         UpdatePickState();
     }
 
-    /// <summary>Keeps the counter, the start button and the 全选 box honest with each other.</summary>
+    /// <summary>让计数器、开始按钮和「全选」框三者互相保持一致。</summary>
     private void UpdatePickState()
     {
         var checkedCount = _picks.Count(p => p.IsChecked);
@@ -227,7 +225,7 @@ public partial class ReviewPage : UserControl
         SkipButton.Visibility = Visibility.Visible;
         SessionHint.Visibility = Visibility.Visible;
         _revealed = false;
-        // A word is one glance, a sentence needs reading; sizing both the same wastes the card.
+        // 单词看一眼就够，句子要读；两者用同样的尺寸会浪费卡片。
         PromptText.FontSize = note.Kind == NoteKind.Word ? 30 : 21;
         PromptText.Text = note.SourceText;
         AnswerPanel.Visibility = Visibility.Collapsed;
@@ -239,7 +237,7 @@ public partial class ReviewPage : UserControl
         RefreshNextLabels(note);
     }
 
-    /// <summary>The small "when will I see this again" line under each grade, from the real schedule.</summary>
+    /// <summary>每个档位下那行「下次什么时候再见」的小字，取自真实排程。</summary>
     private void RefreshNextLabels(Note note)
     {
         ForgotNext.Text = NextLabel(note, ReviewGrade.Forgot);
@@ -276,7 +274,7 @@ public partial class ReviewPage : UserControl
 
     private async Task GradeAsync(string wire)
     {
-        // Grading before the answer is visible would be guessing, so the buttons stay dead until then.
+        // 答案没显示就评分等于瞎猜，所以在那之前按钮一直是禁用的。
         if (!_revealed || _grading || _session is null || _session.Current is not { } note) return;
         if (!ReviewSchedule.TryParseGrade(wire, out var grade)) return;
 
@@ -287,7 +285,7 @@ public partial class ReviewPage : UserControl
             var result = await _account.GradeNoteAsync(note.Id, grade, CancellationToken.None);
             if (!result.Succeeded)
             {
-                // The card stays put: a failed grade must not cost the user the card (design §9).
+                // 卡片留在原地：评分失败不能让用户把卡弄丢（设计 §9）。
                 StatusText.Text = result.Error!.Display;
                 StatusText.Visibility = Visibility.Visible;
                 SetGradeEnabled(true);
@@ -307,7 +305,7 @@ public partial class ReviewPage : UserControl
 
     private void Skip_Click(object _, RoutedEventArgs e) => Skip();
 
-    /// <summary>Skipping writes nothing: the card is still due, so it comes back next time (design §8.4).</summary>
+    /// <summary>跳过不写任何东西：卡片仍然到期，下次还会回来（设计 §8.4）。</summary>
     private void Skip()
     {
         if (_session is null || _session.Current is null) return;
@@ -320,7 +318,7 @@ public partial class ReviewPage : UserControl
         DonePanel.Visibility = Visibility.Visible;
         CardHost.Visibility = Visibility.Collapsed;
         GradeBar.Visibility = Visibility.Collapsed;
-        // nothing to skip and no shortcuts to hint at once the sitting is over
+        // 练习结束之后，既没有可跳过的，也没有要提示的快捷键
         SkipButton.Visibility = Visibility.Collapsed;
         SessionHint.Visibility = Visibility.Collapsed;
         ProgressText.Text = string.Empty;
@@ -359,7 +357,7 @@ public partial class ReviewPage : UserControl
     {
         if (SessionHost.Visibility != Visibility.Visible) return;
 
-        // Nothing is waiting on the done screen, and Space there would scroll the list behind it.
+        // 完成页上没有等待中的内容，在这里按 Space 只会把后面的列表滚走。
         if (_session is not { IsFinished: false })
         {
             if (e.Key == Key.Escape) { End_Click(sender, e); e.Handled = true; }
@@ -396,8 +394,8 @@ public partial class ReviewPage : UserControl
 }
 
 /// <summary>
-/// One row of the choose list. A view model only because a checkbox has to be able to say "not this
-/// one" without touching the note itself.
+/// 选题列表里的一行。做成 view model 只是因为复选框需要能表达「不要这张」，
+/// 而又不能改到笔记本身。
 /// </summary>
 public sealed class ReviewPickItem : INotifyPropertyChanged
 {

@@ -7,12 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace FastTranslation.Server.Api;
 
 /// <summary>
-/// Account endpoints. Every failure returns a stable machine-readable token so the WPF client can
-/// localize messages itself instead of parsing prose from the server.
+/// 账号端点。每种失败都返回稳定的机器可读 token，让 WPF 客户端可以
+/// 自行本地化文案，而不必解析服务端返回的自然语言。
 /// </summary>
 public static class AuthEndpoints
 {
-    /// <summary>Fallback fingerprint for clients too old to send one. Constant so the device row is reused.</summary>
+    /// <summary>为太旧、无法上报指纹的客户端准备的兜底指纹。用常量以保证设备行被复用。</summary>
     private const string AnonymousFingerprint = "unidentified";
 
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
@@ -105,7 +105,7 @@ public static class AuthEndpoints
     {
         var user = store.FindUserByEmail(AccountStore.NormalizeEmail(request.Email ?? string.Empty));
 
-        // Uniform failure: never reveal whether the address is registered.
+        // 统一失败：绝不泄露该邮箱是否已注册。
         if (user is null || !PasswordHasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
         {
             return Results.Json(new ErrorResponse("credentials_invalid"), statusCode: StatusCodes.Status401Unauthorized);
@@ -148,7 +148,7 @@ public static class AuthEndpoints
             return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
         }
 
-        // Rotation keeps only one live refresh token per login chain.
+        // 轮换后每条登录链上只保留一个有效的 refresh token。
         var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt);
         var refreshToken = TokenService.CreateRefreshToken();
         store.SaveRefreshToken(user.Id, TokenService.HashRefreshToken(refreshToken), database.NowUnix + (options.RefreshTokenDays * 86_400L));
@@ -191,8 +191,8 @@ public static class AuthEndpoints
         => (int)Math.Max(0, expiresAt.ToUnixTimeSeconds() - database.NowUnix);
 
     /// <summary>
-    /// An expired subscription reports as free: the client must not keep a paid label while the
-    /// server enforces free limits, or the user sees "标准版" next to a 10,000-character cap.
+    /// 过期订阅按免费上报：客户端不能在服务端已按免费限制的同时还显示付费标签，
+    /// 否则用户会看到“标准版”旁边挂着 10,000 字符上限。
     /// </summary>
     internal static AccountDto ToAccountDto(UserRecord user, ServerDatabase database)
     {
@@ -222,7 +222,7 @@ public static class AuthEndpoints
             usage.Day);
     }
 
-    /// <summary>A client that cannot supply a fingerprint still gets a stable device row.</summary>
+    /// <summary>无法提供指纹的客户端同样会拿到一条稳定的设备行。</summary>
     private static string DeviceFingerprint(string? fingerprint)
         => string.IsNullOrWhiteSpace(fingerprint) ? AnonymousFingerprint : fingerprint.Trim();
 }

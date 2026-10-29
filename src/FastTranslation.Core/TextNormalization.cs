@@ -5,7 +5,7 @@ namespace FastTranslation.Core;
 
 public static class TextNormalization
 {
-    /// <summary>Collapse whitespace/format chars, trim; empty when nothing translatable remains.</summary>
+    /// <summary>压缩空白/格式字符并去掉首尾空白；没有可翻译内容时返回空串。</summary>
     public static string Normalize(string input)
     {
         if (string.IsNullOrEmpty(input)) return string.Empty;
@@ -29,7 +29,7 @@ public static class TextNormalization
 
     private static bool IsDropChar(char c) => char.GetUnicodeCategory(c) switch
     {
-        UnicodeCategory.Format => true,          // Cf: ZWJ/BOM/soft hyphen markers
+        UnicodeCategory.Format => true,          // Cf：ZWJ/BOM/软连字符等标记
         UnicodeCategory.Control => c is '\r' or '\n' or '\t' ? false : true,
         UnicodeCategory.Surrogate => false,
         UnicodeCategory.PrivateUse => true,
@@ -38,12 +38,12 @@ public static class TextNormalization
 
     private static bool IsSpaceLike(char c) => char.GetUnicodeCategory(c) is
         UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator or UnicodeCategory.SpaceSeparator
-        && c != '\u00A0'; // keep NBSP meaningful? drop it as space: treat as space actually
+        && c != '\u00A0'; // 保留 NBSP 的原义吗？还是当空格丢掉：其实按空格处理
 }
 
 public static class LanguagePolicy
 {
-    /// <summary>Detect source intent: CJK-dominant text translates to English, anything else to Chinese.</summary>
+    /// <summary>推断目标语言：中文占主导的文本译成英文，其余译成中文。</summary>
     public static string DetectTarget(string normalized, string userPreference)
     {
         if (userPreference != "auto") return userPreference;
@@ -61,7 +61,7 @@ public static class LanguagePolicy
     public static bool IsCjk(char c) => c is >= '\u4E00' and <= '\u9FFF'
         or >= '\u3400' and <= '\u4DBF'
         or >= '\uF900' and <= '\uFAFF'
-        or >= '\u3040' and <= '\u30FF'; // kana counts as "not Chinese target" edge — treat as CJK block for ratio only
+        or >= '\u3040' and <= '\u30FF'; // 假名归入「不译成中文」的边界情况——只用于计算 CJK 占比
 
     public static (string Source, string Target) Resolve(string sourcePreference, string targetPreference, string normalized)
     {
@@ -69,8 +69,8 @@ public static class LanguagePolicy
         var source = sourcePreference == "auto"
             ? (target == LanguageCatalog.ChineseCode ? LanguageCatalog.EnglishCode : LanguageCatalog.ChineseCode)
             : sourcePreference;
-        // If user forces a single target language, "auto" source just means "the other one" is wrong;
-        // Qwen accepts explicit or "auto" — send explicit when we know it, else auto.
+        // 用户强制单一目标语言时，源语言 auto 再取「另一种」就不对了；Qwen 接受显式值或
+        // "auto"——能确定时就发显式值，否则发 auto。
         return (source, target);
     }
 }

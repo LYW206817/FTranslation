@@ -201,7 +201,7 @@ public class UpdateCheckerTests
 
         Assert.Equal("已经是最新版本", notice.Title);
         Assert.Contains("1.1.2", notice.Body);
-        // an up-to-date check offers nothing to click: the dialog would show a dead button
+        // 已是最新版本时没有任何可点的东西:弹窗只会显示一个失效按钮
         Assert.Null(notice.LinkUrl);
     }
 
@@ -213,7 +213,7 @@ public class UpdateCheckerTests
         Assert.Equal("检查更新失败", notice.Title);
         Assert.Equal(UpdateChannel.ReleasesPageUrl, notice.LinkUrl);
         Assert.Contains("update.log", notice.Body);
-        // the URL is a clickable link in the dialog, not a raw line crammed into the sentence
+        // URL 在弹窗里是可点击的链接,而不是硬塞进句子里的原始文本
         Assert.DoesNotContain(UpdateChannel.ReleasesPageUrl, notice.Body);
     }
 }

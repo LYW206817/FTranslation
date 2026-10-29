@@ -9,12 +9,12 @@ using FastTranslation.Core.Notes;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// One shelf of the notebook (单词 / 短语 / 语句). The three shelves are the same rows filtered by
-/// <see cref="NoteKind"/>, so this is one page built three times with a different shelf; the sidebar
-/// owns the switching that <c>NotesWindow</c> used to do with its own buttons.
+/// 单词本的一层书架（单词 / 短语 / 语句）。三层书架就是同样的行按 <see cref="NoteKind"/>
+/// 过滤，所以这是一个页面按不同书架构建三次；切换以前由 <c>NotesWindow</c> 用自己的按钮
+/// 完成，现在归侧边栏管。
 ///
-/// Every mutation goes to the server — there is no local copy. The detail pane can re-file an entry,
-/// annotate it, and grade it on the same four-grade scale the review window uses (design D12).
+/// 所有变更都发给服务端——没有本地副本。详情面板可以给条目改分类、加批注，并按复习
+/// 窗口用的同一套四档评分（设计 D12）。
 /// </summary>
 public partial class NotesPage : UserControl
 {
@@ -32,7 +32,7 @@ public partial class NotesPage : UserControl
     private string _search = string.Empty;
     private int _total;
 
-    /// <summary>Raised when the user asks for the review window; it reviews the whole queue, not this row.</summary>
+    /// <summary>用户要求打开复习窗口时触发；它复习整个队列，而不是这一行。</summary>
     public event Action? ReviewRequested;
 
     public NotesPage(AccountCoordinator account, NoteKind shelf)
@@ -58,7 +58,7 @@ public partial class NotesPage : UserControl
             _account.Changed += OnAccountChanged;
             _subscribed = true;
         }
-        // Pages are cached, so coming back to a shelf must not show what the server no longer has
+        // 页面是缓存的，所以回到某层书架时不能显示服务端已经没有的内容
         _ = LoadAsync();
     }
 
@@ -72,7 +72,7 @@ public partial class NotesPage : UserControl
         _loadCts?.Cancel();
     }
 
-    /// <summary>Public so App can refresh the visible shelf after a save from the result card.</summary>
+    /// <summary>公开出去，好让 App 在结果卡保存后刷新当前可见的书架。</summary>
     public void Reload() => _ = LoadAsync();
 
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
@@ -164,7 +164,7 @@ public partial class NotesPage : UserControl
         NoteBox.Text = note.Annotation;
         DetailStatus.Text = string.Empty;
 
-        // the grade line doubles as the schedule preview: what was it last time, when is it back
+        // 评分行同时兼作排程预览：上次是什么时候、下次什么时候回来
         GradeLine.Text = note.GradeDisplay + " · " + note.DueLine;
 
         _suppressKindChange = true;
@@ -193,7 +193,7 @@ public partial class NotesPage : UserControl
 
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
-        // typing re-issues the query; the timer keeps one keystroke per 320 ms instead of one per key
+        // 输入会不断重发查询；计时器把节奏压到每 320 ms 一次，而不是每个键一次
         _searchTimer.Stop();
         _searchTimer.Start();
     }
@@ -210,8 +210,8 @@ public partial class NotesPage : UserControl
     }
 
     /// <summary>
-    /// Grading from the detail pane is the "mark it while I am here" path (design D12). It patches
-    /// the row instead of reloading the list: a reload would drop the selection and scroll to top.
+    /// 在详情面板里评分是「顺手标一下」的路径（设计 D12）。它就地修补那一行而不是重载
+    /// 列表：重载会丢掉选中项，还会滚回顶部。
     /// </summary>
     private async void Grade_Click(object sender, RoutedEventArgs e)
     {
@@ -251,11 +251,11 @@ public partial class NotesPage : UserControl
         if (!result.Succeeded)
         {
             DetailStatus.Text = result.Error!.Display;
-            ShowDetail(note); // snap the combo back to what the server still has
+            ShowDetail(note); // 把下拉框弹回服务端仍然保留的值
             return;
         }
         DetailStatus.Text = "已改到" + NoteKinds.Display(kind) + "本。";
-        // re-filing can move the row out of the shelf being viewed, so reload instead of patching
+        // 改分类可能把行移出当前书架，所以这里要重载而不是就地修补
         _selected = null;
         await LoadAsync();
     }
@@ -299,7 +299,7 @@ public partial class NotesPage : UserControl
         }
     }
 
-    /// <summary>Patches one row in place so a note edit does not reload the whole page.</summary>
+    /// <summary>就地修补一行，这样编辑一条笔记不用重载整个页面。</summary>
     private void ReplaceRow(Note updated)
     {
         for (var i = 0; i < _items.Count; i++)

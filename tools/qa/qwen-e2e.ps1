@@ -1,6 +1,6 @@
 ﻿param([string]$ExePath = 'D:\FTranslation\src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslation.exe')
-# Qwen AI page E2E: drag-select -> toolbar -> copy + translate, with FT_DEBUG diagnostics.
-# ASCII only (Chinese via codepoints). User asleep: input injection is safe.
+# 通义 AI 页面 E2E：拖选 → 工具条 → 复制 + 翻译，并用 FT_DEBUG 输出诊断。
+# 仅用 ASCII（中文用码点表示）。用户正在睡觉，注入输入是安全的。
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
 Add-Type @'
@@ -38,8 +38,8 @@ Remove-Item (Join-Path $env:TEMP 'ft-uitest-errors.log') -ErrorAction SilentlyCo
 
 function Log([string]$m) { Write-Host $m }
 
-# 1) app with debug
-# always restart: FT_DEBUG must be on from birth, and a reused instance may predate fixes
+# 1）带调试参数启动应用
+# 一定要重启：FT_DEBUG 必须从启动起就开着，而复用的旧实例可能还没包含最新修复
 Stop-Process -Name FastTranslation -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 600
 $env:FT_DEBUG = '1'
@@ -48,12 +48,12 @@ $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 5
 Log ("app pid=" + $app.Id)
 
-# 2) open Qwen AI in a new Edge tab (do NOT close user's other tabs)
+# 2）在 Edge 新标签页里打开通义 AI（不要动用户的其他标签页）
 Start-Process msedge.exe 'https://www.tongyi.com'
 Start-Sleep -Seconds 12
 
-# 3) locate OUR Edge tab window by title (never touch the user's other tabs)
-$tyName = [string][char]0x901A + [char]0x4E49   # tong-yi
+# 3）按标题找到我们自己那个 Edge 标签页窗口（绝不碰用户的其他标签页）
+$tyName = [string][char]0x901A + [char]0x4E49   # 通义
 $edgeWin = $null
 for ($try = 0; $try -lt 15 -and -not $edgeWin; $try++) {
   Start-Sleep -Seconds 1
@@ -67,13 +67,13 @@ for ($try = 0; $try -lt 15 -and -not $edgeWin; $try++) {
   }
 }
 if (-not $edgeWin) { Log 'FAIL: Qwen tab not found (will not touch other tabs)'; Stop-Process -Id $app.Id -Force; exit 1 }
-# remember the OS hwnd of the window hosting our tab (for the final Ctrl+W)
+# 记住承载我们这个标签页的窗口的 OS hwnd（最后 Ctrl+W 要用）
 $edgeHwnd = [IntPtr]::Zero
 try { $edgeHwnd = [IntPtr]$p.MainWindowHandle } catch {}
 $edgeHwnd = [IntPtr]$edgeWin.Current.NativeWindowHandle
 [QW]::SwitchToThisWindow([IntPtr]$edgeWin.Current.NativeWindowHandle, $false)
 Start-Sleep -Milliseconds 800
-# GA_ROOT of the UIA hwnd is the real top-level window — switch to that
+# UIA hwnd 的 GA_ROOT 才是真正的顶层窗口，要切到那个
 $uiaH = [IntPtr]$edgeWin.Current.NativeWindowHandle
 $rootH = [QW]::GetAncestor($uiaH, 2)
 if ($rootH -ne [IntPtr]::Zero) { [QW]::SwitchToThisWindow($rootH, $false) }
@@ -82,7 +82,7 @@ $fgCheck = [QW]::GetForegroundWindow()
 Log ("foreground after switch: 0x" + $fgCheck.ToString("X") + " (uiaHwnd 0x" + $uiaH.ToString("X") + " root 0x" + $rootH.ToString("X") + ")")
 Log ("edge window: [" + $edgeWin.Current.Name + "] fg-set")
 
-# move our main window out of the drag area (real-user equivalent: it sits aside)
+# 把主窗口移出拖选区域（等价于真实用户把它放在一边）
 Add-Type @'
 using System; using System.Runtime.InteropServices;
 public static class MW {
@@ -92,23 +92,23 @@ public static class MW {
 $mainHwnd = [IntPtr]$app.MainWindowHandle
 if ($mainHwnd -ne [IntPtr]::Zero) { [MW]::SetWindowPos($mainHwnd, [IntPtr](-2), 40, 60, 0, 0, 0x0001) | Out-Null }
 
-# z-order: editors overlap the page — pin the qianwen window topmost during the test
+# Z 序：编辑器窗口会盖住页面，测试期间把通义窗口固定置顶
 [QW]::SetWindowPos($uiaH, [IntPtr](-1), 0, 0, 0, 0, 0x0001) | Out-Null
 Start-Sleep -Milliseconds 300
 
 function Click-Real([object]$el) {
   $r = $el.Current.BoundingRectangle
   $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2)
-  # SendInput DOWN/UP without a MOVE flag clicks at the CURRENT cursor position -
-  # always send the MOVE first (v21 lesson)
+  # 不带 MOVE 标志的 SendInput DOWN/UP 会在当前光标位置点击，
+  # 所以一定要先发 MOVE（v21 的教训）
   [QW]::Mouse(1, $cx, $cy); Start-Sleep -Milliseconds 120
   [QW]::Mouse(2, $cx, $cy); Start-Sleep -Milliseconds 70
   [QW]::Mouse(4, $cx, $cy)
 }
 
-# 4) drag target: real page text — the welcome heading line
-#    (earlier drags hit the EMPTY INPUT BOX: captured=0ch was correct behavior!)
-# dismiss Edge clipboard-permission popup if present (click the 阻止 button position)
+# 4）拖选目标：页面上的真实文字，即欢迎标题那一行
+#    （之前几次拖选落在了空白输入框上，captured=0ch 其实是正确行为！）
+# 若出现 Edge 剪贴板权限弹窗就关掉（点「阻止」按钮的位置）
 [QW]::Mouse(1, 516, 386); Start-Sleep -Milliseconds 80
 [QW]::Mouse(2, 516, 386); Start-Sleep -Milliseconds 60
 [QW]::Mouse(4, 516, 386)
@@ -125,12 +125,12 @@ function Get-Toolbar() {
   return $null
 }
 
-# activate Edge like a real user: one harmless click in the page header area first
+# 像真实用户那样激活 Edge：先在页面头部区域无害地点一下
 $wr = $edgeWin.Current.BoundingRectangle
 $actX = 700; $actY = 400
 [QW]::Mouse(2, $actX, $actY); Start-Sleep -Milliseconds 60; [QW]::Mouse(4, $actX, $actY)
 Start-Sleep -Milliseconds 700
-# 5) TEST A: drag-select then read diagnostics
+# 5）测试 A：拖选之后读取诊断信息
 Log '--- TEST A: drag-select + capture diagnostics'
 [QW]::Mouse(1, $x1, $y); Start-Sleep -Milliseconds 150
 [QW]::Mouse(2, $x1, $y); Start-Sleep -Milliseconds 60
@@ -141,7 +141,7 @@ $tb = Get-Toolbar
 Log ("toolbar after drag: " + [bool]$tb)
 if (Test-Path $dbg) { Log '--- ft-debug.log:'; Get-Content $dbg | ForEach-Object { Log ("  " + $_) } }
 
-# 6) TEST B: click copy on the toolbar, check clipboard
+# 6）测试 B：点工具条上的复制，检查剪贴板
 if ($tb) {
   Log '--- TEST B: toolbar copy'
   Set-Clipboard -Value '__SENTINEL__'
@@ -154,7 +154,7 @@ if ($tb) {
   } else { Log 'copy button not found on toolbar' }
 }
 
-# 7) TEST C: re-select and click translate, wait for card
+# 7）测试 C：重新拖选并点翻译，等待结果卡
 Log '--- TEST C: toolbar translate'
 [QW]::Mouse(1, $x1, $y); Start-Sleep -Milliseconds 150
 [QW]::Mouse(2, $x1, $y); Start-Sleep -Milliseconds 60
@@ -193,7 +193,7 @@ if ($tb) {
 Log '--- final ft-debug.log tail:'
 if (Test-Path $dbg) { Get-Content $dbg | Select-Object -Last 14 | ForEach-Object { Log ("  " + $_) } }
 
-# cleanup: leave the tab open (it may be the user's own Qwen tab)
+# 收尾：标签页留着不关（它可能是用户自己的通义标签页）
 [QW]::SetWindowPos($uiaH, [IntPtr](-2), 0, 0, 0, 0, 0x0001) | Out-Null
 Log 'done (tab left open, app running for matrix tests)'
 

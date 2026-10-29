@@ -177,7 +177,7 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
-    // Screen-region capture (RegionCapture.cs). GDI only: this project has no System.Drawing.
+    // 屏幕区域截图(RegionCapture.cs)用。只用 GDI：本项目没有引用 System.Drawing。
     public const int SRCCOPY = 0x00CC0020;
 
     [DllImport("user32.dll", SetLastError = true)]

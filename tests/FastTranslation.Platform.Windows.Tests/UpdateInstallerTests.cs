@@ -24,8 +24,8 @@ public class UpdateInstallerTests
     [Fact]
     public void MirrorCandidates_DoesNotProxyANonGitHubUrl()
     {
-        // a gh proxy can only fetch from GitHub; prefixing anything else guarantees a failed
-        // download where the direct URL would have worked
+        // gh 代理只能抓取 GitHub 上的内容;给其他地址加前缀只会保证
+        // 下载失败,而直连 URL 本来可以成功
         var candidates = UpdateInstaller.MirrorCandidates("https://example.com/x.exe");
         Assert.Equal(new[] { "https://example.com/x.exe" }, candidates);
     }
@@ -44,8 +44,8 @@ public class UpdateInstallerTests
     [Fact]
     public void MirrorCandidates_HasNoDeadProxyPrefix()
     {
-        // measured dead: the connection never established and gave up after 5 s, so keeping it only
-        // spends that timeout before the direct host gets its turn
+        // 实测已死:连接从未建立,5 秒后放弃,所以保留它只会
+        // 在轮到直连主机之前先耗掉这个超时
         var candidates = UpdateInstaller.MirrorCandidates(GitHubSetupUrl);
         Assert.DoesNotContain(candidates, c => c.Contains("ghfast.top", StringComparison.OrdinalIgnoreCase));
         Assert.Single(candidates, c => c.StartsWith("https://gh", StringComparison.OrdinalIgnoreCase));
@@ -54,8 +54,8 @@ public class UpdateInstallerTests
     [Fact]
     public void MirrorCandidates_AddsTheWwwHostLastForGitHub()
     {
-        // github.com and www.github.com reset differently on some networks, so www is kept as the
-        // very last resort — after the direct URL, not before a proxy
+        // github.com 与 www.github.com 在某些网络上重置方式不同,所以 www 被保留为
+        // 最后手段——排在直连 URL 之后,而不是代理之前
         var candidates = UpdateInstaller.MirrorCandidates(GitHubSetupUrl);
         Assert.Equal("https://www.github.com/LYW206817/FTranslation-Updates/releases/download/v1.1.1/FastTranslation-1.1.1-Setup.exe",
             candidates[^1]);
@@ -64,7 +64,7 @@ public class UpdateInstallerTests
     [Fact]
     public void MirrorCandidates_DoesNotRewriteAnApiGitHubHost()
     {
-        // api.github.com answers with metadata, never with the asset, so no proxy applies to it
+        // api.github.com 返回的是元数据,从不是资产本身,所以任何代理都不适用于它
         const string api = "https://api.github.com/repos/LYW206817/FTranslation-Updates/releases/latest";
         Assert.Equal(new[] { api }, UpdateInstaller.MirrorCandidates(api));
     }
@@ -127,9 +127,9 @@ public class UpdateInstallerTests
     }
 
     [Theory]
-    [InlineData(8388608L)]   // exactly the threshold
+    [InlineData(8388608L)]   // 恰好等于阈值
     [InlineData(9000000L)]
-    [InlineData(46696599L)]  // the shipped 1.1.2 installer
+    [InlineData(46696599L)]  // 实际发布的 1.1.2 安装包
     [InlineData(100000003L)]
     public void PlanSegments_IsContiguousAndCoversTheWholeFile(long totalLength)
     {
@@ -148,7 +148,7 @@ public class UpdateInstallerTests
     [Fact]
     public void PlanSegments_DropsNoBytesWhenTheSizeIsNotDivisible()
     {
-        // 46696599 is prime-ish against every segment size we might pick, so the remainder is real
+        // 46696599 对任何可能选用的分段大小都近乎质数,所以余数是真的
         const long total = 46696599;
         var segments = UpdateInstaller.PlanSegments(total);
 
@@ -159,8 +159,8 @@ public class UpdateInstallerTests
     [Fact]
     public void PlanSegments_KeepsASmallFileInOneSegment()
     {
-        // below the threshold one connection is faster than the extra round trips, and callers use
-        // a single segment as the signal to take the sequential path
+        // 低于阈值时,单连接比多出的往返更快,调用方以
+        // 单个分段作为走顺序路径的信号
         Assert.Equal(new[] { (0L, 4L * 1024 * 1024) }, UpdateInstaller.PlanSegments(4L * 1024 * 1024));
         Assert.Single(UpdateInstaller.PlanSegments(8L * 1024 * 1024 - 1));
         Assert.Single(UpdateInstaller.PlanSegments(1024));
@@ -171,8 +171,8 @@ public class UpdateInstallerTests
     [Fact]
     public void PlanSegments_CapsTheSegmentCountForAHugeFile()
     {
-        // 200 GiB at 2 MiB per segment would be 102400 sockets; the cap is what keeps the link from
-        // being flooded and the app from opening a handle storm
+        // 200 GiB 按每段 2 MiB 会是 102400 个 socket;上限正是为了不让链路
+        // 被淹没、也不让应用开出一堆句柄
         var segments = UpdateInstaller.PlanSegments(200L * 1024 * 1024 * 1024);
         Assert.Equal(32, segments.Count);
         Assert.Equal(200L * 1024 * 1024 * 1024, segments.Sum(s => s.Length));
@@ -213,10 +213,8 @@ public class UpdateInstallerTests
         }
     }
 
-    /// <summary>
-    /// Answers every ranged GET with 206 so the segmented path is taken, then trickles a kilobyte
-    /// and stalls forever — enough to get past the probe and into the parallel reads.
-    /// </summary>
+    /// <summary>对每个带 Range 的 GET 都回 206,以便走分段路径,然后每次滴一个 KB
+    /// 并永远停住——足以越过探测、进入并行读取。</summary>
     private sealed class RangedStallHandler(long totalLength) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

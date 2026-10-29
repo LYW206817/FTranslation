@@ -1,9 +1,9 @@
 namespace FastTranslation.Core;
 
 /// <summary>
-/// Numeric release version ("1.1.0", "1.1.0.0", "v1.1.0") compared field by field.
-/// Prerelease and build metadata are stripped: the updater reads one release channel,
-/// so "1.1.0-beta+abc" ranks as 1.1.0 and never orders below it.
+/// 数字发布版本（"1.1.0"、"1.1.0.0"、"v1.1.0"），按字段逐个比较。
+/// 预发布与构建元数据会被剥掉：更新器只读一个发布通道，所以 "1.1.0-beta+abc" 按 1.1.0 计，
+/// 永远不会排到它下面。
 /// </summary>
 public readonly record struct ReleaseVersion(int Major, int Minor, int Patch, int Revision)
     : IComparable<ReleaseVersion>

@@ -1,6 +1,6 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$ExePath,
-  [Parameter(Mandatory=$true)][string]$Theme,   # light | dark
+  [Parameter(Mandatory=$true)][string]$Theme,   # 取值 light | dark
   [Parameter(Mandatory=$true)][string]$OutDir
 )
 $ErrorActionPreference = 'Stop'
@@ -12,8 +12,8 @@ public static extern bool SetWindowPos(System.IntPtr hWnd, System.IntPtr after, 
 '@
 }
 
-$wSettings = [string][char]0x8BBE + [char]0x7F6E   # she-zhi
-$wCancel   = [string][char]0x53D6 + [char]0x6D88   # qu-xiao
+$wSettings = [string][char]0x8BBE + [char]0x7F6E   # 设置
+$wCancel   = [string][char]0x53D6 + [char]0x6D88   # 取消
 
 $dataDir = Join-Path $env:LOCALAPPDATA 'FastTranslation'
 $settingsPath = Join-Path $dataDir 'settings.json'
@@ -21,7 +21,7 @@ $backup = $null
 if (Test-Path $settingsPath) { $backup = Get-Content $settingsPath -Raw -Encoding UTF8 }
 
 function Capture-Window($win, $out) {
-  # another app can steal the foreground between open and capture; pin ours on top for the shot
+  # 从打开窗口到截图之间，别的应用可能抢走前台，所以先把窗口固定置顶
   $hwnd = [System.IntPtr]$win.Current.NativeWindowHandle
   [TopMostWin]::SetWindowPos($hwnd, [System.IntPtr](-1), 0, 0, 0, 0, 0x0013) | Out-Null
   Start-Sleep -Milliseconds 400
@@ -45,7 +45,7 @@ function Get-AppWindow($procId, $name) {
   return $null
 }
 
-# write the theme into settings.json without disturbing anything else
+# 只把主题写进 settings.json，其他字段一概不动
 if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
 if ($null -ne $backup) { $obj = $backup | ConvertFrom-Json } else { $obj = [pscustomobject]@{} }
 if ($obj.PSObject.Properties.Name -contains 'Theme') { $obj.Theme = $Theme }

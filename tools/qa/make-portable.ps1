@@ -1,11 +1,11 @@
-﻿# Rebuild the portable zip from the freshly published folder plus dist/README.txt.
+﻿# 用刚发布的目录加上 dist/README.txt 重新打包便携版 zip。
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # D:\FTranslation
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # 仓库根目录 D:\FTranslation
 $src  = Join-Path $root 'publish\ft-folder'
 $dist = Join-Path $root 'publish\dist'
 
-# version comes from Directory.Build.props so the zip name can never drift from the build
+# 版本号取自 Directory.Build.props，zip 名就永远不会和构建产物脱节
 $props = Get-Content -Raw (Join-Path $root 'Directory.Build.props')
 $m = [regex]::Match($props, '<Version>([0-9]+\.[0-9]+\.[0-9]+)</Version>')
 if (-not $m.Success) { throw 'no <Version> in Directory.Build.props' }
@@ -16,7 +16,7 @@ $zip = Join-Path $dist ('FastTranslation-' + $version + '-portable.zip')
 if (-not (Test-Path $src)) { throw "missing publish output: $src" }
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Copy-Item -Recurse -Path $src -Destination $stage
-# README 的源文件在 docs/ 里(受版本控制);dist 下的副本只是上一次的产物,
+# README 的源文件在 docs/ 里（受版本控制）；dist 下的副本只是上一次的产物，
 # 直接读 dist 会让全新 clone 的仓库根本生不出便携包。
 $readme = Join-Path $root 'docs\portable-readme.txt'
 if (-not (Test-Path $readme)) { throw "missing README source: $readme" }

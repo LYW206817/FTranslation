@@ -5,8 +5,8 @@ using Microsoft.Data.Sqlite;
 namespace FastTranslation.Server.Storage;
 
 /// <summary>
-/// <paramref name="PlanExpiresAt"/> null = granted without an end date. See Domain/Entitlement for
-/// why that means "active forever" rather than "expired".
+/// <paramref name="PlanExpiresAt"/> 为 null 表示授权没有到期时间。至于为什么这表示
+/// “永久有效”而不是“已过期”，见 Domain/Entitlement。
 /// </summary>
 public sealed record UserRecord(Guid Id, string Email, string PasswordHash, PlanTier Plan, long? PlanExpiresAt, long CreatedAt, bool Disabled, string DisplayName = "");
 
@@ -15,8 +15,8 @@ public sealed record DeviceRecord(Guid Id, Guid UserId, string Fingerprint, stri
 public sealed record UsageSnapshot(int MonthlyChars, int DailyChars, string Month, string Day);
 
 /// <summary>
-/// Every SQL statement in the service lives here. Handlers stay thin and quota arithmetic stays in
-/// <see cref="QuotaPolicy"/> — this type only moves bytes in and out of SQLite.
+/// 服务里所有 SQL 语句都在这里。处理器保持薄，额度计算留在
+/// <see cref="QuotaPolicy"/>——本类型只负责与 SQLite 之间搬字节。
 /// </summary>
 public sealed class AccountStore(ServerDatabase database)
 {
@@ -63,8 +63,8 @@ public sealed class AccountStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// Grants a plan. <paramref name="expiresAtUnix"/> null clears any end date, which is what a
-    /// manual activation code wants: the account stays usable until an operator says otherwise.
+    /// 授予套餐。<paramref name="expiresAtUnix"/> 为 null 会清除到期时间，这正是
+    /// 人工激活码想要的效果：账号一直可用，直到运维另行处置。
     /// </summary>
     public bool SetPlan(Guid userId, PlanTier plan, long? expiresAtUnix = null)
     {
@@ -78,8 +78,8 @@ public sealed class AccountStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// The display name is optional decoration: an empty string means "show the email instead", so
-    /// clearing it is a valid update rather than a validation failure.
+    /// 显示名是可选的装饰：空字符串表示“改为显示邮箱”，所以
+    /// 清空它是合法更新，而不是校验失败。
     /// </summary>
     public bool SetDisplayName(Guid userId, string displayName)
     {
@@ -101,7 +101,7 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
-    /// <summary>Today's total spend across every account, in micro-yuan — the gateway's budget fuse.</summary>
+    /// <summary>今天所有账号的总支出，单位为微元——网关的预算熔断依据。</summary>
     public long ReadTodayCostMicros()
     {
         using var connection = database.Open();
@@ -111,7 +111,7 @@ public sealed class AccountStore(ServerDatabase database)
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Returns the device for this fingerprint, creating it while the account is under the device cap.</summary>
+    /// <summary>返回该指纹对应的设备；账号未达设备上限时会创建。</summary>
     public DeviceResult RegisterDevice(Guid userId, string fingerprint, string name)
     {
         var normalized = fingerprint.Trim();
@@ -182,7 +182,7 @@ public sealed class AccountStore(ServerDatabase database)
         return new DeviceResult(true, device, null);
     }
 
-    /// <summary>Read-only device lookup used on the gateway hot path (avoids a write per request).</summary>
+    /// <summary>网关热路径上用的只读设备查询（避免每次请求都写库）。</summary>
     public DeviceRecord? FindDeviceByFingerprint(Guid userId, string fingerprint)
     {
         using var connection = database.Open();
@@ -304,7 +304,7 @@ public sealed class AccountStore(ServerDatabase database)
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Consumes a refresh token (one-shot rotation). Returns the owning user id, or null when invalid.</summary>
+    /// <summary>消费一个 refresh token（一次性轮换）。返回所属用户 id，无效时返回 null。</summary>
     public Guid? ConsumeRefreshToken(string tokenHash)
     {
         using var connection = database.Open();
@@ -405,7 +405,7 @@ public sealed class AccountStore(ServerDatabase database)
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Admin metrics: totals plus a per-plan breakdown (design §5 运营视图).</summary>
+    /// <summary>管理指标：总量加按套餐的分布（设计 §5 运营视图）。</summary>
     public (int Total, int Free, int Light, int Standard, int ActiveLast30Days) ReadAccountMetrics()
     {
         using var connection = database.Open();

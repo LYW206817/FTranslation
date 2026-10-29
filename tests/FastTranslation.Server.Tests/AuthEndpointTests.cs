@@ -191,7 +191,7 @@ public class AuthEndpointTests : IClassFixture<ServerFactory>
             statuses.Add((await _client.SendAsync(request)).StatusCode);
         }
 
-        // Register consumed one slot; only two additions remain before the cap of three.
+        // Register 已占用一个名额;在三个上限之前只剩两次添加机会。
         Assert.Equal(HttpStatusCode.OK, statuses[0]);
         Assert.Equal(HttpStatusCode.OK, statuses[1]);
         Assert.Equal(HttpStatusCode.BadRequest, statuses[2]);

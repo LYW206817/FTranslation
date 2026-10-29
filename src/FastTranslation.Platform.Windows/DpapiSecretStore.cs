@@ -6,8 +6,8 @@ using FastTranslation.Core;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// DPAPI (CurrentUser) secret store — the only NuGet dependency (ProtectedData).
-/// The file sits in %LOCALAPPDATA%\FastTranslation; losing it just means re-entering the key.
+/// DPAPI(CurrentUser)机密存储——本项目唯一的 NuGet 依赖(ProtectedData)。
+/// 文件位于 %LOCALAPPDATA%\FastTranslation；文件丢失只意味着需要重新输入密钥。
 /// </summary>
 public sealed class DpapiSecretStore : ISecretStore
 {
@@ -41,7 +41,7 @@ public sealed class DpapiSecretStore : ISecretStore
         }
         catch
         {
-            return null; // corrupted or moved between machines — treat as missing
+            return null; // 已损坏或在机器之间迁移过——按缺失处理
         }
     }
 

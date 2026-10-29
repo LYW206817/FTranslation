@@ -28,8 +28,8 @@ public static class AccountEndpoints
     }
 
     /// <summary>
-    /// Usage is the client-visible consumption view (requirement: the user must be able to see what
-    /// they have spent). The device id is optional — without it only the account-wide month is shown.
+    /// 用量是客户端可见的消耗视图（需求要求：用户必须能看到自己花了多少）。
+    /// 设备 id 可选——不传时只显示账号维度的月度用量。
     /// </summary>
     private static IResult Usage(
         ClaimsPrincipal principal,
@@ -49,8 +49,8 @@ public static class AccountEndpoints
             return Results.NotFound(new ErrorResponse("device_missing"));
         }
 
-        // The gateway bills the daily quota per device, so a client that only knows its fingerprint
-        // (every client does, it is what sign-in registers) must be able to ask for its own day.
+        // 网关按设备扣每日额度，所以只知道自身指纹的客户端（每个客户端都是如此，
+        // 登录时注册的就是它）必须能查到自己的当日用量。
         if (deviceId is null && !string.IsNullOrWhiteSpace(fingerprint)
             && store.FindDeviceByFingerprint(user.Id, fingerprint.Trim()) is { } resolved)
         {
@@ -62,9 +62,9 @@ public static class AccountEndpoints
     }
 
     /// <summary>
-    /// The only editable profile field. Length and control characters are checked here because the
-    /// value is rendered in the window title area and in the sidebar, where a newline or a 200-char
-    /// name breaks the layout rather than just looking odd.
+    /// 唯一可编辑的资料字段。这里检查长度与控制字符，因为这个值会渲染在
+    /// 窗口标题区和侧边栏，一个换行或 200 字符长的名字不只是难看，
+    /// 而是会直接撑坏布局。
     /// </summary>
     private static IResult UpdateProfile(
         [FromBody] UpdateProfileRequest request,
@@ -95,9 +95,9 @@ public static class AccountEndpoints
     }
 
     /// <summary>
-    /// Changing the password revokes every refresh token and immediately issues this device a new
-    /// pair: other devices have to sign in again, the one that made the change does not get kicked
-    /// out mid-session. Access tokens already handed out stay valid until they expire (30 minutes).
+    /// 改密码会吊销所有 refresh token，并立即给本设备签发一对新 token：
+    /// 其他设备必须重新登录，而做出这次修改的设备不会被
+    /// 中途踢下线。已发出的 access token 在过期前（30 分钟）仍然有效。
     /// </summary>
     private static IResult ChangePassword(
         [FromBody] ChangePasswordRequest request,
@@ -162,8 +162,8 @@ public static class AccountEndpoints
 }
 
 /// <summary>
-/// Admin surface. Guarded by a shared secret in the "X-Admin-Token" header — this exists so the
-/// operator can watch registration and consumption without a separate dashboard in phase 0.
+/// 管理面。用 "X-Admin-Token" 头里的共享密钥保护——它存在的意义是让运维
+/// 在阶段零不必另做后台看板就能观察注册与消耗。
 /// </summary>
 public static class AdminEndpoints
 {
@@ -200,7 +200,7 @@ public static class AdminEndpoints
             return Results.NotFound(new ErrorResponse("account_missing"));
         }
 
-        // Days is a relative length so the operator never has to compute a unix timestamp by hand.
+        // Days 是相对天数，运维不必手算 Unix 时间戳。
         long? expiresAt = request.Days switch
         {
             null => user.PlanExpiresAt,
@@ -214,9 +214,9 @@ public static class AdminEndpoints
     }
 
 /// <summary>
-    /// Mints one batch of activation codes. Kept next to SetPlan because both are the operator
-    /// handing out paid time; unlike SetPlan these codes are bearer instruments, so they are written
-    /// down and the operator has to keep the response.
+    /// 生成一批激活码。放在 SetPlan 旁边是因为两者都是运维在发放付费时长；
+    /// 与 SetPlan 不同，这些码是凭据性质的，所以会被写下来，
+    /// 运维必须保留这次响应。
     /// </summary>
     private static IResult CreateCodes(
         [FromBody] CreateCodesRequest request,

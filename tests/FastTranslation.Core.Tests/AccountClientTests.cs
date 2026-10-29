@@ -86,7 +86,7 @@ public class AccountClientTests
         Assert.Equal("https://api.example.com/api/v1/auth/register", handler.LastUri!.ToString());
         Assert.Equal("POST", handler.LastMethod);
         Assert.Null(handler.LastAuthorization);
-        // the server contract names the field "code"; the wire body must match it exactly
+        // 服务端契约里这个字段叫 “code”;请求体必须与它完全一致
         Assert.Contains("\"code\":\"123456\"", handler.LastBody);
 
         var session = result.Value!.Session;
@@ -267,7 +267,7 @@ public class AccountClientTests
     public async Task Redeem_errors_are_not_confused_with_the_email_verification_codes(
         string wire, AccountErrorCode expected)
     {
-        // "code_invalid" already means "wrong email code"; redeem codes must carry their own names.
+        // “code_invalid” 已经表示“邮箱验证码错误”;兑换码必须有自己的名字。
         var (client, _) = Build(HttpStatusCode.BadRequest, "{\"error\":\"" + wire + "\"}");
 
         var result = await client.RedeemAsync("access-1", "FT-4G7M-2XQP-9HKV-3WTA", CancellationToken.None);
@@ -290,7 +290,7 @@ public class AccountClientTests
         Assert.Equal("https://api.example.com/api/v1/account/profile", handler.LastUri!.ToString());
         Assert.Equal("PATCH", handler.LastMethod);
         Assert.Equal("Bearer", handler.LastAuthorization!.Scheme);
-        // the contract field is displayName; an empty string is how the UI clears the name
+        // 契约字段是 displayName;空字符串是界面清空名称的方式
         using var sent = JsonDocument.Parse(handler.LastBody);
         Assert.Equal("永威", sent.RootElement.GetProperty("displayName").GetString());
         Assert.Equal("永威", result.Value!.DisplayName);
@@ -305,7 +305,7 @@ public class AccountClientTests
         var result = await client.UpdateProfileAsync("access-1", new string('x', 25), CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        // the account page shows a sentence per code, so the wire code has to survive the mapping
+        // 账号页会按每个 code 展示一句话,所以线上返回的 code 必须能穿过映射
         Assert.Equal(AccountErrorCode.InvalidProfile, result.Error!.Code);
     }
 
@@ -322,7 +322,7 @@ public class AccountClientTests
         Assert.Equal("POST", handler.LastMethod);
         Assert.Contains("\"currentPassword\":\"password123\"", handler.LastBody);
         Assert.Contains("\"newPassword\":\"brand-new-123\"", handler.LastBody);
-        // the device that changed the password gets a fresh pair back, not a 401
+        // 改了密码的设备会拿到一对新令牌,而不是 401
         Assert.Equal("refresh-1", result.Value!.Session.RefreshToken);
     }
 

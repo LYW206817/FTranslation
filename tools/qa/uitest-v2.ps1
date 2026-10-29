@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Drawing, UIAutomationClient, UIAutomationTypes
 Add-Type @'
@@ -51,7 +51,7 @@ function Snap-Hwnd([IntPtr]$hwnd, [string]$out) {
   $bmp = New-Object System.Drawing.Bitmap $w, $h
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $hdc = $g.GetHdc()
-  [PW]::PrintWindow($hwnd, $hdc, 2) | Out-Null  # PW_RENDERFULLCONTENT
+  [PW]::PrintWindow($hwnd, $hdc, 2) | Out-Null  # PW_RENDERFULLCONTENT（2，连同子窗口完整渲染）
   $g.ReleaseHdc($hdc); $g.Dispose()
   $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
   $bmp.Dispose()

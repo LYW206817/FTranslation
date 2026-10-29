@@ -3,12 +3,10 @@ using Xunit;
 
 namespace FastTranslation.Core.Tests;
 
-/// <summary>
-/// v52: the review page walks a session instead of a window walking its own list, so the walking
-/// itself is now testable. These cases pin the edges that used to only be visible by clicking:
-/// an empty queue must be finished before the first render, and Advance past the end must not
-/// move the index off the array.
-/// </summary>
+/// <summary>v52:审核页改为遍历一个 session,而不是由窗口遍历自己的列表,所以遍历
+/// 本身现在可测了。以下用例锁定过去只能靠点击才看得到的边界:
+/// 空队列必须在第一次渲染前就标记完成,而 Advance 越过末尾时
+/// 不能把索引移出数组。</summary>
 public class ReviewSessionTests
 {
     private static Note Card(string source) =>
@@ -74,7 +72,7 @@ public class ReviewSessionTests
         var session = new ReviewSession([Card("a"), Card("b")]);
         session.Advance();
 
-        // the page renders 第 {Completed + 1} / {Total} 条 while a card is on screen
+        // 卡片在屏幕上时,页面渲染的是 第 {Completed + 1} / {Total} 条
         Assert.Equal(1, session.Completed);
         Assert.Equal(2, session.Total);
         Assert.Equal("b", session.Current!.SourceText);

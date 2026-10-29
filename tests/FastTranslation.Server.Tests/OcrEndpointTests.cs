@@ -12,12 +12,10 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// <c>POST /v1/ocr</c> exists because the chat endpoint cannot carry a picture: it only counts
-/// <c>content</c> strings, so an image-only body reads as zero characters and is refused. These tests
-/// pin the three things that make the extra endpoint worth having — it forwards to the vision path,
-/// it bills at the vision price, and a refusal never costs money.
-/// </summary>
+/// <summary><c>POST /v1/ocr</c> 之所以存在,是因为聊天端点无法携带图片:它只统计
+/// <c>content</c> 字符串,所以纯图片请求体被读成零字符并遭拒绝。这些测试
+/// 锁定额外端点的三项价值——它转发到视觉路径、按视觉价格计费,
+/// 而且被拒绝时绝不花钱。</summary>
 public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<ServerFactory>
 {
     private readonly GatewayFactory _gateway;
@@ -29,7 +27,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
         _plain = plain;
     }
 
-    /// <summary>An OCR body shaped like the one the desktop client sends: an image, no text.</summary>
+    /// <summary>与桌面客户端发送的形状一致的 OCR 请求体:一张图片,没有文本。</summary>
     private static Task<HttpResponseMessage> OcrAsync(HttpClient client, string? device = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/v1/ocr")
@@ -135,7 +133,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
     [Fact]
     public async Task Ocr_DisabledGatewayIs503()
     {
-        // The plain factory has no API key, which is the default deployment: it must refuse, not guess.
+        // 普通工厂没有 API Key,这正是默认部署:它必须拒绝,而不是猜测。
         var client = await SignedInClientAsync(_plain, PlanTier.Light);
 
         var response = await OcrAsync(client);
@@ -166,7 +164,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
         response.EnsureSuccessStatusCode();
         var call = _gateway.Upstream.Calls[before];
         Assert.Equal("http://upstream.test/ocr", call.Url);
-        // The client's Bearer token must never leak upstream; the developer key replaces it.
+        // 客户端的 Bearer 令牌绝不能泄漏到上游;开发者 Key 会替换它。
         Assert.Equal(GatewayFactory.UpstreamKey, call.Authorization);
         Assert.Contains("image_url", call.Body);
     }
@@ -181,7 +179,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
 
         var (model, chars, costMicros) = LastUsageEvent(_gateway, UserId(_gateway, email));
         Assert.Equal("qwen-vl-ocr", model);
-        // Quota is charged like one screenshot, so an OCR cannot be cheaper than the image it came from.
+        // 额度按一张截图计量,所以 OCR 不可能比它来源的那张图更便宜。
         Assert.Equal(1_000, chars);
         Assert.Equal(Pricing.TextCostMicros("qwen-vl-ocr", 1_000, 0), costMicros);
         Assert.True(costMicros > 0);
@@ -206,7 +204,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
         }
 
         var (_, _, costMicros) = LastUsageEvent(_gateway, UserId(_gateway, email));
-        // Vision tokens are what the model actually bills, so they must beat the 1000-char fallback.
+        // 视觉 token 才是模型实际计费的东西,所以它们必须压过 1000 字符的兜底。
         Assert.Equal(Pricing.TextCostMicros("qwen-vl-ocr", 1_500, 40), costMicros);
     }
 
@@ -235,7 +233,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
     [Fact]
     public async Task Ocr_RefusesWhenFreeDailyQuotaIsSpent()
     {
-        // Free allows 2000 characters a day, so two screenshots (1000 a piece) exhaust it.
+        // Free 每天允许 2000 字符,所以两张截图(各 1000)就会耗尽它。
         var client = await SignedInClientAsync(_gateway, PlanTier.Free);
 
         (await OcrAsync(client)).EnsureSuccessStatusCode();
@@ -250,7 +248,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
     [Fact]
     public void Pricing_KnowsTheVisionModel()
     {
-        // A missing entry silently bills at flash prices, which under-reports vision cost badly.
+        // 缺少条目会静默按 flash 价格计费,这会严重低报视觉成本。
         var price = Pricing.For("qwen-vl-ocr");
 
         Assert.Equal("qwen-vl-ocr", price.Model);

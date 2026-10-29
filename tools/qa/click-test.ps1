@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
@@ -25,7 +25,7 @@ public static class CT {
 [CT]::SetProcessDPIAware() | Out-Null
 Stop-Process -Name FastTranslation -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
-$env:FT_UITEST = 'click'   # any non-null value enables the click log; no auto-open
+$env:FT_UITEST = 'click'   # 任意非空值都会打开点击日志，不会自动弹出窗口
 $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 5
 $p = Get-Process -Id $app.Id
@@ -44,10 +44,10 @@ $combo = $main.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (Ne
 $cr = $combo.Current.BoundingRectangle
 $cx = [int]($cr.X + $cr.Width * 0.5); $cy = [int]($cr.Y + $cr.Height * 0.5)
 Write-Host ('clicking combo center at ' + $cx + ',' + $cy)
-# click 1: activate
+# 第 1 次点击：激活窗口
 [CT]::Mouse(2, $cx, $cy); Start-Sleep -Milliseconds 80; [CT]::Mouse(4, $cx, $cy)
 Start-Sleep -Milliseconds 500
-# click 2: should pass through
+# 第 2 次点击：应该穿透下去
 [CT]::Mouse(2, $cx, $cy); Start-Sleep -Milliseconds 80; [CT]::Mouse(4, $cx, $cy)
 Start-Sleep -Milliseconds 900
 $state = $combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Current.ExpandCollapseState

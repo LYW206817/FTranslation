@@ -1,8 +1,8 @@
 namespace FastTranslation.Server.Domain;
 
 /// <summary>
-/// The three shelves of the notebook are one table filtered by this value, not three tables:
-/// a saved item can be re-filed from 单词 to 短语 without losing its history (design §4.3).
+/// 单词本的三个书架是同一张表按该值过滤出来的，而不是三张表：
+/// 已保存的条目可以从单词改归到短语，且不丢失历史记录（设计 §4.3）。
 /// </summary>
 public enum NoteKind
 {

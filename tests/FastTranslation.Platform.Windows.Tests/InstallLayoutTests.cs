@@ -39,7 +39,7 @@ public class InstallLayoutTests
     [Fact]
     public void CanSelfUpdate_RejectsAFolderUnderProgramFiles()
     {
-        // PrivilegesRequired=lowest: a silent run there fails after the app already exited
+        // PrivilegesRequired=lowest:在那里静默运行时,应用已经退出之后才会失败
         var roots = new List<string> { @"C:\Program Files", @"C:\Program Files (x86)" };
         Assert.False(InstallLayout.CanSelfUpdate(
             @"C:\Program Files\FastTranslation", @"C:\Program Files\FastTranslation", roots));

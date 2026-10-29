@@ -9,8 +9,8 @@ public interface IVerificationMailSender
 }
 
 /// <summary>
-/// SMTP delivery when configured; otherwise the code is written to the log so a developer can
-/// finish registration locally without a mail server.
+/// 已配置时走 SMTP 投递；否则把验证码写进日志，让开发者
+/// 在没有邮件服务器的情况下也能在本地完成注册。
 /// </summary>
 public sealed class VerificationMailSender(SmtpOptions options, ILogger<VerificationMailSender> logger) : IVerificationMailSender
 {

@@ -1,4 +1,4 @@
-# Capture the settings page scrolled to the bottom so the exclusion + system cards are visible.
+﻿# 截图：把设置页滚到底，让排除项和系统两张卡片都露出来。
 param(
   [Parameter(Mandatory=$true)][string]$ExePath,
   [Parameter(Mandatory=$true)][string]$Out
@@ -44,7 +44,7 @@ try {
   } else { Write-Host 'no scroll pattern' }
   Start-Sleep -Milliseconds 1200
 
-  # a chat app can steal the foreground mid-capture; pin our window on top for the shot
+  # 截图期间聊天软件可能抢走前台，所以先把窗口固定置顶
   $hwnd = [System.IntPtr]$sw.Current.NativeWindowHandle
   [TopMostWin]::SetWindowPos($hwnd, [System.IntPtr](-1), 0, 0, 0, 0, 0x0013) | Out-Null
   Start-Sleep -Milliseconds 400

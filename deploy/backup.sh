@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Snapshot the SQLite database. The server runs in WAL mode, so a plain cp can
-# capture a torn page; ".backup" takes a consistent copy while writers keep going.
+# 给 SQLite 数据库做快照。服务端跑在 WAL 模式下，直接 cp 可能
+# 拷到撕裂的页；".backup" 能在写入方继续工作的同时取一份一致的副本。
 set -euo pipefail
 
 DB=${FT_DB:-/var/lib/fasttranslation/fasttranslation.db}

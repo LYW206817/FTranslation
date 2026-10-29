@@ -8,14 +8,14 @@ using Microsoft.AspNetCore.Mvc;
 namespace FastTranslation.Server.Gateway;
 
 /// <summary>
-/// The proxy gateway. It is deliberately shaped as an OpenAI-compatible endpoint
-/// (<c>POST /v1/chat/completions</c>) so the existing desktop provider needs no protocol work:
-/// it points <c>QwenMtOptions.BaseUrl</c> at <c>{server}/v1</c> and sends its access token where it
-/// used to send the API key (design §5 phase 2).
+/// 代理网关。刻意做成 OpenAI 兼容端点的形态
+/// （<c>POST /v1/chat/completions</c>），这样现有桌面端 provider 无需改协议：
+/// 它把 <c>QwenMtOptions.BaseUrl</c> 指向 <c>{server}/v1</c>，并把 access token 发到原先发
+/// API key 的位置（设计 §5 阶段二）。
 /// </summary>
 public static class GatewayEndpoints
 {
-    /// <summary>Where the desktop client's device fingerprint rides. Optional; anonymous rows reuse one device.</summary>
+    /// <summary>桌面客户端的设备指纹从这里传。可选；匿名记录复用同一个设备。</summary>
     public const string DeviceHeaderName = "X-FT-Device";
 
     private const string AnonymousFingerprint = "gateway-anonymous";
@@ -69,8 +69,8 @@ public static class GatewayEndpoints
         var response = await upstream.SendChatAsync(body, ct);
         if (!response.Succeeded)
         {
-            // Upstream refused: forward the status so the client's existing classifier still works,
-            // and do not charge the account for a translation it never received.
+            // 上游拒绝：透传状态码，让客户端现有的分类逻辑继续工作，
+            // 并且不为这次根本没拿到的翻译向账号收费。
             return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
         }
 
@@ -97,9 +97,9 @@ public static class GatewayEndpoints
     }
 
     /// <summary>
-    /// Screenshot translation through the same key. The upstream API reports no usage for images, so
-    /// one request is one billed image and the quota side charges a fixed equivalent (see
-    /// <see cref="GatewayOptions.ImageQuotaChars"/>).
+    /// 用同一把 Key 做截图翻译。上游 API 对图像不报告用量，所以
+    /// 一次请求即一张计费图片，额度侧按固定折算值扣费（见
+    /// <see cref="GatewayOptions.ImageQuotaChars"/>）。
     /// </summary>
     private static async Task<IResult> Image(
         HttpContext context,
@@ -150,11 +150,11 @@ public static class GatewayEndpoints
     }
 
     /// <summary>
-    /// Screenshot OCR. The body is forwarded untouched to the multimodal endpoint; the difference from
-    /// <see cref="ChatCompletions"/> is that the payload carries an image rather than text, so there is
-    /// no character ceiling to police and the quota is charged as one screenshot (same equivalent as
-    /// <see cref="Image"/>). Cost, however, is real token accounting: the model bills vision tokens even
-    /// though the quota side thinks in characters.
+    /// 截图 OCR。请求体原样转发到多模态端点；与
+    /// <see cref="ChatCompletions"/> 的区别在于载荷是一张图而不是文本，因此没有
+    /// 需要管制的字符上限，额度按一次截图扣费（与
+    /// <see cref="Image"/> 相同折算）。但成本是真实的 token 记账：模型按视觉 token 计费，
+    /// 即便额度侧是以字符为单位思考的。
     /// </summary>
     private static async Task<IResult> Ocr(
         HttpContext context,
@@ -177,7 +177,7 @@ public static class GatewayEndpoints
             return Fail(StatusCodes.Status400BadRequest, "body_invalid");
         }
 
-        // One OCR is priced like one image translation for quota purposes: both take a picture in.
+        // 从额度角度看，一次 OCR 与一次图片翻译定价相同：两者都是输入一张图。
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
         if (Intent(context, principal, store, database, gateway, limiter, quotaChars) is { } refusal)
         {
@@ -187,7 +187,7 @@ public static class GatewayEndpoints
         var response = await upstream.SendOcrAsync(body, ct);
         if (!response.Succeeded)
         {
-            // Same rule as chat: forward the upstream status verbatim and never bill a refusal.
+            // 与 chat 同规则：原样透传上游状态码，绝不为拒绝计费。
             return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
         }
 
@@ -215,8 +215,8 @@ public static class GatewayEndpoints
     }
 
     /// <summary>
-    /// Every gate a request must clear, in the order that never spends money it cannot bill:
-    /// rate limit → deployment budget → account quota. Returns null when the request may proceed.
+    /// 请求必须通过的每一道闸门，顺序保证不会花掉无法计费的钱：
+    /// 限流 → 部署预算 → 账号额度。请求可继续时返回 null。
     /// </summary>
     private static IResult? Intent(
         HttpContext context,
@@ -251,8 +251,8 @@ public static class GatewayEndpoints
         var decision = QuotaPolicy.Evaluate(tier, usage.MonthlyChars, usage.DailyChars, chars);
         if (!decision.Allowed)
         {
-            // 429 (not 403) on purpose: the client reads it as "out of quota" and silently switches to
-            // the user's own key, so an exhausted plan degrades the product instead of breaking it.
+            // 故意用 429（而不是 403）：客户端会把它读作“额度用尽”并静默切换到
+            // 用户自己的 Key，于是套餐耗尽只是让产品降级，而不是把它弄坏。
             context.Response.Headers["X-FT-Quota-Reason"] = decision.Reason ?? "quota_exhausted";
             return Fail(StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
         }
@@ -277,8 +277,8 @@ public static class GatewayEndpoints
             return (known.Id, userId);
         }
 
-        // RegisterDevice honours the per-account device cap; a refusal here must not break
-        // translation, so an over-cap client simply records against the anonymous device row.
+        // RegisterDevice 会遵守每账号设备上限；这里被拒绝也不能中断
+        // 翻译，所以超限的客户端直接记到匿名设备行上。
         var registered = store.RegisterDevice(userId, fingerprint, string.Empty);
         return registered.Device is { } device
             ? (device.Id, userId)
@@ -331,9 +331,9 @@ public static class GatewayEndpoints
     }
 
     /// <summary>
-    /// Qwen-MT bills a fixed ~45-token preamble on every request regardless of length, so a bare
-    /// character count would under-report cost badly. This mirrors that overhead and is only used
-    /// when the upstream response carries no usage block.
+    /// Qwen-MT 对每次请求固定收取约 45 token 的前导开销，与长度无关，所以只按
+    /// 字符数会严重低报成本。这里补上这块开销，仅在
+    /// 上游响应没有 usage 块时使用。
     /// </summary>
     private static long EstimateInputTokens(int chars) => chars + 45L;
 

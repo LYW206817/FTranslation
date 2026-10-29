@@ -37,7 +37,7 @@ function Dump-Window($w) {
   }
 }
 
-# single-instance guard: a leftover process makes the new one exit before the QA hook runs
+# 单实例保护：残留进程会让新进程在 QA 钩子执行前就退出
 Stop-Process -Name FastTranslation -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 $env:FT_UITEST = 'overlays-fallback'
@@ -56,7 +56,7 @@ for ($i = 0; $i -lt 10; $i++) {
   $wins = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
   foreach ($w in $wins) {
     if ($w.Current.BoundingRectangle.IsEmpty) { continue }
-    # the status line is one wrapping TextBlock, so match on a substring
+    # 状态行是一个会自动换行的 TextBlock，所以按子串匹配
     foreach ($t in $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)))) {
       if ($t.Current.Name -like '*tokens*') { $card = $w; break }
     }

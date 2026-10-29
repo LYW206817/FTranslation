@@ -3,9 +3,9 @@ namespace FastTranslation.Core;
 public sealed record LanguageInfo(string Code, string ApiName, string DisplayName);
 
 /// <summary>
-/// Target-language catalog. ApiName is the English name Qwen-MT requires;
-/// DisplayName is the zh-CN UI label. Source list per Qwen-MT docs — the full
-/// 92-language set must be diffed against the official page before beta.
+/// 目标语言目录。ApiName 是 Qwen-MT 要求的英文语言名；
+/// DisplayName 是 zh-CN 界面标签。清单来源见 Qwen-MT 文档——
+/// beta 前必须把完整的 92 种语言与官方页面核对一遍。
 /// </summary>
 public static class LanguageCatalog
 {
@@ -99,6 +99,6 @@ public static class LanguageCatalog
         return info is not null;
     }
 
-    /// <summary>Qwen-MT requires the English language name; fall back to the code itself.</summary>
+    /// <summary>Qwen-MT 要求英文语言名；查不到时回落到语言码本身。</summary>
     public static string ToApiName(string code) => TryGet(code, out var info) ? info.ApiName : code;
 }

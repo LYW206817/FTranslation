@@ -1,10 +1,10 @@
 namespace FastTranslation.Server.Domain;
 
 /// <summary>
-/// Activation codes. 16 characters of Crockford base32 (80 bits) printed as FT-XXXX-XXXX-XXXX-XXXX.
-/// The alphabet leaves out I, L, O and U so a code read off a card or out of a chat message cannot
-/// be mistyped as a digit, and <see cref="Normalize"/> folds those four anyway — typing the code is
-/// the entire purchase flow, so a failed redemption has to be a wrong code, never a wrong capital.
+/// 激活码。由 16 个 Crockford base32 字符（80 位）组成，形如 FT-XXXX-XXXX-XXXX-XXXX。
+/// 字符集去掉了 I、L、O、U，这样从卡片或聊天消息里抄下来的码不会
+/// 被误打成数字；而且 <see cref="Normalize"/> 还会把这四个字母折回数字——输入激活码
+/// 就是整个购买流程，所以兑换失败只能是码本身错了，绝不能因为大小写而失败。
 /// </summary>
 public static class RedeemCode
 {
@@ -12,7 +12,7 @@ public static class RedeemCode
 
     private const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-    /// <summary>The only place a code is born. Callers store the formatted form and nothing else.</summary>
+    /// <summary>激活码唯一的生成处。调用方只存格式化后的形式，别的都不存。</summary>
     public static string Generate()
     {
         Span<byte> bytes = stackalloc byte[RawLength];
@@ -21,7 +21,7 @@ public static class RedeemCode
         var raw = new char[RawLength];
         for (var i = 0; i < RawLength; i++)
         {
-            // 256 is a multiple of 32, so masking keeps the draw uniform without rejection sampling.
+            // 256 是 32 的整数倍，因此掩码取模保持分布均匀，无需拒绝采样。
             raw[i] = Alphabet[bytes[i] & 31];
         }
 
@@ -46,9 +46,9 @@ public static class RedeemCode
     }
 
     /// <summary>
-    /// Accepts what a human types: any case, with or without dashes, with or without the FT prefix,
-    /// and with the four ambiguous letters read as the digits they look like. Anything that does not
-    /// collapse to exactly one raw code comes back empty, and the caller answers "invalid".
+    /// 接受人类实际输入的形式：任意大小写、有无连字符、有无 FT 前缀，
+    /// 并把四个易混字母按形近数字解读。凡是不能
+    /// 恰好归一成一份原始码的输入都返回空串，由调用方答复“无效”。
     /// </summary>
     public static string Normalize(string? input)
     {

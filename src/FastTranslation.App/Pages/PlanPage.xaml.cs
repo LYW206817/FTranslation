@@ -5,13 +5,11 @@ using FastTranslation.Core.Account;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The 套餐 page: price, what the plan includes, the meters, how those meters reset, and the
-/// activation code. Identity and password live on the 账号 page — the two used to share one page
-/// and both halves suffered for it.
+/// 套餐页：价格、套餐包含什么、各项计量、计量如何重置，以及激活码。身份和密码在账号页——
+/// 这两块以前共用一页，结果两边都受影响。
 ///
 /// <para>
-/// There is no payment channel in this build. The subscribe button records the choice and says so;
-/// it never pretends to open a checkout.
+/// 这个版本没有支付通道。订阅按钮只记录用户的选择并如实说明；它从不假装会打开结算页。
 /// </para>
 /// </summary>
 public partial class PlanPage : UserControl
@@ -29,15 +27,15 @@ public partial class PlanPage : UserControl
         Render();
     }
 
-    /// <summary>Called by the host every time the page is shown; cached pages go stale otherwise.</summary>
+    /// <summary>页面每次显示时由宿主调用；缓存的页面否则会变旧。</summary>
     public void Reload()
     {
         Render();
         if (_account.Session is not null) _ = LoadUsageAsync();
     }
 
-    // the session can arrive after this page was first opened (startup restore is async), so a late
-    // change has to re-render the price card and re-ask for usage
+    // 会话可能在本页第一次打开之后才到（启动恢复是异步的），所以迟到的变更
+    // 必须重绘价格卡并重新询问用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         Render();
@@ -64,11 +62,11 @@ public partial class PlanPage : UserControl
             return;
         }
 
-        // a paid plan makes the pitch redundant: the card becomes "what you already have"
+        // 付费套餐让推销话术变得多余：卡片变成「你已经拥有的内容」
         var paid = !string.Equals(session!.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
         SubscribeButton.Content = paid ? "续订" : "订阅";
-        // the same card serves both audiences: a subscriber should not read "subscribe to unlock"
-        // for a feature they already paid for
+        // 同一张卡片服务两类读者：订阅者不该读到「订阅以解锁」，
+        // 那项功能他已经付过钱了
         SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与四档复习";
         if (paid)
         {
@@ -125,8 +123,8 @@ public partial class PlanPage : UserControl
                 return;
             }
 
-            // Render runs through the Changed event; the meters need their own refresh because the
-            // reply's usage snapshot is only as fresh as the redemption request.
+            // Render 是经 Changed 事件跑的；计量要自己再刷一次，因为回包里的用量快照
+            // 只和那次兑换请求一样新。
             RedeemBox.Text = string.Empty;
             RedeemHint.Text = "已开通 " + result.Value!.Profile.PlanDisplay + "。";
             await LoadUsageAsync();
@@ -141,13 +139,13 @@ public partial class PlanPage : UserControl
 
     private void Month_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(false);
 
-    /// <summary>Two cards, one selected: the border and fill move, nothing else changes.</summary>
+    /// <summary>两张卡只选一张：移动的是边框和填充，别的一概不变。</summary>
     private void SelectPlan(bool yearly)
     {
         _yearly = yearly;
         Select(YearCard, yearly);
         Select(MonthCard, !yearly);
-        // re-picking a card clears whatever the previous "recorded" message said
+        // 重新选卡会清掉上一个「已记录」提示的内容
         SubscribeHint.Text = "付款渠道尚未接通,当前版本点击后仅记录意向。";
     }
 

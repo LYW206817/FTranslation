@@ -10,8 +10,8 @@ using FastTranslation.Providers.QwenMt;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The 首页 page: one sheet of paper, a translate button, and the result. It is the v47 main
-/// window's content moved onto a page — the sidebar and the account block live in the window.
+/// 首页：一张纸、一个翻译按钮、一份结果。它就是 v47 主窗口的内容搬到页面里——侧边栏和
+/// 账号区块留在窗口中。
 /// </summary>
 public partial class MainPage : UserControl
 {
@@ -21,17 +21,17 @@ public partial class MainPage : UserControl
     private readonly ISecretStore _secrets;
     private readonly AccountCoordinator _account;
     private CancellationTokenSource? _translateCts;
-    private string? _lastSource;      // the pair that produced the current result, saved as-is
+    private string? _lastSource;      // 产出当前结果的那一对原文，按原样保存
     private string? _lastTarget;
     private bool _saving;
 
-    /// <summary>「配置 Key」needs the settings page, but a page must not switch pages itself.</summary>
+    /// <summary>「配置 Key」需要设置页，但页面不能自己切换页面。</summary>
     public event Action? SettingsRequested;
 
-    /// <summary>「截图翻译」runs the same capture flow the tray does; the owner forwards it.</summary>
+    /// <summary>「截图翻译」跑的是和托盘同一套取图流程；由宿主转发。</summary>
     public event Action? ScreenshotRequested;
 
-    /// <summary>Saving hit a subscription gate; the owner knows how to reach the plan page.</summary>
+    /// <summary>保存撞上了订阅闸门；宿主知道怎么去套餐页。</summary>
     public event Action? PlanRequested;
 
     public MainPage(
@@ -153,7 +153,7 @@ public partial class MainPage : UserControl
         try
         {
             var settings = _settings();
-            // kind: null asks the server's NoteClassifier to decide — the same path the toolbar uses
+            // kind 传 null 让服务端的 NoteClassifier 判断——和工具栏走同一条路径
             var saved = await _account.SaveNoteAsync(
                 kind: null,
                 sourceText: _lastSource,
@@ -161,17 +161,17 @@ public partial class MainPage : UserControl
                 sourceLang: string.IsNullOrWhiteSpace(settings.SourceLanguage) ? "auto" : settings.SourceLanguage,
                 targetLang: string.IsNullOrWhiteSpace(settings.TargetLanguage) ? "auto" : settings.TargetLanguage,
                 model: settings.Model,
-                originApp: string.Empty,          // the source is this program; recording it says nothing
+                originApp: string.Empty,          // 来源就是本程序，记下来没有意义
                 cancellationToken: CancellationToken.None);
 
             if (saved.Succeeded)
             {
                 SaveButton.Content = "已保存到" + NoteKinds.Display(saved.Value!.Kind) + "本";
-                return;                            // stays disabled: the same pair is not saved twice
+                return;                            // 保持禁用：同一对内容不重复保存
             }
 
-            // Both gates are answered by sending the reader somewhere that can clear them,
-            // not by explaining the plan here (same handling as the toolbar's save).
+            // 两道闸门都靠把读者送到能解决它的地方来应答，而不是在这里解释套餐
+            //（与工具栏的保存处理一致）。
             switch (saved.Error!.Code)
             {
                 case AccountErrorCode.NotSignedIn:
@@ -202,7 +202,7 @@ public partial class MainPage : UserControl
 
     private void KeyButton_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
 
-    /// <summary>Called by the window after the key changes, and when the page comes back into view.</summary>
+    /// <summary>由窗口在 Key 变更后调用，也在页面重新回到视野时调用。</summary>
     public void RefreshKeyStatus()
     {
         var hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
@@ -210,7 +210,7 @@ public partial class MainPage : UserControl
         KeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    /// <summary>Gives the caret to the input sheet when the window is brought up by a hotkey.</summary>
+    /// <summary>窗口被热键唤起时，把光标交给输入纸面。</summary>
     public void FocusInput()
     {
         InputBox.Focus();

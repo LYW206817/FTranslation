@@ -4,9 +4,8 @@ using System.Text.Json;
 namespace FastTranslation.Core;
 
 /// <summary>
-/// The update manifest served from the public update channel. Every field is validated here
-/// because a malformed or hostile manifest must never reach the downloader: the URL decides
-/// what gets executed and the hash decides whether it is trusted.
+/// 公共更新通道下发的更新清单。所有字段都在这里校验，因为格式错误或恶意的清单绝不能
+/// 流到下载器：URL 决定会执行什么，哈希决定它是否可信。
 /// </summary>
 public sealed record UpdateManifest(
     ReleaseVersion Version,

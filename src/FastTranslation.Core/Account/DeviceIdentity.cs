@@ -1,9 +1,9 @@
 namespace FastTranslation.Core.Account;
 
 /// <summary>
-/// A stable, opaque per-installation id. The server counts free quota per device, so this value
-/// must survive restarts (kept in the secret store) but stay unlinked from any hardware id — a
-/// machine name or disk serial would be a privacy answer to a quota question.
+/// 每次安装一个稳定、不透明的标识。服务端按设备统计免费额度，所以这个值必须能跨重启存活
+/// （存在密钥存储里），又不能与任何硬件标识挂钩——拿机器名或磁盘序列号来回答额度问题，
+/// 等于把隐私交了出去。
 /// </summary>
 public static class DeviceIdentity
 {
@@ -22,7 +22,7 @@ public static class DeviceIdentity
         return created;
     }
 
-    /// <summary>Display name only — the server stores it so a user can recognise a device later.</summary>
+    /// <summary>仅作显示名——服务端存下来，方便用户以后认出是哪台设备。</summary>
     public static string MachineName
     {
         get

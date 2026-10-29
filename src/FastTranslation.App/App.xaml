@@ -7,11 +7,11 @@
              ThemeMode="Light">
   <Application.Resources>
 
-    <!-- ===== FastTranslation design tokens (brand: icon cream-blue + #2562FF) =====
-         Every reference to these brushes is DynamicResource, not StaticResource: ThemeBridge.Apply
-         recolors them at startup, and a StaticResource lookup resolves once at parse time — the
-         first dark-mode attempt kept every surface light for exactly that reason. po:Freeze="False"
-         additionally keeps the brushes mutable so the in-place recolor is possible at all. -->
+    <!-- ===== FastTranslation 设计 token（品牌：图标奶油蓝 + #2562FF）=====
+         这里每个画刷引用都用 DynamicResource 而不是 StaticResource：ThemeBridge.Apply 在启动时
+         给它们重新上色，而 StaticResource 只在解析时查一次——第一次做深色模式的尝试里，
+         所有界面都还是浅色，原因正是这个。po:Freeze="False" 还让画刷保持可变，
+         否则根本没法就地换色。 -->
     <SolidColorBrush x:Key="BrandBrush" po:Freeze="False" Color="#2562FF"/>
     <SolidColorBrush x:Key="BrandHoverBrush" po:Freeze="False" Color="#1D4FE0"/>
     <SolidColorBrush x:Key="BrandPressedBrush" po:Freeze="False" Color="#1A45C4"/>
@@ -28,14 +28,14 @@
     <SolidColorBrush x:Key="TextMutedBrush" po:Freeze="False" Color="#8B97A9"/>
     <SolidColorBrush x:Key="DangerBrush" po:Freeze="False" Color="#DC2626"/>
 
-    <!-- field label above inputs -->
+    <!-- 输入框上方的字段标签 -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
       <Setter Property="Margin" Value="0,14,0,6"/>
     </Style>
 
-    <!-- ===== Button: quiet secondary by default ===== -->
+    <!-- ===== 按钮：默认是安静的次要样式 ===== -->
     <Style TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -73,7 +73,7 @@
       </Setter>
     </Style>
 
-    <!-- primary action -->
+    <!-- 主操作 -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background" Value="{DynamicResource BrandBrush}"/>
       <Setter Property="Foreground" Value="White"/>
@@ -106,7 +106,7 @@
       </Setter>
     </Style>
 
-    <!-- ===== TextBox with focus ring ===== -->
+    <!-- ===== 带聚焦环的 TextBox ===== -->
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -125,8 +125,8 @@
               <Border x:Name="bd" Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
-                <!-- NO Margin=Padding here: TextBoxBase already applies Padding to its inner
-                     text view; adding it again double-pads the caret (v18 misalignment) -->
+                <!-- 这里不要再加 Margin=Padding：TextBoxBase 已经给内部的文本视图
+                     应用了 Padding，再加一次会让光标双重内缩（v18 对齐错位） -->
                 <ScrollViewer x:Name="PART_ContentHost" Margin="0"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
               </Border>
@@ -149,7 +149,7 @@
       </Setter>
     </Style>
 
-    <!-- ===== PasswordBox matching TextBox ===== -->
+    <!-- ===== 与 TextBox 对齐的 PasswordBox ===== -->
     <Style TargetType="PasswordBox">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -186,7 +186,7 @@
       </Setter>
     </Style>
 
-    <!-- ===== CheckBox: brand checkmark ===== -->
+    <!-- ===== CheckBox：品牌色对勾 ===== -->
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
       <Setter Property="FontSize" Value="13"/>
@@ -224,7 +224,7 @@
       </Setter>
     </Style>
 
-    <!-- ===== toggle switch (取词开关) ===== -->
+    <!-- ===== 拨动开关（取词开关） ===== -->
     <Style x:Key="ToggleSwitch" TargetType="CheckBox">
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -257,8 +257,8 @@
       </Setter>
     </Style>
 
-    <!-- ComboBox: fully custom template (theme templates fight implicit styles and
-         silently swallow clicks; this one is deterministic) -->
+    <!-- ComboBox：完全自定义的模板（主题模板会和隐式样式打架，
+         还会悄悄吞掉点击；这一个的行为是确定的） -->
     <Style TargetType="{x:Type local:FtComboBox}">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -301,9 +301,9 @@
                   <RotateTransform Angle="0"/>
                 </Path.RenderTransform>
               </Path>
-              <!-- no Bindings anywhere: InvariantGlobalization makes WPF binding culture
-                   resolution throw, silently killing Binding-driven popups (v15 root cause).
-                   Popup opens via the IsDropDownOpen trigger below; clicks via FtComboBox. -->
+              <!-- 全程不用 Binding：InvariantGlobalization 会让 WPF 绑定的
+                   区域解析抛异常，从而悄悄弄死由 Binding 驱动的 Popup（v15 根因）。
+                   Popup 由下面的 IsDropDownOpen 触发器打开；点击走 FtComboBox。 -->
               <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
                      PopupAnimation="Fade" Focusable="False">
                 <Border MinWidth="{TemplateBinding ActualWidth}"
@@ -345,7 +345,7 @@
       </Setter>
     </Style>
 
-    <!-- plain dropdown item: brand-tint selection, no Fluent check glyph -->
+    <!-- 普通下拉项：品牌色淡底选中，没有 Fluent 的对勾字形 -->
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
       <Setter Property="FontSize" Value="13"/>
@@ -371,7 +371,7 @@
       </Setter>
     </Style>
 
-    <!-- sidebar (v48 single-window shell) -->
+    <!-- 侧边栏（v48 单窗口外壳） -->
     <Style x:Key="SidebarItem" TargetType="Button">
       <Setter Property="Height" Value="38"/>
       <Setter Property="Padding" Value="12,0"/>
@@ -381,8 +381,8 @@
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <!-- the default dotted focus rect lands on top of the active highlight and reads as a bug;
-           the highlight itself already says which page you are on -->
+      <!-- 默认的虚线焦点框会叠在活动高亮上面，看起来像 bug；
+           高亮本身已经说明了你在哪个页面 -->
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -404,8 +404,8 @@
       </Setter>
     </Style>
 
-    <!-- the active item repeats the whole template on purpose: a control template cannot
-         override one element of an inherited template, and only the left marker changes. -->
+    <!-- 活动项故意重复整个模板：控件模板无法只覆盖继承模板里的某一个元素，
+         而这里变的只有左侧那条标记。 -->
     <Style x:Key="SidebarItemActive" TargetType="Button" BasedOn="{StaticResource SidebarItem}">
       <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
@@ -425,7 +425,7 @@
       </Setter>
     </Style>
 
-    <!-- the count bubble on a sidebar item; one digit is a circle, three stretch to a pill -->
+    <!-- 侧边栏项上的计数气泡；一位数是圆，三位数会撑成胶囊形 -->
     <Style x:Key="SidebarBadge" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
       <Setter Property="CornerRadius" Value="8"/>

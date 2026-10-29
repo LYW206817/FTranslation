@@ -1,14 +1,14 @@
-param([string]$ExePath, [string]$Email, [string]$Password, [string]$Code)
+﻿param([string]$ExePath, [string]$Email, [string]$Password, [string]$Code)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms
 
-$wAccount = [string][char]0x8D26 + [char]0x53F7                    # account
-$wEmail   = [string][char]0x90AE + [char]0x7BB1                    # email
-$wPass    = [string][char]0x5BC6 + [char]0x7801                    # password
-$wLogin   = [string][char]0x767B + [char]0x5F55                    # login
-$wClose   = [string][char]0x5173 + [char]0x95ED                    # close
-$wCode    = [string][char]0x6FC0 + [char]0x6D3B + [char]0x7801     # activation code
-$wRedeem  = [string][char]0x5151 + [char]0x6362                    # redeem
+$wAccount = [string][char]0x8D26 + [char]0x53F7                    # 账号
+$wEmail   = [string][char]0x90AE + [char]0x7BB1                    # 邮箱
+$wPass    = [string][char]0x5BC6 + [char]0x7801                    # 密码
+$wLogin   = [string][char]0x767B + [char]0x5F55                    # 登录
+$wClose   = [string][char]0x5173 + [char]0x95ED                    # 关闭
+$wCode    = [string][char]0x6FC0 + [char]0x6D3B + [char]0x7801     # 激活码
+$wRedeem  = [string][char]0x5151 + [char]0x6362                    # 兑换
 $outDir   = 'D:\FTranslation\assets\qa'
 
 function Capture-Window($win, $out) {

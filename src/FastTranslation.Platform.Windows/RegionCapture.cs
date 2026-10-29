@@ -9,28 +9,28 @@ using System.Windows.Threading;
 
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>Physical-pixel capture result.</summary>
+/// <summary>物理像素坐标下的截图结果。</summary>
 public sealed record CapturedImage(byte[] PngBytes, int Left, int Top, int Width, int Height);
 
 /// <summary>
-/// Screen-region capture: a full virtual-screen dim overlay lets the user drag a rectangle, and the
-/// pixels under it are blitted with GDI and returned as PNG bytes. This project has no
-/// System.Drawing reference, so the capture path is GetDC(NULL) + BitBlt into a compatible bitmap
-/// and Imaging.CreateBitmapSourceFromHBitmap, never Graphics.CopyFromScreen.
+/// 屏幕区域截图：一个铺满整个虚拟屏幕的变暗遮罩让用户拖出一个矩形，
+/// 再用 GDI 把矩形下方的像素拷出来，以 PNG 字节返回。本项目不引用
+/// System.Drawing，所以截图路径是 GetDC(NULL) + BitBlt 到兼容位图，
+/// 再用 Imaging.CreateBitmapSourceFromHBitmap，绝不用 Graphics.CopyFromScreen。
 /// </summary>
 public static class ScreenRegionPicker
 {
-    /// <summary>How long the hidden overlay gets to leave the screen before we blit it.</summary>
+    /// <summary>隐藏遮罩后要等多久让它真正离开屏幕，再执行 blit。</summary>
     private const int OverlayDismissDelayMs = 60;
 
-    /// <summary>Shows the dimmed overlay; returns null when the user cancels (Esc / right-click / empty rect).</summary>
+    /// <summary>显示变暗遮罩；用户取消时返回 null(Esc / 右键 / 空矩形)。</summary>
     public static async Task<CapturedImage?> PickAsync(CancellationToken cancellationToken = default)
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return null;
         if (dispatcher.CheckAccess()) return await PickCoreAsync(cancellationToken);
 
-        // Off the UI thread: build and pump the window on the dispatcher that owns it.
+        // 不在 UI 线程上：在拥有该窗口的 dispatcher 上创建并驱动它。
         var inner = await dispatcher.InvokeAsync(() => PickCoreAsync(cancellationToken));
         return await inner;
     }
@@ -49,15 +49,15 @@ public static class ScreenRegionPicker
             var selection = await overlay.Selection;
             if (selection is not { } dipSelection) return null;
 
-            // Mixed-DPI desktops are approximated with the overlay's own DPI: the overlay is placed
-            // at the virtual-screen origin, so every offset inside it scales by one factor.
+            // 混合 DPI 桌面按遮罩自身的 DPI 近似处理：遮罩锚定在虚拟屏幕原点，
+            // 所以它内部的所有偏移都按同一个系数缩放。
             var dpi = VisualTreeHelper.GetDpi(overlay);
             var physical = RegionGeometry.ToPhysicalPixels(
                 dipSelection, dpi.DpiScaleX, dpi.DpiScaleY, RegionGeometry.VirtualScreenPixels());
             if (physical.Width < RegionGeometry.MinimumCaptureSizePixels
                 || physical.Height < RegionGeometry.MinimumCaptureSizePixels) return null;
 
-            // Capture only once the scrim is really gone, otherwise our own tint lands in the shot.
+            // 只有等遮罩真的消失后再截图，否则我们自己的着色会进画面。
             overlay.Hide();
             await Dispatcher.Yield(DispatcherPriority.Render);
             await Task.Delay(OverlayDismissDelayMs).ConfigureAwait(true);
@@ -67,12 +67,12 @@ public static class ScreenRegionPicker
         }
         finally
         {
-            // Closing a window that the overlay itself already closed is a no-op.
+            // 遮罩自己已经关掉的窗口再关一次是无害的。
             overlay.Close();
         }
     }
 
-    /// <summary>Blits <paramref name="region"/> off the screen and encodes it as PNG.</summary>
+    /// <summary>把 <paramref name="region"/> 从屏幕上 blit 下来并编码成 PNG。</summary>
     private static byte[]? CapturePng(PixelRect region)
     {
         var source = CaptureBitmap(region);
@@ -85,7 +85,7 @@ public static class ScreenRegionPicker
         return stream.ToArray();
     }
 
-    /// <summary>Every GDI handle created here is released on the success path and on every failure path.</summary>
+    /// <summary>这里创建的每个 GDI 句柄，无论成功还是失败路径都会释放。</summary>
     private static BitmapSource? CaptureBitmap(PixelRect region)
     {
         var screenDc = NativeMethods.GetDC(IntPtr.Zero);
@@ -114,7 +114,7 @@ public static class ScreenRegionPicker
         }
         finally
         {
-            // Select the old object back first: DeleteObject fails on a bitmap still bound to a DC.
+            // 先把旧对象选回去：位图还绑在 DC 上时 DeleteObject 会失败。
             if (previous != IntPtr.Zero) NativeMethods.SelectObject(memoryDc, previous);
             if (bitmap != IntPtr.Zero) NativeMethods.DeleteObject(bitmap);
             if (memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(memoryDc);
@@ -123,7 +123,7 @@ public static class ScreenRegionPicker
     }
 }
 
-/// <summary>A rectangle in physical (device) pixels.</summary>
+/// <summary>物理(设备)像素坐标下的矩形。</summary>
 internal readonly record struct PixelRect(int Left, int Top, int Width, int Height)
 {
     internal int Right => Left + Width;
@@ -131,14 +131,14 @@ internal readonly record struct PixelRect(int Left, int Top, int Width, int Heig
 }
 
 /// <summary>
-/// Pure drag → capture geometry, kept out of the window so it can be unit-tested without a UI.
+/// 纯拖拽 → 截图的几何计算，独立于窗口，以便脱离 UI 做单测。
 /// </summary>
 internal static class RegionGeometry
 {
-    /// <summary>A rectangle thinner than this on either axis is a click, not a capture.</summary>
+    /// <summary>任一轴比这更细的矩形算点击，不算截图。</summary>
     internal const int MinimumCaptureSizePixels = 8;
 
-    /// <summary>Corner-agnostic selection rect: <paramref name="anchor"/> may be any corner of the drag.</summary>
+    /// <summary>与角无关的选区矩形：<paramref name="anchor"/> 可以是拖拽的任意一角。</summary>
     internal static Rect FromDrag(Point anchor, Point current) => new(
         Math.Min(anchor.X, current.X),
         Math.Min(anchor.Y, current.Y),
@@ -146,9 +146,9 @@ internal static class RegionGeometry
         Math.Abs(current.Y - anchor.Y));
 
     /// <summary>
-    /// Maps a selection in overlay DIP coordinates to the physical-pixel rect BitBlt needs, clamped
-    /// to the virtual screen. Not pure only in that mixed-DPI desktops collapse onto one scale
-    /// (see <see cref="ScreenRegionPicker"/>); the arithmetic itself has no ambient state.
+    /// 把遮罩 DIP 坐标下的选区映射成 BitBlt 需要的物理像素矩形，并钳制
+    /// 到虚拟屏幕范围内。唯一不纯的地方是混合 DPI 桌面会塌缩到同一个缩放系数
+    /// (见 <see cref="ScreenRegionPicker"/>)；算术本身不依赖环境状态。
     /// </summary>
     internal static PixelRect ToPhysicalPixels(Rect dipSelection, double dpiScaleX, double dpiScaleY, PixelRect virtualScreen)
     {
@@ -168,7 +168,7 @@ internal static class RegionGeometry
         return new PixelRect(left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
     }
 
-    /// <summary>Whole virtual desktop in physical pixels — the coordinate space of the screen DC.</summary>
+    /// <summary>整个虚拟桌面(物理像素)——屏幕 DC 的坐标空间。</summary>
     internal static PixelRect VirtualScreenPixels() => new(
         NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN),
         NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN),
@@ -177,14 +177,14 @@ internal static class RegionGeometry
 }
 
 /// <summary>
-/// Full virtual-screen capture overlay. The user drags a rectangle with the left button; Esc, a
-/// right click, or a sub-threshold drag cancels. It deliberately touches nothing else: no clipboard,
-/// no foreground-window change, no hook state.
+/// 铺满整个虚拟屏幕的截图遮罩。用户按住左键拖出矩形；Esc、
+/// 右键点击、或拖动距离过小都会取消。它刻意不碰别的东西：不动剪贴板、
+/// 不改前台窗口、不改钩子状态。
 /// </summary>
 internal sealed class RegionCaptureOverlay : Window
 {
-    // 0x59 = 89/255 ≈ 0.35 dim. The transparency lives in the window brush instead of
-    // Window.Opacity so the selection chrome and the size label stay fully opaque on top of it.
+    // 0x59 = 89/255 ≈ 0.35 的暗度。透明度放在窗口画刷里而不是
+    // Window.Opacity 上，这样选区边框和尺寸标签才能完全实心地盖在上面。
     private static readonly SolidColorBrush Scrim = CreateBrush(Color.FromArgb(89, 0, 0, 0));
 
     private readonly TaskCompletionSource<Rect?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -204,7 +204,7 @@ internal sealed class RegionCaptureOverlay : Window
         Cursor = Cursors.Cross;
         Focusable = true;
 
-        // The overlay must span every monitor, including negative-coordinate ones.
+        // 遮罩必须铺满所有显示器，包括坐标为负的那些。
         Left = SystemParameters.VirtualScreenLeft;
         Top = SystemParameters.VirtualScreenTop;
         Width = SystemParameters.VirtualScreenWidth;
@@ -213,7 +213,7 @@ internal sealed class RegionCaptureOverlay : Window
         Content = _layer;
     }
 
-    /// <summary>Completes with the selection in overlay DIP coordinates, or null when cancelled.</summary>
+    /// <summary>以遮罩 DIP 坐标下的选区完成；取消时结果为 null。</summary>
     internal Task<Rect?> Selection => _completion.Task;
 
     internal void Cancel() => Complete(null);
@@ -294,7 +294,7 @@ internal sealed class RegionCaptureOverlay : Window
         return brush;
     }
 
-    /// <summary>Draws the brand-blue selection, its four corner handles, and the DIP size label.</summary>
+    /// <summary>绘制品牌蓝选区、四个角柄，以及以 DIP 计的尺寸标签。</summary>
     private sealed class SelectionLayer : FrameworkElement
     {
         private static readonly SolidColorBrush Brand = CreateBrush(Color.FromRgb(0x25, 0x62, 0xFF));

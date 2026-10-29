@@ -7,14 +7,14 @@ using System.Text.Json.Serialization;
 namespace FastTranslation.Core.Account;
 
 /// <summary>
-/// Talks to the FastTranslation account service (/api/v1/auth, /api/v1/account).
-/// Hand-written over HttpClient + System.Text.Json: the project forbids HTTP frameworks and the
-/// surface is five calls. Never throws for network or format problems — every failure comes back
-/// as <see cref="AccountErrorCode"/> so the UI has one path for "something went wrong".
+/// 负责 FastTranslation 账号服务（/api/v1/auth、/api/v1/account）。
+/// 直接手写在 HttpClient + System.Text.Json 之上：项目禁止引入 HTTP 框架，
+/// 而接口面只有五个调用。网络或格式问题从不抛异常——所有失败都以
+/// <see cref="AccountErrorCode"/> 返回，好让界面只有一条「出问题了」的路径。
 /// </summary>
 public sealed class AccountApiClient
 {
-    /// <summary>Development default. The production host is rewritten once the server is deployed.</summary>
+    /// <summary>开发默认值。服务端部署后会把生产主机名改掉。</summary>
     public const string DefaultBaseUrl = "http://127.0.0.1:5199";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -57,7 +57,7 @@ public sealed class AccountApiClient
         return await SendSignInAsync("api/v1/auth/login", body, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Rotates the refresh token; the old one is spent server-side, so always store the new pair.</summary>
+    /// <summary>轮换 refresh token；旧的会在服务端作废，所以务必保存新的一对令牌。</summary>
     public async Task<AccountApiResult<AccountSignIn>> RefreshAsync(
         string refreshToken, CancellationToken cancellationToken)
     {
@@ -66,8 +66,8 @@ public sealed class AccountApiClient
     }
 
     /// <summary>
-    /// Asks the server to mail a sign-up code. "verification_disabled" means this server does not
-    /// verify email at all — the caller must skip the code field rather than show a dead input.
+    /// 请求服务端发送注册验证码。"verification_disabled" 表示这台服务器根本不做邮箱验证——
+    /// 调用方必须跳过验证码输入框，而不是显示一个没用的输入项。
     /// </summary>
     public async Task<AccountApiResult<CodeRequestResult>> RequestVerificationCodeAsync(
         string email, CancellationToken cancellationToken)
@@ -90,8 +90,8 @@ public sealed class AccountApiClient
     }
 
     /// <summary>
-    /// Saves the display name. An empty string clears it, which the UI draws as the email — that is
-    /// a legitimate update, not a validation failure, so it is sent as-is.
+    /// 保存显示名。空串表示清除，界面会改显示邮箱——那是合法的更新，不是校验失败，
+    /// 所以照原样发出。
     /// </summary>
     public async Task<AccountApiResult<AccountProfile>> UpdateProfileAsync(
         string accessToken, string displayName, CancellationToken cancellationToken)
@@ -104,8 +104,8 @@ public sealed class AccountApiClient
     }
 
     /// <summary>
-    /// Replaces the password. The server answers with a fresh token pair because it revokes every
-    /// refresh token: other devices must sign in again, this one keeps working.
+    /// 修改密码。服务端会吊销所有 refresh token，因此返回一对新令牌：
+    /// 其他设备需要重新登录，当前这台继续可用。
     /// </summary>
     public async Task<AccountApiResult<AccountSignIn>> ChangePasswordAsync(
         string accessToken,
@@ -131,8 +131,8 @@ public sealed class AccountApiClient
     }
 
     /// <summary>
-    /// <paramref name="deviceFingerprint"/> is what makes the daily line meaningful: the gateway
-    /// meters translation per device, so without it the server can only report the account month.
+    /// <paramref name="deviceFingerprint"/> 让「今日」那一行有意义：网关按设备计翻译量，
+    /// 不给它的话服务端只能上报账号月度数据。
     /// </summary>
     public async Task<AccountApiResult<AccountUsage>> GetUsageAsync(
         string accessToken, CancellationToken cancellationToken, string? deviceFingerprint = null)
@@ -146,7 +146,7 @@ public sealed class AccountApiClient
             .ConfigureAwait(false);
     }
 
-    /// <summary>Best effort: a failed sign-out must never block the local token wipe.</summary>
+    /// <summary>尽力而为：退出登录失败绝不能阻塞本地令牌清除。</summary>
     public async Task<AccountApiResult<bool>> LogoutAsync(string accessToken, CancellationToken cancellationToken)
     {
         try
@@ -165,8 +165,8 @@ public sealed class AccountApiClient
     }
 
     /// <summary>
-    /// Turns a purchased activation code into days of subscription. The reply carries the new plan
-    /// and the refreshed meters, so the caller never has to re-fetch the profile behind it.
+    /// 把购买的激活码兑换成订阅天数。响应带回新套餐与刷新后的用量表，
+    /// 调用方不必再跑一趟拉资料。
     /// </summary>
     public async Task<AccountApiResult<AccountRedeem>> RedeemAsync(
         string accessToken, string code, CancellationToken cancellationToken)
@@ -192,7 +192,7 @@ public sealed class AccountApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Null means the transport itself failed; the caller reports <see cref="AccountErrorCode.Network"/>.</summary>
+    /// <summary>返回 null 表示传输层本身失败，由调用方上报 <see cref="AccountErrorCode.Network"/>。</summary>
     private async Task<HttpResponseMessage?> SendAsync(
         HttpMethod method, string path, string? accessToken, object? body, CancellationToken cancellationToken)
     {
@@ -202,9 +202,9 @@ public sealed class AccountApiClient
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         }
-        // ResponseHeadersRead: a hung body must surface as a timeout, not as a frozen UI thread.
-        // The call itself is guarded: HttpClient throws for DNS/refused/TLS/timeout, and a caller
-        // must never see those as exceptions.
+        // 用 ResponseHeadersRead：卡住的响应体必须表现为超时，而不是冻住 UI 线程。
+        // 调用本身有保护：DNS/连接被拒/TLS/超时会让 HttpClient 抛异常，
+        // 而调用方绝不能看到这些异常。
         try
         {
             return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -212,7 +212,7 @@ public sealed class AccountApiClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            return null; // DNS, refused connection, TLS, timeout — all one "network" answer
+            return null; // DNS、连接被拒、TLS、超时——统一算一种「网络」答案
         }
     }
 
@@ -311,7 +311,7 @@ public sealed class AccountApiClient
     private static bool IsTransport(Exception ex) =>
         ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException;
 
-    // ---- wire shapes (camelCase from the server, matched case-insensitively) ----
+    // ---- 线上数据结构（服务端用 camelCase，按不区分大小写匹配） ----
 
     private sealed record CodeBody(string Email);
 

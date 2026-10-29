@@ -1,4 +1,4 @@
-param([string]$Img, [int]$Y)
+﻿param([string]$Img, [int]$Y)
 Add-Type -AssemblyName System.Drawing
 $bmp = [System.Drawing.Bitmap]::FromFile($Img)
 $hist = [ordered]@{}
@@ -8,7 +8,7 @@ for ($x = 0; $x -lt $bmp.Width; $x++) {
   if ($hist.Contains($k)) { $hist[$k]++ } else { $hist[$k] = 1 }
 }
 $hist.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 8 | ForEach-Object { Write-Host "$($_.Key) x$($_.Value)" }
-# find runs of near-white
+# 找出接近纯白的连续像素段
 $runStart = -1
 for ($x = 0; $x -lt $bmp.Width; $x++) {
   $c = $bmp.GetPixel($x, $Y)

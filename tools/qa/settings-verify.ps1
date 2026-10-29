@@ -1,10 +1,10 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-$wSettings = [string][char]0x8BBE + [char]0x7F6E   # she-zhi
-$wCancel   = [string][char]0x53D6 + [char]0x6D88   # qu-xiao
-$wSave     = [string][char]0x4FDD + [char]0x5B58   # bao-cun
-$wAdd      = [string][char]0x6DFB + [char]0x52A0   # tian-jia
+$wSettings = [string][char]0x8BBE + [char]0x7F6E   # 设置
+$wCancel   = [string][char]0x53D6 + [char]0x6D88   # 取消
+$wSave     = [string][char]0x4FDD + [char]0x5B58   # 保存
+$wAdd      = [string][char]0x6DFB + [char]0x52A0   # 添加
 
 $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 5
@@ -33,7 +33,7 @@ if (-not $sw) { Write-Host 'SETTINGS NOT FOUND'; Stop-Process -Id $app.Id -Force
 $r = $sw.Current.BoundingRectangle
 Write-Host ("settings window: " + [int]$r.Width + "x" + [int]$r.Height + " at y=" + [int]$r.Y)
 
-# buttons must be reachable (inside the window rect), i.e. the scroll fix holds
+# 按钮必须点得到（在窗口矩形内），以此证明滚动修复仍然有效
 foreach ($n in @($wSave, $wCancel)) {
   $b = Find-ByName $sw $n
   if ($b) {
@@ -43,7 +43,7 @@ foreach ($n in @($wSave, $wCancel)) {
   } else { Write-Host ("button '" + $n + "' MISSING") }
 }
 
-# about text must carry version + build date
+# 关于文字必须带版本号和构建日期
 $about = $sw.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
   (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,
     [System.Windows.Automation.ControlType]::Text)))
@@ -55,7 +55,7 @@ foreach ($t in $all) {
   if ($name -match '1\.0\.0') { Write-Host ("about: " + ($name -replace "\r?\n", ' | ')) }
 }
 
-# add an exclusion entry and verify it lands in the list before saving
+# 添加一条排除项，确认它出现在列表里再保存
 $list = $sw.FindAll([System.Windows.Automation.TreeScope]::Descendants,
   (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,
     [System.Windows.Automation.ControlType]::List)))

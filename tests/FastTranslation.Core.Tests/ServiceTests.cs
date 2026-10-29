@@ -69,7 +69,7 @@ public class TranslationServiceTests
         var service = new TranslationService(provider);
 
         var slowTask = Task.Run(() => service.TranslateAsync("slow", Settings()));
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2)); // slow is now parked inside the fake provider
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2)); // 此时慢请求正停在被伪造的 provider 内部
         var fast = await service.TranslateAsync("fast", Settings());
         Assert.True(fast.Succeeded);
 

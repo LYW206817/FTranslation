@@ -1,8 +1,8 @@
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The seven pages of the single window (design D13). The order here is the order the sidebar
-/// renders, so inserting a page in the middle moves its button too — that is deliberate.
+/// 单窗口的七个页面（设计 D13）。这里的顺序就是侧边栏的渲染顺序，所以在中间插入页面会
+/// 连带移动它的按钮——这是有意为之。
 /// </summary>
 public enum MainPageId
 {

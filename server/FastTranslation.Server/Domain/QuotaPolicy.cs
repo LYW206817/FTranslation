@@ -1,8 +1,8 @@
 namespace FastTranslation.Server.Domain;
 
 /// <summary>
-/// Pure quota arithmetic. Kept free of storage and HTTP so it can be unit tested directly —
-/// quota bugs are the expensive kind (over-serving costs money, under-serving loses customers).
+/// 纯额度运算。不依赖存储与 HTTP，因此可以直接做单元测试——
+/// 额度 bug 是代价高昂的一类（多给烧钱，少给丢客户）。
 /// </summary>
 public static class QuotaPolicy
 {

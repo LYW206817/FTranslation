@@ -1,9 +1,9 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-# ASCII-only script: Chinese literals via codepoints (no-BOM PS1 + Chinese = mojibake)
-$wSettings = [string][char]0x8BBE + [char]0x7F6E     # she-zhi
-$wCancel   = [string][char]0x53D6 + [char]0x6D88     # qu-xiao
+# 脚本仅用 ASCII：中文字面量用码点表示（无 BOM 的 PS1 直接写中文会乱码）
+$wSettings = [string][char]0x8BBE + [char]0x7F6E     # 设置
+$wCancel   = [string][char]0x53D6 + [char]0x6D88     # 取消
 $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 5
 

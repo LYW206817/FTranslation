@@ -1,4 +1,4 @@
-param([string]$ExePath, [string]$Theme, [string]$Kind = 'notice', [string]$Out, [int]$TimeoutSec = 30)
+﻿param([string]$ExePath, [string]$Theme, [string]$Kind = 'notice', [string]$Out, [int]$TimeoutSec = 30)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing @"
@@ -62,8 +62,8 @@ try {
   $env:FT_UITEST = $Kind
   $app = Start-Process -FilePath $ExePath -PassThru
 
-  # startup here takes ~10s (uia warmup + overlay prewarm) and the hook fires 1.8s after that,
-  # so a fixed sleep races the dialog: poll for it instead
+  # 这里的启动约需 10s（UIA 预热 + 浮层预热），之后 1.8s 钩子才触发，
+  # 固定 sleep 会和对话框抢时间，所以改成轮询
   $h = [IntPtr]::Zero
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   while ((Get-Date) -lt $deadline) {

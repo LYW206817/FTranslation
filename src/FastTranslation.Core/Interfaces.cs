@@ -1,14 +1,14 @@
 namespace FastTranslation.Core;
 
-/// <summary>Platform capture surface injected into the coordinator (Core stays Win32-free).</summary>
+/// <summary>注入到协调器里的平台取词接口（Core 保持不依赖 Win32）。</summary>
 public interface ISelectionCapture
 {
     event Action<TriggerEvent>? TriggerRaised;
 
-    /// <summary>Read the current selection near the trigger point. Returns Empty when nothing readable.</summary>
+    /// <summary>读取触发点附近的当前选区。读不到内容时返回 Empty。</summary>
     Task<CapturedSelection> ReadSelectionAsync(ScreenPoint point, CancellationToken cancellationToken);
 
-    /// <summary>Clipboard fallback: send Ctrl+C to source and read new clipboard text.</summary>
+    /// <summary>剪贴板兜底：向来源窗口发 Ctrl+C，再读新的剪贴板文本。</summary>
     Task<CapturedSelection> ReadViaClipboardAsync(long sourceWindowHandle, ScreenPoint anchor, CancellationToken cancellationToken);
 }
 
@@ -35,6 +35,6 @@ public interface IWriteBack
 {
     Task<WriteBackOutcome> ReplaceAsync(CapturedSelection source, string replacement, CancellationToken cancellationToken);
 
-    /// <summary>Collapse the selection to its end and type the translation after the original text.</summary>
+    /// <summary>把选区折叠到末尾，然后在原文之后输入译文。</summary>
     Task<WriteBackOutcome> InsertAsync(CapturedSelection source, string text, CancellationToken cancellationToken);
 }

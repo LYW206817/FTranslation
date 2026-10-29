@@ -3,8 +3,8 @@ using System.Text.Json;
 namespace FastTranslation.Core.Account;
 
 /// <summary>
-/// The signed-in session, persisted through <see cref="ISecretStore"/> (DPAPI on Windows), never
-/// through settings.json: the refresh token is a 90-day credential and must not sit in plaintext.
+/// 已登录会话，经 <see cref="ISecretStore"/>（Windows 上是 DPAPI）持久化，绝不走
+/// settings.json：refresh token 是 90 天有效的凭据，不能明文躺在磁盘上。
 /// </summary>
 public sealed class AccountSessionStore
 {
@@ -29,7 +29,7 @@ public sealed class AccountSessionStore
         }
         catch (JsonException)
         {
-            return null; // a corrupt blob must look like "never signed in", not crash startup
+            return null; // 损坏的数据块要表现成「从没登录过」，而不是让启动崩溃
         }
     }
 
@@ -62,6 +62,6 @@ public sealed record StoredSession(
 {
     public DateTimeOffset ExpiresAt => DateTimeOffset.FromUnixTimeSeconds(ExpiresAtUnix);
 
-    /// <summary>Refresh a minute early: a token that expires in flight reads as a sign-out.</summary>
+    /// <summary>提前一分钟刷新：飞行途中过期的令牌会被当成已退出登录。</summary>
     public bool IsExpired(DateTimeOffset now) => ExpiresAt - TimeSpan.FromSeconds(60) <= now;
 }

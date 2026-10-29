@@ -8,10 +8,8 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// The review queue and the four grades. The queue is split by <c>stage</c>: 0 means "never graded"
-/// and is metered by today's quota, everything else is metered by <c>due_at</c>.
-/// </summary>
+/// <summary>复习队列与四个档位。队列按 <c>stage</c> 划分:0 表示“从未评过分”,
+/// 按当天配额计量;其余全部按 <c>due_at</c> 计量。</summary>
 public class NotesReviewTests : IClassFixture<ServerFactory>
 {
     private readonly ServerFactory _factory;
@@ -67,7 +65,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
 
         var queue = (await client.GetFromJsonAsync<ReviewQueueResponse>("/api/v1/notes/review?newLimit=2"))!;
 
-        // Every card saved today already counts against the quota, so nothing is left over.
+        // 今天保存的每张卡都已计入配额,所以没有剩余。
         Assert.Equal(0, queue.FreshQuota);
         Assert.Equal(2, queue.NewLimit);
     }
@@ -125,7 +123,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
         var response = await intruder.PostAsJsonAsync(
             $"/api/v1/notes/{saved.Id}/review", new GradeNoteRequest("known"));
 
-        // 404 rather than 403: a stranger must not learn that the id exists.
+        // 用 404 而不是 403:陌生人不应得知该 id 存在。
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -196,10 +194,8 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
         Assert.True(graded.ReviewedAt >= graded.CreatedAt);
     }
 
-    /// <summary>
-    /// Store-level because time is what is under test: ListDue only returns cards whose due_at has
-    /// passed, oldest first, and never the stage-0 pile.
-    /// </summary>
+    /// <summary>放在 store 层,因为被测的是时间:ListDue 只返回 due_at 已过
+    /// 的卡,最旧的在前,且永远不包含 stage 0 那一堆。</summary>
     [Fact]
     public void Store_ListDueOrdersByDueAndSkipsStageZero()
     {
@@ -212,13 +208,13 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
             var b = store.Create(user.Id, NoteKind.Word, "beta", "乙", "en", "zh", "", "");
             var c = store.Create(user.Id, NoteKind.Word, "gamma", "丙", "en", "zh", "", "");
 
-            // All three are new cards, so the due queue is empty and the fresh pile holds all three.
+            // 三张都是新卡,所以到期队列为空,新卡堆里则是全部三张。
             Assert.Empty(store.ListDue(user.Id, time.Unix, 50));
             var (fresh, freshTotal) = store.ListFresh(user.Id, 0, 50);
             Assert.Equal(3, freshTotal);
             Assert.Equal(3, fresh.Count);
 
-            // Force three different due times, all in the past.
+            // 强制三个不同的到期时间,且都在过去。
             store.SetReview(user.Id, a.Id, 1, time.Unix - 300, "forgot", time.Unix);
             store.SetReview(user.Id, b.Id, 2, time.Unix - 100, "fuzzy", time.Unix);
             store.SetReview(user.Id, c.Id, 7, time.Unix - 200, "known", time.Unix);
@@ -226,7 +222,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
             var due = store.ListDue(user.Id, time.Unix, 50);
             Assert.Equal(new[] { a.Id, c.Id, b.Id }, due.Select(note => note.Id));
 
-            // Nothing is fresh any more: every card has left stage 0.
+            // 不再有新卡:每张卡都已离开 stage 0。
             Assert.Equal(0, store.CountFreshSince(user.Id, 0));
         }
         finally
@@ -257,10 +253,8 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
         }
     }
 
-    /// <summary>
-    /// The production database already exists when this ships, and CREATE TABLE IF NOT EXISTS never
-    /// adds a column. This test builds the pre-v48 shape on purpose and proves Initialize() migrates it.
-    /// </summary>
+    /// <summary>这个版本上线时生产库已经存在,而 CREATE TABLE IF NOT EXISTS 从不
+    /// 会增加列。本测试故意构造 v48 之前的形态,并证明 Initialize() 能迁移它。</summary>
     [Fact]
     public void Migration_OldDatabaseGainsTheReviewColumns()
     {
@@ -316,7 +310,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
             Assert.Equal("INTEGER", columns["lapses"]);
             Assert.Equal("INTEGER", columns["reviewed_at"]);
 
-            // The legacy row becomes an ungraded card instead of a broken one.
+            // 旧数据行变成一张未评分的卡,而不是一张坏卡。
             var store = new NoteStore(database);
             var legacy = store.FindById(
                 Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -360,7 +354,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
     }
 }
 
-/// <summary>A clock the test can move without sleeping.</summary>
+/// <summary>测试可以拨动、而无需 sleep 的时钟。</summary>
 internal sealed class ManualTimeProvider(long unixSeconds) : TimeProvider
 {
     private DateTimeOffset _now = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);

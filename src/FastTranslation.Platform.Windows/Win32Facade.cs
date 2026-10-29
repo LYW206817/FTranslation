@@ -2,7 +2,7 @@ using FastTranslation.Core;
 
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>Small public facade so App doesn't touch internal P/Invoke details.</summary>
+/// <summary>对外的小门面，让 App 不必直接接触内部的 P/Invoke 细节。</summary>
 public static class Win32Facade
 {
     public static long GetForegroundWindowHandle() => NativeMethods.GetForegroundWindow().ToInt64();

@@ -97,7 +97,7 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 
 格式:
 
-- 语言跟随文件:新文件与大多数文件用英文(仓库 1780 行注释里 88% 是英文);已被中文注释主导的文件继续用中文,不要在同一文件里混排。
+- **一律用中文**:注释(含 `///` XML 文档注释、XAML/XML 注释、脚本与配置里的注释、行尾注释)统一写中文;标识符、类型名、路径、URL、命令、版本号、错误码与代码片段保持原样,不要硬译。第三方文件(如 `installer/Languages/ChineseSimplified.isl`)不动。
 - 公开 API 一句 `/// <summary>`;有单位、范围、失败语义时补 `<param>` / `<returns>` / `<exception>`。
 - 注释紧贴被解释的语句上方;多行注释说整块逻辑时放在块的开头。
 

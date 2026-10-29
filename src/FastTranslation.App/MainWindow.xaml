@@ -13,11 +13,11 @@
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
 
-    <!-- sidebar -->
+    <!-- 侧边栏 -->
     <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,0,1,0">
       <DockPanel Margin="10,16,10,12">
-        <!-- brand -->
+        <!-- 品牌区 -->
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,18">
           <Image Source="/icon-master.png" Width="22" Height="22" VerticalAlignment="Center"
                  RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -26,7 +26,7 @@
                      VerticalAlignment="Center"/>
         </StackPanel>
 
-        <!-- footer block: capture switch + account -->
+        <!-- 底部区块：取词开关 + 账号 -->
         <StackPanel DockPanel.Dock="Bottom">
           <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,10"/>
           <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
@@ -37,7 +37,7 @@
                      Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
         </StackPanel>
 
-        <!-- the seven pages -->
+        <!-- 七个页面 -->
         <StackPanel x:Name="SidebarItems">
           <Button x:Name="HomeButton" Style="{StaticResource SidebarItemActive}" Tag="Home" Click="Nav_Click">
             <TextBlock Text="首页"/>
@@ -103,7 +103,7 @@
       </DockPanel>
     </Border>
 
-    <!-- page host: one ContentControl, pages are UserControls created on demand -->
+    <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl -->
     <ContentControl Grid.Column="1" x:Name="PageHost"/>
   </Grid>
 </Window>

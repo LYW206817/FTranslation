@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace FastTranslation.Server.Api;
 
 /// <summary>
-/// The notebook: every saved word / phrase / sentence. The three shelves are one table filtered by
-/// <c>kind</c>, so moving an item between shelves is a PATCH, not a move between tables.
+/// 单词本：保存下来的每个单词 / 短语 / 句子。三个书架其实是同一张表按
+/// <c>kind</c> 过滤，所以在书架之间移动条目是一次 PATCH，而不是在表之间搬迁。
 /// </summary>
 public static class NotesEndpoints
 {
@@ -35,8 +35,8 @@ public static class NotesEndpoints
     {
         var userId = principal.GetUserId();
 
-        // Saving is the paywall (design §5 phase 2 / D8). Checked before the idempotent lookup on
-        // purpose: a free account must not even learn that a matching note already exists.
+        // 保存是付费墙（设计 §5 阶段二 / D8）。故意在幂等查询之前检查：
+        // 免费账号连“已存在相同条目”这件事都不该得知。
         var user = accounts.FindUserById(userId);
         if (user is null || user.Disabled)
         {
@@ -58,7 +58,7 @@ public static class NotesEndpoints
             ? parsed
             : NoteClassifier.Classify(source);
 
-        // Double-clicking 保存 produces the same pair twice; that is one entry, not two.
+        // 双击「保存」会把同一对内容提交两次；这只算一条记录，而不是两条。
         if (store.FindLive(userId, kind, source) is { } existing)
         {
             return Results.Ok(ToDto(existing));
@@ -136,8 +136,8 @@ public static class NotesEndpoints
             : Results.NotFound(new ErrorResponse("note_missing"));
 
     /// <summary>
-    /// Today's queue. <paramref name="dayStart"/> is the caller's local midnight in unix seconds —
-    /// the server never guesses a time zone (design §5.4).
+    /// 今天的队列。<paramref name="dayStart"/> 是调用方本地时间零点对应的 Unix 秒——
+    /// 服务端从不猜测时区（设计 §5.4）。
     /// </summary>
     private static IResult ReviewQueue(
         [FromQuery] long? dayStart,
@@ -217,7 +217,7 @@ public static class NotesEndpoints
             : Results.Ok(ToDto(updated));
     }
 
-    /// <summary>Fallback when the client omits dayStart: UTC midnight. Clients always send their own local midnight.</summary>
+    /// <summary>客户端省略 dayStart 时的兜底：UTC 零点。客户端总会送自己的本地零点。</summary>
     private static long StartOfTodayUtc(long nowUnix) => nowUnix - (nowUnix % 86_400L);
 
     private static NoteDto ToDto(NoteRecord note) => new(

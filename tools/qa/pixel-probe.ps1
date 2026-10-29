@@ -1,4 +1,4 @@
-param([string]$Img, [string]$Out)
+﻿param([string]$Img, [string]$Out)
 Add-Type -AssemblyName System.Drawing
 $bmp = [System.Drawing.Bitmap]::FromFile($Img)
 $samples = @()
@@ -6,7 +6,7 @@ foreach ($pt in @(@(5,5), @(20,300), @(400,60), @([int]($bmp.Width/2), [int]($bm
   $c = $bmp.GetPixel($pt[0], $pt[1])
   $samples += ("({0},{1})=#{2:X2}{3:X2}{4:X2}" -f $pt[0], $pt[1], $c.R, $c.G, $c.B)
 }
-# dominant colors across a coarse grid: histogram of the top 6
+# 粗网格取样统计主色：取出现次数前 6 的颜色直方图
 $hist = @{}
 for ($y = 0; $y -lt $bmp.Height; $y += 7) {
   for ($x = 0; $x -lt $bmp.Width; $x += 7) {

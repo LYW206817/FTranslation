@@ -9,9 +9,9 @@ using FastTranslation.Platform.Windows;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// Settings as a page of the shell. The controls are the old settings window's, unchanged; what
-/// changed is the lifetime: the page is built once and reused, so "read the model into the controls"
-/// has to be an explicit <see cref="ReloadFromSettings"/> call rather than a constructor side effect.
+/// 设置作为外壳里的一个页面。控件还是旧设置窗口那一套，没动；变的是生命周期：页面只构建
+/// 一次并复用，所以「把模型读进控件」必须是显式的 <see cref="ReloadFromSettings"/> 调用，
+/// 而不能是构造函数的副作用。
 /// </summary>
 public partial class SettingsPage : UserControl
 {
@@ -21,7 +21,7 @@ public partial class SettingsPage : UserControl
     private readonly HotkeyService _hotkey;
     private readonly Action? _checkUpdates;
 
-    /// <summary>Raised after 保存 or 取消 so the shell can go back to where the user came from.</summary>
+    /// <summary>保存或取消之后触发，好让外壳回到用户来的地方。</summary>
     public event Action? Closed;
 
     public SettingsPage(
@@ -39,7 +39,7 @@ public partial class SettingsPage : UserControl
         _checkUpdates = checkUpdates;
         CheckUpdateButton.IsEnabled = checkUpdates is not null;
 
-        // target language combo: auto + catalog
+        // 目标语言下拉框：自动 + 目录
         TargetCombo.Items.Add(new ComboBoxItem { Content = "自动(中英互译)", Tag = "auto" });
         foreach (var lang in LanguageCatalog.Languages)
         {
@@ -51,8 +51,8 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
-    /// Called by the host every time the page is shown. 取消 uses it too: the page is cached, so an
-    /// unsaved edit would otherwise still be sitting in the controls the next time you come back.
+    /// 页面每次显示时由宿主调用。「取消」也会调它：页面是缓存的，否则未保存的改动会在你
+    /// 下次回来时仍留在控件里。
     /// </summary>
     public void ReloadFromSettings()
     {
@@ -70,7 +70,7 @@ public partial class SettingsPage : UserControl
         BaseUrlBox.Text = _settings.OverrideBaseUrl;
         AccountUrlBox.Text = _settings.AccountBaseUrl;
         AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
-        // the key is DPAPI-sealed on disk and never echoed back: an empty box means "leave it alone"
+        // Key 在磁盘上由 DPAPI 加密，且从不回显：输入框为空表示「别动它」
         KeyBox.Clear();
         HotkeyError.Visibility = Visibility.Collapsed;
         ExclusionHint.Visibility = Visibility.Collapsed;
@@ -84,7 +84,7 @@ public partial class SettingsPage : UserControl
             ?.InformationalVersion;
         if (string.IsNullOrWhiteSpace(version))
             version = asm.GetName().Version?.ToString() ?? "1.0.0";
-        // 1.0.0+<40 hex> tells the user nothing; keep the short commit id only
+        // 1.0.0+<40 位十六进制> 告诉不了用户任何东西；只保留短的 commit id
         var plus = version.IndexOf('+');
         if (plus > 0 && version.Length - plus > 8)
             version = version[..(plus + 8)];
@@ -96,7 +96,7 @@ public partial class SettingsPage : UserControl
 
     private void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        // the check is asynchronous and may open its own dialog; this page stays usable
+        // 检查是异步的，而且可能弹出它自己的对话框；本页保持可用
         UpdateHint.Text = "正在检查更新…";
         _checkUpdates?.Invoke();
     }
@@ -108,20 +108,20 @@ public partial class SettingsPage : UserControl
         {
             ExcludedList.Items.Add(name);
         }
-        // an empty bordered list reads as a broken control; say why it is empty instead
+        // 有边框的空列表看起来像控件坏了；要说清它为什么是空的
         ExclusionEmpty.Visibility = ExcludedList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Every text box and the excluded-app list carry their own ScrollViewer inside the page's one.
-    // A nested one marks the wheel handled even when it cannot move any further, so with the pointer
-    // over an input the page stops dead — the "gets stuck, recovers later" report. Tunnel the wheel
-    // at the page and forward it whenever the nested scroller cannot use it in that direction.
+    // 每个文本框和排除应用列表都在页面的那个 ScrollViewer 里带着自己的 ScrollViewer。
+    // 嵌套的那个即使已经滚到底也会把滚轮标记为已处理，于是指针停在输入框上时页面就
+    // 卡死了——也就是「卡住一会儿、之后又恢复」的那份反馈。所以在页面层隧道滚轮，
+    // 嵌套滚动器在该方向用不了时就把事件转给外层。
     private void Body_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (e.Handled) return;
 
         var inner = FindInnerScrollViewer(e.OriginalSource as DependencyObject);
-        if (inner is not null && CanScroll(inner, e.Delta)) return; // let the nested scroller have it
+        if (inner is not null && CanScroll(inner, e.Delta)) return; // 交给嵌套滚动器处理
 
         var lines = SystemParameters.WheelScrollLines;
         var step = lines > 0 ? lines * 16.0 : lines == -1 ? Body.ViewportHeight * 0.9 : 0.0;
@@ -147,8 +147,8 @@ public partial class SettingsPage : UserControl
     private void FillForeground_Click(object sender, RoutedEventArgs e)
     {
         var name = ForegroundInfo.ProcessName();
-        // this page is foreground while the button is clicked — say so instead of
-        // silently filling our own name (the user must switch windows to pick another app)
+        // 点按钮时本页在前台——如实提示，而不是悄悄把自己填进去
+        //（用户必须切到别的窗口才能选另一个应用）
         if (string.IsNullOrEmpty(name) || string.Equals(name, "FastTranslation", StringComparison.OrdinalIgnoreCase))
         {
             ShowHint("当前前台是本程序,请切到目标应用后再点「填入前台应用」,或直接输入进程名。");
@@ -190,7 +190,7 @@ public partial class SettingsPage : UserControl
 
     private void TargetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // nothing extra; saved on Save
+        // 没有额外处理；到「保存」时才落盘
     }
 
     private void SelectTag(ComboBox combo, string tag)
@@ -210,7 +210,7 @@ public partial class SettingsPage : UserControl
     {
         _settings.TargetLanguage = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
         _settings.Model = ModelCombo.SelectedIndex == 1 ? "qwen-mt-plus" : "qwen-mt-flash";
-        // the palette is applied once at startup (App.OnStartup) — no live re-theme by design
+        // 调色板在启动时应用一次（App.OnStartup）——按设计不做实时换主题
         _settings.Theme = ThemeCombo.SelectedIndex switch
         {
             1 => ThemePalette.LightSetting,
@@ -224,7 +224,7 @@ public partial class SettingsPage : UserControl
             if (_hotkey.Register(newHotkey)) _settings.Hotkey = newHotkey;
             else
             {
-                // inline non-modal error (a MessageBox here blocks the whole app's tray flow)
+                // 内联的非模态错误（在这里用 MessageBox 会阻塞整个应用的托盘流程）
                 HotkeyBox.Text = _settings.Hotkey;
                 HotkeyError.Text = "热键注册失败(可能被其他程序占用),已保留原热键。";
                 HotkeyError.Visibility = Visibility.Visible;
@@ -245,8 +245,8 @@ public partial class SettingsPage : UserControl
             KeyBox.Clear();
         }
 
-        // autostart is registry state, not settings state — apply it and report failures
-        // instead of pretending the checkbox took effect
+        // 开机自启是注册表状态，不是设置状态——要真正应用它并汇报失败，
+        // 而不是假装复选框已经生效
         var wantAutoStart = AutoStartCheck.IsChecked == true;
         if (StartupRegistration.IsEnabled() != wantAutoStart && !StartupRegistration.SetEnabled(wantAutoStart))
         {
@@ -264,7 +264,7 @@ public partial class SettingsPage : UserControl
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        ReloadFromSettings(); // drop unsaved edits: the page, unlike a window, is not rebuilt
+        ReloadFromSettings(); // 丢弃未保存的改动：页面不像窗口那样会被重建
         Closed?.Invoke();
     }
 }

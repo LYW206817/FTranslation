@@ -5,10 +5,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// Boots the real app in-process with an isolated SQLite file and a fixed signing key, so the
-/// end-to-end tests do not depend on the developer's local database or environment.
-/// </summary>
+/// <summary>在进程内启动真实应用,使用隔离的 SQLite 文件与固定签名密钥,所以
+/// 端到端测试不依赖开发者本地的数据库或环境。</summary>
 public sealed class ServerFactory : WebApplicationFactory<Program>
 {
     private readonly string _databasePath = Path.Combine(
@@ -46,7 +44,7 @@ public sealed class ServerFactory : WebApplicationFactory<Program>
                 }
                 catch (IOException)
                 {
-                    // Best effort cleanup.
+                    // 尽力而为地清理。
                 }
             }
         }

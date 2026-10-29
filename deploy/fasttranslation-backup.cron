@@ -1,5 +1,5 @@
-# /etc/cron.d/fasttranslation-backup
-# Daily 04:17 UTC database snapshot; keeps 14 days (see backup.sh).
+# 文件位置：/etc/cron.d/fasttranslation-backup
+# 每天 UTC 04:17 做一次数据库快照，保留 14 天（见 backup.sh）。
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 17 4 * * * root /usr/local/bin/ft-backup.sh >> /var/log/ft-backup.log 2>&1

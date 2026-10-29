@@ -23,7 +23,7 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
   <ItemGroup>
-    <!-- cap GC heap: keeps private working set tight for a tray utility -->
+    <!-- 限制 GC 堆：托盘工具要把私有工作集压小 -->
     <RuntimeHostConfigurationOption Include="System.GC.HeapHardLimitPercent" Value="20" />
   </ItemGroup>
 </Project>

@@ -6,9 +6,9 @@ using FastTranslation.Platform.Windows;
 namespace FastTranslation.App;
 
 /// <summary>
-/// Replaces MessageBox for everything the user has to see (v38). The system dialog ignores the
-/// palette: it painted a white slab in the middle of a dark app, and the two reasons it was used —
-/// "block until acknowledged" and "ask a yes/no" — both fit here without that cost.
+/// 取代 MessageBox，承接所有必须让用户看到的内容（v38）。系统对话框不认调色板：它在
+/// 深色应用正中糊上一块白板，而它原本只有两个用途——「阻塞到用户确认」和「问一句是/否」——
+/// 这两件事在这里都能做，且没有那个代价。
 /// </summary>
 public partial class NoticeWindow : Window
 {
@@ -22,7 +22,7 @@ public partial class NoticeWindow : Window
         _linkUrl = linkUrl;
         _confirm = confirm;
 
-        // the window title doubles as the headline, the same way every other window does it
+        // 窗口标题同时充当大标题，和其他所有窗口的做法一致
         Title = title;
         Headline.Text = title;
         BodyText.Text = body;
@@ -35,15 +35,15 @@ public partial class NoticeWindow : Window
 
         if (confirm)
         {
-            // a question needs a way to say no; the primary button carries the affirmative answer
+            // 问句需要有个说「不」的出口；主按钮承载肯定回答
             CancelAction.Visibility = Visibility.Visible;
             PrimaryAction.Content = "继续";
         }
     }
 
     /// <summary>
-    /// Blocks until the user closes the dialog. A linkUrl adds one button that opens it in the
-    /// browser; pass null when there is nothing to open.
+    /// 阻塞到用户关闭对话框。传入 linkUrl 会多出一个按钮，在浏览器里打开它；
+    /// 没有可打开的内容时传 null。
     /// </summary>
     public static void Show(Window? owner, string title, string body, string? linkUrl = null, string? linkLabel = null)
     {
@@ -51,7 +51,7 @@ public partial class NoticeWindow : Window
         window.ShowFor(owner);
     }
 
-    /// <summary>Blocks until answered. True when the user picked the affirmative button.</summary>
+    /// <summary>阻塞到用户作答。用户点了肯定按钮时返回 true。</summary>
     public static bool Confirm(Window? owner, string title, string body)
     {
         var window = new NoticeWindow(title, body, null, null, confirm: true);
@@ -60,8 +60,8 @@ public partial class NoticeWindow : Window
 
     private bool? ShowFor(Window? owner)
     {
-        // an ownerless CenterOwner window lands at an arbitrary spot; the updater often runs while
-        // the app sits in the tray with no window to own the dialog
+        // 没有 Owner 的 CenterOwner 窗口会落在任意位置；更新器经常在应用缩在托盘、
+        // 没有任何窗口可以充当 Owner 时运行
         if (owner is { IsVisible: true })
         {
             Owner = owner;
@@ -86,7 +86,7 @@ public partial class NoticeWindow : Window
         }
         catch
         {
-            // the URL is on screen in the body text as well; a dead browser is not fatal here
+            // URL 在正文里也显示着；浏览器打不开在这里不算致命
             Clipboard.SetText(_linkUrl);
         }
     }
