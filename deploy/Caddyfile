@@ -1,8 +1,13 @@
 # Fast Translation - static site plus API reverse proxy.
 #
 # Replace the two placeholders before enabling:
-#   __DOMAIN__         the real host name (only routable after ICP filing is approved)
+#   __DOMAIN__         ftranslation.cn - the token appears twice below (the apex and
+#                        the www. alias), so a single sed covers both hosts
 #   __ACME_EMAIL__     a mailbox that can receive certificate-expiry warnings
+#
+# Only do this once the ICP filing number has been issued: pointing the domain at a
+# mainland server before that is blocked, and ACME cannot issue for an unfiled host.
+#   sed -i 's/__DOMAIN__/ftranslation.cn/g; s/__ACME_EMAIL__/you@example.com/g' /etc/caddy/Caddyfile
 #
 # Ports 80 and 443 must be open in the ECS security group: Caddy needs 80 for the
 # ACME HTTP challenge and then redirects everything to 443.
@@ -11,7 +16,7 @@
 	admin off
 }
 
-__DOMAIN__ {
+__DOMAIN__ www.__DOMAIN__ {
 	encode zstd gzip
 
 	# Static assets keep their names forever, so let browsers cache them for a year.
