@@ -22,7 +22,22 @@ public sealed class GatewayTranslationProvider : ITranslationProvider
 
     public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
-        var gateway = await _gateway(request, cancellationToken).ConfigureAwait(false);
+        TranslationResult? gateway;
+        try
+        {
+            gateway = await _gateway(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw; // 用户自己取消的，交给上层按取消处理
+        }
+        catch
+        {
+            // 网关这一侧抛异常（取令牌、拼地址、意外的运行时错误）不该让整次翻译只留一句
+            //「翻译失败,请重试」：用户自己的 Key 还有一次机会，那次的结果才是有信息量的。
+            gateway = null;
+        }
+
         if (gateway is null) return await _own.TranslateAsync(request, cancellationToken).ConfigureAwait(false);
         if (gateway.Succeeded) return gateway;
 

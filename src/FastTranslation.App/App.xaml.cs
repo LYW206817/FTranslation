@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Threading;
 using System.Windows;
 using FastTranslation.App.Pages;
@@ -133,7 +133,9 @@ public partial class App : Application, IResultPresenter
             isExcluded: processName => _settings.ExcludedProcesses
                 .Any(n => string.Equals(n, processName, StringComparison.OrdinalIgnoreCase)));
         _writeBack = new WriteBackService(_capture.Reader);
-        _coordinator = new SelectionCoordinator(_capture, this, _translation, () => _settings);
+        // 日志落到 %TEMP%\ft-uitest-errors.log：卡片上的「翻译失败,请重试」是兜底文案，
+        // 没有这行日志就查不出到底哪一步抛了异常
+        _coordinator = new SelectionCoordinator(_capture, this, _translation, () => _settings, Trace);
         _capture.SelectionToolbarRequested += captured =>
         {
             if (!_captureEnabled) return;
@@ -459,6 +461,29 @@ public partial class App : Application, IResultPresenter
                     });
                 }
                 catch (Exception ex) { Trace($"notice branch: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "translate")
+        {
+            // FT_UITEST=translate -> run one real translation through the production provider
+            // chain (gateway first, own key as fallback) without simulating a selection. The card
+            // is then on screen with whatever the chain actually produced.
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += async (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    const string sample = "The quick brown fox jumps over the lazy dog.";
+                    var origin = CapturedSelection.Empty(
+                        FastTranslation.Platform.Windows.WindowsSelectionCapture.CurrentCursorPoint());
+                    ShowLoading(sample, origin);           // 真实路径先挂载 loading 态，再换成结果
+                    var result = await _translation.TranslateAsync(sample, _settings);
+                    Trace($"translate hook: ok={result.Succeeded} err={result.Error?.Code}/{result.Error?.Message} notice={result.Notice} out={result.TranslatedText}");
+                    ShowCard(result, origin);
+                }
+                catch (Exception ex) { Trace($"translate hook threw: {ex}"); }
             };
             uiTimer.Start();
         }

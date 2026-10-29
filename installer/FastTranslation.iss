@@ -1,10 +1,10 @@
-; Fast Translation installer.
+﻿; Fast Translation installer.
 ; Replaces the v1.x WiX MSI for two reasons the user asked for: a classic setup wizard that lets
 ; the user pick the install folder, and an unattended upgrade path the app can trigger itself.
 ; Per-user install (no UAC) so an automatic update never shows a consent prompt.
 
 #define AppName "Fast Translation"
-#define AppVersion "1.3.2"
+#define AppVersion "1.3.3"
 #define AppPublisher "FastTranslation Project"
 #define AppExeName "FastTranslation.exe"
 
