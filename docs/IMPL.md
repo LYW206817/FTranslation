@@ -1198,3 +1198,42 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 **兼容性**:服务端零改动,数据库零改动;`ReviewWindow` 删除后不再有机型依赖。客户端设置的键名未变,老 `settings.json` 直接可用。
 
 **残留风险**:①复习页的键盘处理只覆盖空格/1-4/回车/Esc,输入法组合键仍会先到输入框(页面里没有可聚焦输入框,实际无影响)。②两列宽度按 1040 逻辑宽设计,窗口拖到很窄时两列会各让一半宽度,未做断点折叠。③`ReviewSession` 只保证顺序,重复点击「开始复习」不会重新洗牌,题目顺序恒为队列顺序。
+
+## v55 账号与套餐拆页:改名称、改密码 ✅
+
+**为什么**:套餐页原来同时承担「我是谁」和「买什么」两件事——已登录的人想看一眼剩余额度或改个名字,得先经过一张价格表;未登录的人进套餐页先撞上登录表单,而他真正想看的可能是价格。v54 把两页铺成两列后,这个问题反而更明显:左上角那张横跨整行的账号卡里塞着邮箱、套餐、刷新、退出登录,和下面的订阅卡抢注意力。拆页的判据是「这一页回答一个问题」:账号页回答「我现在是什么身份、还剩多少」,套餐页回答「我能买什么、额度怎么算」。
+
+**页面结构**(`feat(账号): 拆出账号页`,deb7f2a)
+- 侧栏在「套餐」上方插入「账号」,`MainPageId` 加 `Account`,`ShowPage` 走同一个 `RefreshPage` 通道
+- 账号页已登录态:圆形首字头像(`AccountProfile.Initial`,中文取首字、邮箱取首字母大写)+ 名称 + 套餐角标 + 邮箱;右侧「刷新」「退出登录」
+  - 左列「当前套餐」(`PlanNameText`/`PlanValidityText`/本月与今日 `MeterBar`/「看套餐与价格」跳套餐页)
+  - 左列「修改名称」、右列「修改密码」、右列「数据」说明(生词本与复习进度都在服务端,退出登录不会删)
+  - 没设名称时不再重复显示邮箱:第二行 `EmailText` 隐藏,第一行 `DisplayNameOrEmail` 已经是邮箱
+- 账号页未登录态:左列登录表单(邮箱/密码/验证码/去注册),右列「登录后有什么不一样」三条(免费额度按账号算 / 生词本存在服务端 / 复习进度跟着账号走),底部「账号:未登录」
+- 套餐页删掉账号卡,只留订阅卡、「包括什么」三条、用量、额度怎么重置(月/日/复习队列三段)、激活码
+
+**服务端两条写接口**
+- `PATCH /api/v1/account/profile`(`UpdateProfileRequest(string? DisplayName)`):去空白后 ≤24 字符、拒绝控制字符(名称会进窗口标题区与侧栏,换行会撑坏布局)、空串表示清空回落到邮箱。返回更新后的 `AccountDto`
+- `POST /api/v1/account/password`(`ChangePasswordRequest(CurrentPassword, NewPassword, DeviceFingerprint, DeviceName)`):当前密码错 `400 password_mismatch`,新密码 <8 位 `400 password_too_short`,与旧密码相同 `400 password_unchanged`;成功后 `RevokeAllRefreshTokens` + 给本机换发一对 `AuthResponse`,所以「这台不用重新登录,别的设备下次刷新令牌时被拒」
+- `users` 表加 `display_name TEXT NOT NULL DEFAULT ''`,走 `EnsureColumn` 热迁移;`AccountDto` 末尾加带默认值的 `DisplayName`,老客户端解析不受影响
+- `AuthEndpoints.IssueTokens` 由 `private` 改 `internal`,让改密码复用同一套发牌逻辑,不复制粘贴
+
+**客户端**
+- `AccountApiClient.UpdateProfileAsync` / `ChangePasswordAsync`;`AccountErrorCode` 已有 `InvalidProfile`/`PasswordMismatch`,只补 `MapFailure` 的两个 case
+- `AccountCoordinator.UpdateProfileAsync` / `ChangePasswordAsync`,都走 `WithSessionAsync` 并回写会话(改密码会换 refresh token,不写回下次就 401)
+- `AccountProfile.DisplayName` + `DisplayNameOrEmail` + `Initial`
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误
+- `dotnet test` → **560 全绿**(Core 203 / Platform.Windows 87 / QwenMt 87 / Server 183);v54 是 548,本次 +12:8 个服务端用例(`AccountProfileTests`:改名/清空/超长与换行被拒/未登录 401/当前密码错/新密码过短或重复/换密码后本机仍可用且旧密码失效/换密码踢掉其它设备的 refresh token)+ 4 个客户端映射用例(`AccountClientTests`:PATCH 路径与字段、错误码映射、改密码字段完整性、`password_mismatch` 映射)
+- 提交后用 `git worktree add` 单独检出 `deb7f2a` 重跑 build 与 test,确认这一提交自身可编译可测试(工作区里还有别的会话未完成改动,不能只看工作区)
+- 截图(1820×1155 = 1040×660 逻辑 × 175% DPI,取样即在窗口图上直读):
+  - `assets/qa/account-signedin-free.png`:账号页已登录(头像「Q」、邮箱、免费版角标、本月 `0 / 10,000 字符`、今日 `0 / 2,000 字符`、改名称、改密码、数据说明)
+  - `assets/qa/account-named.png`:点「保存名称」后头像变「永」、名称变「永威」、状态行「名字已保存。」,服务端 `display_name` 已落库
+  - `assets/qa/account-signedout.png`:未登录双栏(左表单、右「登录后有什么不一样」、底部「账号:未登录」)
+  - `assets/qa/account-dark.png`:深色下的账号页
+  - `assets/qa/plan-trimmed.png`:精简后的套餐页(左订阅卡 + 包括什么,右用量 + 额度怎么重置 + 激活码)
+
+**兼容性**:数据库只加一列且带默认值,老库自动迁移;`AccountDto` 新字段在末尾且可缺省。客户端删掉了 `PlanPage` 里的账号卡与 `RefreshAccountStatus` 调用,`App.xaml.cs` 的 `RefreshAccountStatus` 改为只更新侧栏与窗口标题。
+
+**残留风险**:①改名称与改密码都必须联网,离线时按钮报「连不上账号服务器」,没有做离线排队。②改密码后旧 access token 在 30 分钟内仍然有效(服务端只撤销 refresh token),这是故意的,不做即时踢下线。③名称不去重,两个人可以都叫「永威」;账号页只用邮箱做唯一标识,没有暴露用户 id。④`EnsureColumn` 只加列不改类型,`display_name` 将来若想加长度约束需另写迁移。
