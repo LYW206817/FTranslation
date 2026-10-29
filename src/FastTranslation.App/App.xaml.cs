@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Threading;
 using System.Windows;
+using FastTranslation.App.Pages;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
 using FastTranslation.Core.Notes;
@@ -214,18 +215,20 @@ public partial class App : Application, IResultPresenter
 
         _mainWindow = new MainWindow(
             _translation,
+            _account!,
             () => _settings,
             _settingsService,
             _secrets,
-            ShowSettings,
+            _hotkey!,
             enabled =>
             {
                 _captureEnabled = enabled;
                 _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
             },
             () => _captureEnabled,
-            ShowAccount,
-            ShowNotes);
+            () => _updates?.CheckAsync(interactive: true));
+        _mainWindow.SettingsRequested += () => ShowPage(MainPageId.Settings);
+        _mainWindow.ScreenshotRequested += RunScreenshotTranslation;
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
@@ -288,12 +291,12 @@ public partial class App : Application, IResultPresenter
                 uiTimer.Stop();
                 try
                 {
-                    var box = _mainWindow?.InputBox;
+                    var box = _mainWindow?.PageHome.InputBox;
                     if (box is null) return;
                     box.Focus();
                     System.Windows.Input.Keyboard.Focus(box);
                     var rect = box.GetRectFromCharacterIndex(0);
-                    var hint = _mainWindow?.FindName("InputHint") as System.Windows.Controls.TextBlock;
+                    var hint = _mainWindow?.PageHome.FindName("InputHint") as System.Windows.Controls.TextBlock;
                     var hx = hint is null ? -1 : hint.PointToScreen(new Point(0, 0)).X;
                     var hy = hint is null ? -1 : hint.PointToScreen(new Point(0, 0)).Y;
                     var bx = box.PointToScreen(new Point(0, 0));
@@ -315,7 +318,7 @@ public partial class App : Application, IResultPresenter
                 uiTimer.Stop();
                 try
                 {
-                    var combo = _mainWindow?.TargetCombo;
+                    var combo = _mainWindow?.PageHome.TargetCombo;
                     if (combo is null) return;
                     combo.UpdateLayout();
                     var pt = new Point(combo.ActualWidth * 0.5, combo.ActualHeight * 0.5);
@@ -356,7 +359,7 @@ public partial class App : Application, IResultPresenter
             uiTimer.Tick += (_, _) =>
             {
                 uiTimer.Stop();
-                try { _mainWindow?.TargetCombo.IsDropDownOpen = true; }
+                try { _mainWindow?.PageHome.TargetCombo.IsDropDownOpen = true; }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"uitest: {ex}"); }
             };
             uiTimer.Start();
@@ -856,62 +859,17 @@ public partial class App : Application, IResultPresenter
         }
     }
 
-    private void ShowAccount()
-    {
-        if (_account is null) return;
-        var existing = Windows.OfType<AccountWindow>().FirstOrDefault();
-        if (existing is not null)
-        {
-            existing.Activate();
-            return;
-        }
-        var window = new AccountWindow(_account);
-        if (DialogOwner() is { } owner)
-        {
-            window.Owner = owner;
-            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        }
-        else
-        {
-            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        }
-        window.Show(); // modeless: a translation can still be started while it is open
-    }
+    private void ShowAccount() => ShowPage(MainPageId.Plan);
 
-    private void ShowNotes()
-    {
-        if (_account is null) return;
-        var existing = Windows.OfType<NotesWindow>().FirstOrDefault();
-        if (existing is not null)
-        {
-            existing.Activate();
-            return;
-        }
-        var window = new NotesWindow(_account);
-        if (DialogOwner() is { } owner)
-        {
-            window.Owner = owner;
-            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        }
-        else
-        {
-            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        }
-        window.Show(); // modeless: a translation can still be saved while the notebook is open
-    }
+    private void ShowNotes() => ShowPage(MainPageId.Word);
 
-    private void ShowSettings()
+    private void ShowSettings() => ShowPage(MainPageId.Settings);
+
+    /// <summary>Every in-app destination is a page of the single window now (design D13).</summary>
+    private void ShowPage(MainPageId page)
     {
-        var window = new SettingsWindow(_settings, _settingsService, _secrets, _hotkey!,
-            () => _updates?.CheckAsync(interactive: true));
-        // anchor the page to the main window: as a loose top-level window it lands at the screen
-        // centre and a dialog opened from it has no visible link back to the app (v39)
-        if (_mainWindow is { IsVisible: true, WindowState: not WindowState.Minimized } owner)
-        {
-            window.Owner = owner;
-            window.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        }
-        window.ShowDialog();
+        ShowMainWindow();
+        _mainWindow?.ShowPage(page);
     }
 
     /// <summary>

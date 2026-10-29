@@ -1,36 +1,58 @@
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using System.Windows.Media;
+using FastTranslation.App.Pages;
 using FastTranslation.Core;
+using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
 
 namespace FastTranslation.App;
 
+/// <summary>
+/// The single window (v48, design D13): a sidebar that never changes, and one page host that
+/// swaps content. All the translation work lives in <see cref="MainPage"/>; this class is a shell.
+/// </summary>
 public partial class MainWindow : Window
 {
     private readonly TranslationService _translation;
+    private readonly AccountCoordinator _account;
     private readonly Func<AppSettings> _settings;
     private readonly SettingsService _settingsService;
     private readonly ISecretStore _secrets;
-    private readonly Action _openSettings;
-    private readonly Action? _openAccount;
-    private readonly Action? _openNotes;
+    private readonly HotkeyService _hotkey;
+    private readonly Action? _checkUpdates;
     private readonly Action<bool> _setCaptureEnabled;
     private readonly Func<bool> _isCaptureEnabled;
-    private CancellationTokenSource? _translateCts;
+
+    private readonly Dictionary<MainPageId, UserControl> _pages = [];
+    private MainPage? _home;
+    private MainPageId _current = MainPageId.Home;
+    private bool _suppressCaptureToggle;
+    private bool _ready;
+
+    /// <summary>The 复习 window is opened by App (it needs the coordinator, which this window does not own).</summary>
+    public event Action? ReviewRequested;
+
+    /// <summary>Forwarded from the home page so App never has to reach into a page instance.</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>Screenshot capture is owned by App; the home page only asks for it.</summary>
+    public event Action? ScreenshotRequested;
+
+    /// <summary>App's FT_UITEST hooks read the home page's controls; Build() keeps that safe before show.</summary>
+    public MainPage PageHome => Build(MainPageId.Home) as MainPage ?? throw new InvalidOperationException("Home is a MainPage.");
 
     public MainWindow(
         TranslationService translation,
+        AccountCoordinator account,
         Func<AppSettings> settings,
         SettingsService settingsService,
         ISecretStore secrets,
-        Action openSettings,
+        HotkeyService hotkey,
         Action<bool> setCaptureEnabled,
         Func<bool> isCaptureEnabled,
-        Action? openAccount = null,
-        Action? openNotes = null)
+        Action? checkUpdates = null)
     {
         InitializeComponent();
         WindowChrome.Apply(this);
@@ -40,131 +62,113 @@ public partial class MainWindow : Window
                 System.IO.File.AppendAllText(System.IO.Path.GetTempPath() + "ft-uitest-errors.log", $"{DateTime.Now:HH:mm:ss.fff} window PreviewMouseDown\n");
         }
         _translation = translation;
+        _account = account;
         _settings = settings;
         _settingsService = settingsService;
         _secrets = secrets;
-        _openSettings = openSettings;
-        _openAccount = openAccount;
-        _openNotes = openNotes;
+        _hotkey = hotkey;
+        _checkUpdates = checkUpdates;
         _setCaptureEnabled = setCaptureEnabled;
         _isCaptureEnabled = isCaptureEnabled;
 
-        TargetCombo.Items.Add(new ComboBoxItem { Content = "自动(中英互译)", Tag = "auto" });
-        foreach (var lang in LanguageCatalog.Languages)
-        {
-            TargetCombo.Items.Add(new ComboBoxItem { Content = lang.DisplayName, Tag = lang.Code });
-        }
-        SelectTag(string.IsNullOrEmpty(_settings().TargetLanguage) ? "auto" : _settings().TargetLanguage);
-        ModelLabel.Text = _settings().Model;
-        HotkeyHint.Text = "划词热键 " + _settings().Hotkey;
-        RefreshKeyStatus();
-        CaptureToggle.IsChecked = _isCaptureEnabled();
+        // The capture switch raises Checked while InitializeComponent applies IsChecked="True",
+        // long before the callbacks exist. Everything that touches them waits for this flag.
+        _ready = true;
+        ApplyCaptureState();
+        ShowPage(MainPageId.Home);
     }
 
-    private void SelectTag(string tag)
-    {
-        for (var i = 0; i < TargetCombo.Items.Count; i++)
-        {
-            if (TargetCombo.Items[i] is ComboBoxItem item && (string)item.Tag == tag)
-            {
-                TargetCombo.SelectedIndex = i;
-                return;
-            }
-        }
-        TargetCombo.SelectedIndex = 0;
-    }
-
-    /// <summary>Shown in the footer so the signed-in state is visible without opening a window.</summary>
+    /// <summary>Shown in the sidebar footer so the signed-in state is visible without opening anything.</summary>
     public void RefreshAccountStatus(string? email, string? planDisplay)
     {
         AccountStatus.Text = email is null
             ? "账号:未登录"
             : "账号:" + email + (string.IsNullOrEmpty(planDisplay) ? string.Empty : "(" + planDisplay + ")");
+        PlanLabel.Text = email is null || string.IsNullOrEmpty(planDisplay) ? string.Empty : planDisplay;
     }
 
-    private void AccountButton_Click(object sender, RoutedEventArgs e) => _openAccount?.Invoke();
-
-    private void NotesButton_Click(object sender, RoutedEventArgs e) => _openNotes?.Invoke();
-
-    private void RefreshKeyStatus()
+    /// <summary>
+    /// Pages are built lazily and cached: the settings page alone pulls in five groups of controls,
+    /// and most sessions never open it (design D13).
+    /// </summary>
+    private UserControl Build(MainPageId page)
     {
-        var hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
-        KeyStatus.Text = hasKey ? "API Key:已配置(本机加密保存)" : "API Key:未配置";
-        KeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
+        if (_pages.TryGetValue(page, out var existing)) return existing;
+        var built = Create(page);
+        _pages[page] = built;
+        return built;
     }
 
-    private void TargetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private UserControl Create(MainPageId page) => page switch
     {
-        var settings = _settings();
-        var tag = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string;
-        if (tag is not null && tag != settings.TargetLanguage)
+        MainPageId.Home => Home(),
+        _ => Placeholder(page),
+    };
+
+    /// <summary>
+    /// Until Task 7/8 land their pages, the other six are labelled placeholders so the shell can
+    /// be built and screenshotted on its own. They disappear page by page.
+    /// </summary>
+    private UserControl Placeholder(MainPageId page) => new()
+    {
+        Background = (Brush)FindResource("WindowBgBrush"),
+        Content = new TextBlock
         {
-            settings.TargetLanguage = tag;
-            _settingsService.Save(settings);
+            Text = page + " (建设中)",
+            FontSize = 14,
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        },
+    };
+
+    private UserControl Home()
+    {
+        if (_home is not null) return _home;
+        var page = new MainPage(_translation, _account, _settings, _settingsService, _secrets);
+        page.SettingsRequested += () => SettingsRequested?.Invoke();
+        page.ScreenshotRequested += () => ScreenshotRequested?.Invoke();
+        page.PlanRequested += () => ShowPage(MainPageId.Plan);
+        _home = page;
+        return page;
+    }
+
+    public void ShowPage(MainPageId page)
+    {
+        // 复习 is not a page: it needs its own focus and keyboard, so it opens a window (design D15)
+        if (page == MainPageId.Review)
+        {
+            ReviewRequested?.Invoke();
+            return;
+        }
+
+        // Rebuilding the same page would throw away whatever is typed in it
+        if (_current == page && PageHost.Content is not null) return;
+        _current = page;
+        PageHost.Content = Build(page);
+        SyncSidebar();
+        if (page == MainPageId.Home) _home?.RefreshKeyStatus();
+    }
+
+    private void SyncSidebar()
+    {
+        foreach (var button in SidebarItems.Children.OfType<Button>())
+        {
+            var active = Enum.TryParse<MainPageId>(button.Tag as string, true, out var id) && id == _current;
+            button.Style = (Style)FindResource(active ? "SidebarItemActive" : "SidebarItem");
         }
     }
 
-    private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void Nav_Click(object sender, RoutedEventArgs e)
     {
-        TranslateButton.IsEnabled = InputBox.Text.Trim().Length > 0;
-        InputHint.Visibility = InputBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (sender is not Button { Tag: string tag }) return;
+        if (!Enum.TryParse<MainPageId>(tag, ignoreCase: true, out var page)) return;
+        ShowPage(page);
     }
-
-    private void InputBox_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-        {
-            e.Handled = true;
-            if (TranslateButton.IsEnabled) Translate_Click(this, e);
-        }
-    }
-
-    private async void Translate_Click(object sender, RoutedEventArgs e)
-    {
-        var text = InputBox.Text;
-        if (text.Trim().Length == 0) return;
-
-        TranslateButton.IsEnabled = false;
-        ResultBlock.Text = "正在翻译…";
-        CopyResultButton.IsEnabled = false;
-
-        var cts = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _translateCts, cts);
-        try { previous?.Cancel(); } catch { }
-
-        try
-        {
-            var result = await _translation.TranslateAsync(text, _settings(), cts.Token);
-            if (cts.Token.IsCancellationRequested) return;
-            if (result.Succeeded)
-            {
-                ResultBlock.Text = result.TranslatedText;
-                CopyResultButton.IsEnabled = true;
-            }
-            else
-            {
-                ResultBlock.Text = result.Error?.Message ?? "翻译失败";
-            }
-        }
-        finally
-        {
-            TranslateButton.IsEnabled = InputBox.Text.Trim().Length > 0;
-            cts.Dispose();
-        }
-    }
-
-    private void CopyResult_Click(object sender, RoutedEventArgs e)
-    {
-        try { Clipboard.SetText(ResultBlock.Text); } catch { }
-    }
-
-    private void Settings_Click(object sender, RoutedEventArgs e) => _openSettings();
-
-    private void KeyButton_Click(object sender, RoutedEventArgs e) => _openSettings();
 
     private void CaptureToggle_Changed(object sender, RoutedEventArgs e)
     {
-        if (_setCaptureEnabled is null) return; // fires during InitializeComponent (IsChecked=True in XAML)
+        if (!_ready || _suppressCaptureToggle) return;
         if (CaptureToggle.IsChecked is { } enabled)
         {
             CaptureToggle.Content = enabled ? "取词已开启" : "取词已暂停";
@@ -174,9 +178,23 @@ public partial class MainWindow : Window
 
     public void RefreshCaptureState()
     {
-        if (_isCaptureEnabled() != (CaptureToggle.IsChecked == true))
+        if (_isCaptureEnabled() == (CaptureToggle.IsChecked == true)) return;
+        ApplyCaptureState();
+    }
+
+    /// <summary>Writes the switch from state without letting the write ring back into the callback.</summary>
+    private void ApplyCaptureState()
+    {
+        var enabled = _isCaptureEnabled();
+        _suppressCaptureToggle = true;
+        try
         {
-            CaptureToggle.IsChecked = _isCaptureEnabled();
+            CaptureToggle.IsChecked = enabled;
+            CaptureToggle.Content = enabled ? "取词已开启" : "取词已暂停";
+        }
+        finally
+        {
+            _suppressCaptureToggle = false;
         }
     }
 }
