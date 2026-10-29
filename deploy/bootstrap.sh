@@ -71,11 +71,20 @@ else
 		chmod 600 /root/.ssh/authorized_keys
 		if [ ! -f /etc/ssh/sshd_config.d/99-ft.conf ]; then
 			cat > /etc/ssh/sshd_config.d/99-ft.conf <<'FTSSH'
-# Written by deploy/bootstrap.sh: this box is reached with a key, never a password.
+# Written by deploy/bootstrap.sh.
+# From the public internet: keys only, and root never takes a password.
 PermitRootLogin prohibit-password
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 MaxAuthTries 4
+
+# The console file manager (Workbench) logs in with the instance password over a real
+# sshd session, so password auth has to exist for it - but only from Aliyun's internal
+# service range. Per-address behaviour is proved with:
+#   sshd -T -C user=root,host=<hostname>,addr=<ip>
+Match Address 100.104.0.0/16
+    PasswordAuthentication yes
+    PermitRootLogin yes
 FTSSH
 			if sshd -t; then
 				systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd
