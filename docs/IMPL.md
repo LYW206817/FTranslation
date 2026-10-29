@@ -976,3 +976,35 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - **码没有有效期**。`redeem_codes` 只有 `created_at`,没有 `expires_at`——一张两年前发出去的码今天仍然能兑。这是刻意的(不惩罚用户屯码),但意味着没有「作废过期码」的手段。
 - **码没绑订单,理论可转卖/泄露**。任何拿到 22 字符的人都能兑,赎回形态无法追溯来源。当前靠「一次性 + 80 bit 熵」兜底。
 - **兑换与登录共用按 IP 的限流(默认 20 次/分)**。同一 NAT(学校、公司、网吧)下十几个人同时兑换会撞限流,报的是 `rate_limited` 而不是更具体的提示。
+
+## v50 上线准备:域名定为 `ftranslation.cn`,备案号留槽 ✅
+
+**为什么这样改**:备案要等 1~20 天,而这段时间里凡是「只差一个字符串」的改动都该先落地并验证完。否则备案号下来那天,还要临时改四处、临时验证四遍——把等待期变成准备期。
+
+**改了什么**
+
+| 文件 | 改动 | 为什么 |
+|---|---|---|
+| `deploy/Caddyfile` | 站点键改成 `__DOMAIN__ www.__DOMAIN__` | 一个 block 服务两个主机名,一张证书覆盖两条;占位符出现两次,一条 sed 同时替换 |
+| `deploy/Caddyfile` 头注释 | 写明真实域名与可直接复制的 sed 命令 | 部署时不用回来翻聊天记录确认域名 |
+| `site/index.html` | `og:image` 改绝对 URL,新增 `rel=canonical` | 微信/QQ 抓 `og:image` 不解析相对路径,分享出去没有缩略图 |
+| `site/index.html` 页脚 | 新增 `__ICP_NUMBER__`,链到 `https://beian.miit.gov.cn/` | 境内网站底部必须展示备案号并可点查 |
+| `deploy/install.sh` | 页脚仍含占位符时打印警告 | 防止备案号忘了替换就对外 |
+| `deploy/README.md` | 真实 sed 命令 + 新增「页脚的备案号」小节 | 同上 |
+
+**刻意没改的一处**:`src/FastTranslation.Core/Account/AccountApiClient.cs:18` 的 `DefaultBaseUrl` 仍是 `http://127.0.0.1:5199`。服务器还没部署、备案还没通过,现在改成线上域名会让本机全部 E2E 与 `dotnet run --project server/FastTranslation.Server` 直接连不上。它属于**第一次正式发版**那个批次,不是现在。
+
+**验证**
+
+- `caddy adapt`(v2.10.2,占位符替换为真实域名后)退出码 **0**;展开 JSON 的 `apps.tls.automation.policies[0].subjects` = `["ftranslation.cn", "www.ftranslation.cn"]`,确认一张证书覆盖两主机名
+- `caddy fmt --diff deploy/Caddyfile` 无差异(格式合规)
+- `bash -n deploy/install.sh` 通过
+- 页脚证据:`assets/qa/site-footer-before.png` 与 `-after.png`(1280×360,用站点自身的 `assets/site.css` 渲染,非伪造样式),像素 diff 覆盖整幅;after 页脚右栏第三行是带下划线的 `__ICP_NUMBER__` 链接,颜色继承页脚灰字
+- 本轮没动任何 C# 文件,`git status --short` 只有 `deploy/` 三个 + `site/index.html` + `docs/IMPL.md`
+
+**残留风险**
+
+1. **`www` 必须单独加解析记录**。云解析里只加主域 A 记录的话,`www.ftranslation.cn` 无解析,Caddy 对两主机名签证书时 www 那条会失败,连带影响整张证书。上线时 `@` 与 `www` 两条一起加。
+2. **占位符会原样显示**。备案通过前站点本就不该对外(此刻 Caddy 被 `install.sh` 刻意 disable),但若有人手工 `systemctl start caddy`,页脚会露出 `__ICP_NUMBER__`。install.sh 的警告是唯一防线。
+3. **域名实名与工信部同步仍未完成**(注册局审核中 → 通过后还需 2~3 天同步),备案尚未提交。若管局要求「域名证书」,在阿里云域名控制台 → 域名列表 → 管理 → 下载域名证书。
+4. `beian.miit.gov.cn` 在部分网络环境下访问慢,备案号链接点开可能超时;这是工信部站点自身的问题,不影响合规性。

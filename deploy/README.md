@@ -70,11 +70,17 @@ openssl rand -hex 32
 
 ## Caddyfile 的两处占位
 
+域名已定为 **ftranslation.cn**。Caddyfile 里 `__DOMAIN__` 出现两次（主域与 `www.`），一条 sed 同时替换：
+
 ```bash
-sed -i 's/__DOMAIN__/你的域名/g; s/__ACME_EMAIL__/你的邮箱/g' /etc/caddy/Caddyfile
+sed -i 's/__DOMAIN__/ftranslation.cn/g; s/__ACME_EMAIL__/你的邮箱/g' /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 systemctl reload-or-restart caddy
 ```
+
+## 页脚的备案号
+
+`site/index.html` 页脚留了 `__ICP_NUMBER__` 占位。管局下发备案号后替换成真实号码（形如 `浙ICP备2026xxxxxx号-1`），链到 https://beian.miit.gov.cn/ ，境内网站底部必须展示。`install.sh` 检测到占位还在时会打印一行警告。
 
 **备案通过之前不要启用 Caddy。** 域名解析过去就是对外开放,而且 ACME 也签不下证书。这段时间调试用 SSH 隧道:
 

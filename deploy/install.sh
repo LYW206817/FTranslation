@@ -49,6 +49,11 @@ else
 	echo "    (no site/ in $HERE — skipping)"
 fi
 
+if grep -q '__ICP_NUMBER__' "$WEB_DIR/index.html" 2>/dev/null; then
+	echo "    !! The footer still reads __ICP_NUMBER__ instead of a real filing number."
+	echo "    !! A mainland-hosted site must display it; fill it in once the管局 issues it."
+fi
+
 echo "==> backup job"
 install -m 0755 "$HERE/backup.sh" /usr/local/bin/ft-backup.sh
 install -m 0644 "$HERE/fasttranslation-backup.cron" /etc/cron.d/fasttranslation-backup
