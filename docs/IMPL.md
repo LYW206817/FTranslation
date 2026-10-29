@@ -1237,3 +1237,30 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 **兼容性**:数据库只加一列且带默认值,老库自动迁移;`AccountDto` 新字段在末尾且可缺省。客户端删掉了 `PlanPage` 里的账号卡与 `RefreshAccountStatus` 调用,`App.xaml.cs` 的 `RefreshAccountStatus` 改为只更新侧栏与窗口标题。
 
 **残留风险**:①改名称与改密码都必须联网,离线时按钮报「连不上账号服务器」,没有做离线排队。②改密码后旧 access token 在 30 分钟内仍然有效(服务端只撤销 refresh token),这是故意的,不做即时踢下线。③名称不去重,两个人可以都叫「永威」;账号页只用邮箱做唯一标识,没有暴露用户 id。④`EnsureColumn` 只加列不改类型,`display_name` 将来若想加长度约束需另写迁移。
+
+## v56 激活码补完:作废与台账、跨档兑换不再亏天数 ✅
+
+**为什么**:v49 把码做到了能发能兑,但运营侧三件事没落地(v49 自己列的残留风险):①发出去的码用没用,只能拿 sqlite3 手查;②打错批次、发错人、泄露的码没有任何作废手段;③跨档兑换亏客户。第三条是这次真机 E2E 实测出来的:手里 light/30 天(到期 1798446194),再兑一张 standard/30 天,到期变成 1795854194 —— **反而少 30 天**。根因在 `RedeemEndpoints.cs` 的 `stacks` 判断只在同档时才叠加,跨档走 `now + days` 把剩余天数扔了。而降档早已被 400 `redeem_plan_downgrade` 挡在门外,所以能走到这一步必然是同档或升档,没有任何理由重设计时起点。
+
+**服务端**
+- `server/FastTranslation.Server/Storage/ServerDatabase.cs`:redeem_codes 建表补 `revoked_at INTEGER`,并在 `Initialize()` 里 `EnsureColumn(connection, "redeem_codes", "revoked_at", "INTEGER")` —— 生产机这张表已经存在,`CREATE TABLE IF NOT EXISTS` 永远不会补列
+- `server/FastTranslation.Server/Storage/RedeemStore.cs`:`RedeemCodeRecord` 加 `long? RevokedAt` + `IsRevoked`;`TryClaim` 的 WHERE 改成 `code = $code AND redeemed_at IS NULL AND revoked_at IS NULL`(**作废挡在存储层,不是只在大端点判一下**,并发兑换也不可能绕过);新增 `Revoke(code, now)`(只撤未兑的)、`LedgerRow(...)`、`List(status, take, skip)`(LEFT JOIN users 取买家邮箱,`ORDER BY created_at DESC, code`)、`Count(status)`、`IsKnownStatus`;四种 fate 的 WHERE 片段集中在私有 `Where(status)` 一处,保证 List 与 Count 口径不会分叉
+- `server/FastTranslation.Server/Api/RedeemEndpoints.cs`:兑换分支在 `redeem_code_used`(409)之后插入 `redeem_code_revoked`(**410 Gone**);到期计算改成公平叠加 —— `long from = now; if (user.PlanExpiresAt is { } current && current > now) { from = current; } var expiresAt = from + (record.Days * SecondsPerDay);`
+- 新增 `RedeemAdminEndpoints`:`GET /api/v1/admin/codes?status=open|used|revoked|all&limit=&offset=`(status 缺省 open,未知 status 400 `status_invalid`,limit 默认 50 上限 200)与 `POST /api/v1/admin/codes/{code}/revoke`(幂等 200 `code_revoked`;已兑换 409 `code_already_redeemed`;未知码 404 `code_missing`;规范化失败 400 `redeem_code_invalid`),两条都挂 `AdminEndpoints.RequireAdminToken`;`Program.cs` 里 `app.MapAdminEndpoints()` 之后 `app.MapRedeemAdminEndpoints()`
+- `server/FastTranslation.Server/Api/Contracts.cs`:`RedeemCodeDto(Code, Plan, Days, Note, CreatedAt, RedeemedEmail, RedeemedAt, RevokedAt)`、`RedeemCodePageResponse(Items, Total, Limit, Offset)`
+- 码的键形态没动:行按**打印形态** `FT-XXXX-XXXX-XXXX-XXXX` 存,端点先把用户输入 `Normalize` 再 `Format` 回来查(`RedeemEndpoints.cs:37-42`),这样运营在数据库里 grep 到的就是当初打印出来的那一串
+
+**客户端**
+- `src/FastTranslation.Core/Account/AccountTypes.cs`:`AccountErrorCode` 尾部加 `CodeRevoked`,`Display` 文案「这张激活码已经作废了,请联系我们。」
+- `src/FastTranslation.Core/Account/AccountApiClient.cs`:`MapFailure` 加 `case "redeem_code_revoked"`
+- 套餐页零改动:`Pages/PlanPage.xaml.cs` 的 `Redeem_Click` 统一读 `Error.Display`,新错误码自动露出
+
+**验证**
+- 四个测试项目 **571 全绿**:Core 204 / Platform.Windows 87 / Providers.QwenMt 87 / Server 193;`dotnet build src/FastTranslation.App -c Release -o publish/tmp-appbuild` → **0 警告 0 错误**(整套 `FastTranslation.slnx` 的 Release build 会被另一会话正在运行的 FastTranslation.exe 锁住 App 输出目录,是文件占用不是代码问题,故改用独立输出目录验证 App 侧编译)
+- 新增 10 个测试。`tests/FastTranslation.Server.Tests/RedeemStoreTests.cs`(4 个,新建):作废的码 `TryClaim` 返回 false、已兑出去的撤不回、open/used/revoked/all 四种计数互斥、**旧库补列迁移**(手工建 pre-v56 的 redeem_codes 表 + 插一张老码,`Initialize()` 后 PRAGMA 里确有 `revoked_at`,老码照样能查到、能作废)
+- `tests/FastTranslation.Server.Tests/RedeemEndpointTests.cs` 新增 6 个:`Redeem_RefusesARevokedCode`(410 + `redeem_code_revoked`)、`Redeem_UpgradeKeepsTheDaysAlreadyBought`(light/30 在手兑 standard/30,断言升档后到期时间比兑换前**更远**且差值 ≈ 30 天 —— 就是这次实测的亏天数场景)、`Admin_ListsCodesByFate`(open 里只见到没兑的那张且 `RedeemedEmail` 为空,used 里那张带上买家邮箱,`status=all&limit=1` 只回 1 行而 `Total` 仍是全量)、`Admin_ListRejectsAnUnknownStatus`、`Admin_RevokeIsIdempotentAndCannotClawBackSpentCodes`、`Admin_CodeRoutesNeedTheAdminToken`(无令牌 GET/POST 都 403)
+- 真机 E2E(114.55.166.224,服务只听 127.0.0.1:5080,走 ssh 隧道)在**部署了 v49 的生产机**上跑通收钱链路:注册 free → `POST /api/v1/notes/` **403 `subscription_required`** → admin 发码 → `POST /api/v1/redeem` 200 → 同一账号再保存 **200**(id=b486f96d-05c0-4fe3-be91-2bd71dea6315,kind=word);同码复用 409 `redeem_code_used`;同一张码的四种书写形态(横杠/无横杠/空格分隔/裸 16 位)全部认;standard 在手兑 light 码 → 400 `redeem_plan_downgrade` 且**码未被消耗**(`TryClaim` 在所有检查之后)。跨档亏天数就是这一轮暴露的,已修;本轮新增的作废/台账两个接口还没上生产机(部署要连带另一会话未提交的服务端改动,等提交顺序定了再走 install.sh)。
+
+**兼容性**:只加一列且可空,已有库由 `EnsureColumn` 自动补;新路由全在 `/api/v1/admin/` 下,不改既有 `/api/v1/admin/codes`(发码)与 `/metrics`;`AccountErrorCode` 新增值在枚举尾部;老客户端遇到 410 的 `redeem_code_revoked` 会落到映射的默认分支,显示「账号服务器出错了,请稍后再试。」而不是报错崩溃。
+
+**残留风险**:①码仍然没有有效期,这是故意的(v49 定的「不惩罚屯码」),要按批次过期得再加一列。②作废只能撤未兑换的;已兑出去的期数要收回只能靠 `POST /api/v1/admin/accounts/{email}/plan` 手工降档,没有「退款」这个概念。③发码响应是码的唯一副本(bearer instrument,库里只有码没有批次凭据),运营发一批必须自己存一批,台账接口只能查已发出的,不能替谁找回没保存的那份。④兑换与注册/登录共用按 IP 的 20 次/分限流(`RateLimiting.AuthPolicy`),真有人拿码表来刷会把同 IP 的登录一起挤掉 —— v49 已记,本次仍未动。⑤公平叠加后,升档时买家把 light 的剩余天数并进 standard 的到期,等于「standard 的价格 + 附送几天」,这是刻意选择,定价时要算进去。⑥生产库里还留着我 E2E 造的 5 个测试账号与 5 张已兑码,对外开放前要清。

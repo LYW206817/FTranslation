@@ -96,6 +96,20 @@ public sealed record CreateCodesRequest(string? Plan, int? Days, int? Count, str
 
 public sealed record CreateCodesResponse(IReadOnlyList<string> Codes, string Plan, int Days);
 
+/// <summary>Admin view of one code. <see cref="RedeemedEmail"/> stays null until somebody spends it.</summary>
+public sealed record RedeemCodeDto(
+    string Code,
+    string Plan,
+    int Days,
+    string Note,
+    long CreatedAt,
+    string? RedeemedEmail,
+    long? RedeemedAt,
+    long? RevokedAt);
+
+/// <summary>The minted batch an operator lost track of is recoverable through this page.</summary>
+public sealed record RedeemCodePageResponse(IReadOnlyList<RedeemCodeDto> Items, int Total, int Limit, int Offset);
+
 // ---- notes (phase 1 notebook) ----
 
 public sealed record SaveNoteRequest(

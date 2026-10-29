@@ -271,6 +271,7 @@ public sealed class AccountApiClient
                 case "code_recently_sent": return AccountErrorCode.RateLimited;
                 case "redeem_code_invalid": return AccountErrorCode.CodeInvalid;
                 case "redeem_code_used": return AccountErrorCode.CodeUsed;
+                case "redeem_code_revoked": return AccountErrorCode.CodeRevoked;
                 case "redeem_plan_downgrade": return AccountErrorCode.PlanDowngrade;
                 case "password_mismatch": return AccountErrorCode.PasswordMismatch;
                 case "password_too_short": return AccountErrorCode.PasswordTooShort;

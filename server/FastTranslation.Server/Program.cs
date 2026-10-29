@@ -62,6 +62,7 @@ app.MapNotesEndpoints();
 app.MapRedeemEndpoints();
 app.MapGatewayEndpoints();
 app.MapAdminEndpoints();
+app.MapRedeemAdminEndpoints();
 
 app.Run();
 
