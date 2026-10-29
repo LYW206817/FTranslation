@@ -19,7 +19,12 @@ public static class NotesEndpoints
         group.MapGet("/", List);
         group.MapPatch("/{id:guid}", Update);
         group.MapDelete("/{id:guid}", Delete);
+        group.MapGet("/review", ReviewQueue);
+        group.MapPost("/{id:guid}/review", Grade);
     }
+
+    private const int DefaultNewLimit = 20;
+    private const int DefaultQueueLimit = 50;
 
     private static IResult Save(
         [FromBody] SaveNoteRequest request,
@@ -130,6 +135,91 @@ public static class NotesEndpoints
             ? Results.Ok(new MessageResponse("note_deleted"))
             : Results.NotFound(new ErrorResponse("note_missing"));
 
+    /// <summary>
+    /// Today's queue. <paramref name="dayStart"/> is the caller's local midnight in unix seconds —
+    /// the server never guesses a time zone (design §5.4).
+    /// </summary>
+    private static IResult ReviewQueue(
+        [FromQuery] long? dayStart,
+        [FromQuery] int? newLimit,
+        [FromQuery] int? limit,
+        ClaimsPrincipal principal,
+        NoteStore store,
+        AccountStore accounts,
+        ServerDatabase database)
+    {
+        var userId = principal.GetUserId();
+        var user = accounts.FindUserById(userId);
+        if (user is null || user.Disabled)
+        {
+            return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!Entitlement.AllowsNotebook(user.Plan, user.PlanExpiresAt, database.NowUnix))
+        {
+            return Results.Json(new ErrorResponse("subscription_required"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var start = dayStart is > 0 ? dayStart.Value : StartOfTodayUtc(database.NowUnix);
+        var wantedNew = Math.Clamp(newLimit ?? DefaultNewLimit, 0, 100);
+        var take = Math.Clamp(limit ?? DefaultQueueLimit, 1, 200);
+
+        var due = store.ListDue(userId, database.NowUnix, take);
+        var fresh = store.ListFresh(userId, start, Math.Max(1, wantedNew));
+        var alreadyQueued = store.CountFreshSince(userId, start);
+        var quota = Math.Max(0, wantedNew - alreadyQueued);
+
+        return Results.Ok(new ReviewQueueResponse(
+            due.Select(ToDto).ToList(),
+            fresh.Items.Select(ToDto).ToList(),
+            due.Count,
+            quota,
+            take,
+            wantedNew));
+    }
+
+    private static IResult Grade(
+        Guid id,
+        [FromBody] GradeNoteRequest request,
+        ClaimsPrincipal principal,
+        NoteStore store,
+        AccountStore accounts,
+        ServerDatabase database)
+    {
+        var userId = principal.GetUserId();
+        var user = accounts.FindUserById(userId);
+        if (user is null || user.Disabled)
+        {
+            return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!Entitlement.AllowsNotebook(user.Plan, user.PlanExpiresAt, database.NowUnix))
+        {
+            return Results.Json(new ErrorResponse("subscription_required"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!ReviewSchedule.TryParseGrade(request.Grade, out var grade))
+        {
+            return Results.BadRequest(new ErrorResponse("grade_invalid"));
+        }
+
+        var existing = store.FindById(userId, id);
+        if (existing is null)
+        {
+            return Results.NotFound(new ErrorResponse("note_missing"));
+        }
+
+        var now = database.NowUnix;
+        var (stage, dueAt) = ReviewSchedule.Schedule(existing.Stage, grade, now);
+        var updated = store.SetReview(userId, id, stage, dueAt, ReviewSchedule.ToWire(grade), now);
+        return updated is null
+            ? Results.NotFound(new ErrorResponse("note_missing"))
+            : Results.Ok(ToDto(updated));
+    }
+
+    /// <summary>Fallback when the client omits dayStart: UTC midnight. Clients always send their own local midnight.</summary>
+    private static long StartOfTodayUtc(long nowUnix) => nowUnix - (nowUnix % 86_400L);
+
     private static NoteDto ToDto(NoteRecord note) => new(
         note.Id,
         NoteKinds.ToWire(note.Kind),
@@ -141,5 +231,11 @@ public static class NotesEndpoints
         note.OriginApp,
         note.Note,
         note.CreatedAt,
-        note.UpdatedAt);
+        note.UpdatedAt,
+        note.Stage,
+        note.DueAt,
+        note.LastGrade,
+        note.ReviewCount,
+        note.Lapses,
+        note.ReviewedAt);
 }

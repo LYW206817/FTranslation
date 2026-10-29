@@ -101,6 +101,34 @@ public sealed class NotesApiClient
             response, _ => new NoteDeleted(true), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Today's review queue. <paramref name="dayStart"/> is the caller's local midnight.</summary>
+    public async Task<AccountApiResult<ReviewQueue>> ReviewQueueAsync(
+        string accessToken, long dayStart, int newLimit, int limit, CancellationToken cancellationToken)
+    {
+        var path = "api/v1/notes/review?dayStart=" + dayStart.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            + "&newLimit=" + newLimit.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            + "&limit=" + limit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var response = await SendAsync(HttpMethod.Get, path, accessToken, null, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<ReviewQueueResponseWire, ReviewQueue>(
+            response,
+            wire => new ReviewQueue(
+                wire.Due.Select(ToNote).ToList(),
+                wire.Fresh.Select(ToNote).ToList(),
+                wire.DueTotal,
+                wire.FreshQuota),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<AccountApiResult<Note>> GradeAsync(
+        string accessToken, Guid id, ReviewGrade grade, CancellationToken cancellationToken)
+    {
+        var body = new GradeBody(ReviewSchedule.ToWire(grade));
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/notes/" + id.ToString("D") + "/review", accessToken, body, cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<NoteResponse, Note>(response, ToNote, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<HttpResponseMessage?> SendAsync(
         HttpMethod method, string path, string? accessToken, object? body, CancellationToken cancellationToken)
     {
@@ -174,6 +202,7 @@ public sealed class NotesApiClient
                 case "notes_limit_reached": return AccountErrorCode.Server;
                 case "note_missing":
                 case "kind_invalid":
+                case "grade_invalid":
                 case "source_text_required":
                     return AccountErrorCode.InvalidResponse;
             }
@@ -209,7 +238,13 @@ public sealed class NotesApiClient
         note.OriginApp,
         note.Note,
         note.CreatedAt,
-        note.UpdatedAt);
+        note.UpdatedAt,
+        note.Stage,
+        note.DueAt,
+        note.LastGrade,
+        note.ReviewCount,
+        note.Lapses,
+        note.ReviewedAt);
 
     // ---- wire shapes ----
 
@@ -218,6 +253,8 @@ public sealed class NotesApiClient
         string SourceLang, string TargetLang, string Model, string OriginApp);
 
     private sealed record UpdateBody(string? Kind, string? Note);
+
+    private sealed record GradeBody(string Grade);
 
     private sealed class MessageResponse
     {
@@ -237,6 +274,12 @@ public sealed class NotesApiClient
         [JsonPropertyName("note")] public string Note { get; init; } = string.Empty;
         [JsonPropertyName("createdAt")] public long CreatedAt { get; init; }
         [JsonPropertyName("updatedAt")] public long UpdatedAt { get; init; }
+        [JsonPropertyName("stage")] public int Stage { get; init; }
+        [JsonPropertyName("dueAt")] public long DueAt { get; init; }
+        [JsonPropertyName("lastGrade")] public string LastGrade { get; init; } = string.Empty;
+        [JsonPropertyName("reviewCount")] public int ReviewCount { get; init; }
+        [JsonPropertyName("lapses")] public int Lapses { get; init; }
+        [JsonPropertyName("reviewedAt")] public long ReviewedAt { get; init; }
     }
 
     private sealed class PageResponse
@@ -245,5 +288,15 @@ public sealed class NotesApiClient
         [JsonPropertyName("total")] public int Total { get; init; }
         [JsonPropertyName("limit")] public int Limit { get; init; }
         [JsonPropertyName("offset")] public int Offset { get; init; }
+    }
+
+    private sealed class ReviewQueueResponseWire
+    {
+        [JsonPropertyName("due")] public List<NoteResponse> Due { get; init; } = [];
+        [JsonPropertyName("fresh")] public List<NoteResponse> Fresh { get; init; } = [];
+        [JsonPropertyName("dueTotal")] public int DueTotal { get; init; }
+        [JsonPropertyName("freshQuota")] public int FreshQuota { get; init; }
+        [JsonPropertyName("limit")] public int Limit { get; init; }
+        [JsonPropertyName("newLimit")] public int NewLimit { get; init; }
     }
 }

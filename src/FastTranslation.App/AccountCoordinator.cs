@@ -220,6 +220,23 @@ public sealed class AccountCoordinator
         return WithSessionAsync(token => _notes.DeleteAsync(token, id, cancellationToken), cancellationToken);
     }
 
+    public Task<AccountApiResult<ReviewQueue>> ReviewQueueAsync(
+        long dayStart, int newLimit, int limit, CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<ReviewQueue>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(
+            token => _notes.ReviewQueueAsync(token, dayStart, newLimit, limit, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task<AccountApiResult<Note>> GradeNoteAsync(
+        Guid id, ReviewGrade grade, CancellationToken cancellationToken)
+    {
+        if (_notes is null) return Task.FromResult(AccountApiResult<Note>.Fail(AccountErrorCode.NotSignedIn));
+        return WithSessionAsync(
+            token => _notes.GradeAsync(token, id, grade, cancellationToken), cancellationToken);
+    }
+
     public async Task SignOutAsync(CancellationToken cancellationToken)
     {
         if (_session is { } session)

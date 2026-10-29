@@ -16,43 +16,14 @@ public class NotesEndpointTests : IClassFixture<ServerFactory>
         _factory = factory;
     }
 
-    /// <summary>
-    /// Each call gets its own account, so tests cannot see each other's notes. The account is
-    /// upgraded because saving is the paywall: a free account is refused before anything else.
-    /// </summary>
-    private async Task<HttpClient> SignedInClientAsync(PlanTier plan = PlanTier.Standard)
-    {
-        var client = _factory.CreateClient();
-        var email = $"notes-{Guid.NewGuid():N}@example.com";
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register",
-            new RegisterRequest(email, "password123", null, "fp-" + Guid.NewGuid().ToString("N"), "test-pc"));
-        response.EnsureSuccessStatusCode();
-        var auth = (await response.Content.ReadFromJsonAsync<AuthResponse>())!;
-
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
-        if (plan != PlanTier.Free)
-        {
-            await UpgradeAsync(client, email, Plans.ToWire(plan));
-        }
-
-        return client;
-    }
-
-    private static async Task UpgradeAsync(HttpClient client, string email, string plan)
-    {
-        using var upgrade = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/admin/accounts/{email}/plan")
-        {
-            Content = JsonContent.Create(new PlanChangeRequest(plan)),
-        };
-        upgrade.Headers.Add(AdminEndpoints.HeaderName, ServerFactory.AdminToken);
-        (await client.SendAsync(upgrade)).EnsureSuccessStatusCode();
-    }
+    private Task<HttpClient> SignedInClientAsync(PlanTier plan = PlanTier.Standard) =>
+        _factory.SignedInNotesClientAsync(plan);
 
     private static Task<HttpResponseMessage> SaveAsync(HttpClient client, SaveNoteRequest request) =>
-        client.PostAsJsonAsync("/api/v1/notes/", request);
+        NotesTestHelpers.SaveNoteAsync(client, request);
 
     private static SaveNoteRequest Pair(string source, string target, string? kind = null) =>
-        new(kind, source, target, "en", "zh", "qwen-mt-flash", "chrome");
+        NotesTestHelpers.Pair(source, target, kind);
 
     [Fact]
     public async Task Notes_RequireAuthentication()
