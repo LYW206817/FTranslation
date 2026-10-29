@@ -28,10 +28,29 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
         => await SendAsync(options.ImageBaseUrl, body, ct).ConfigureAwait(false);
 
     /// <summary>
+    /// OCR rides the multimodal-generation endpoint, which takes the same bearer key and body shape
+    /// (model + input.messages with an image_url), so it is one more pipe rather than a new client.
+    /// </summary>
+    public async Task<GatewayResponse> SendOcrAsync(string body, CancellationToken ct)
+        => await SendAsync(options.EffectiveOcrBaseUrl, body, ct).ConfigureAwait(false);
+
+    /// <summary>
     /// Reads the token counts DashScope reports. A response without usage is not an error — the
     /// caller falls back to an estimate so quota accounting never silently stops.
     /// </summary>
     public static bool TryReadUsage(string? body, out long tokensIn, out long tokensOut)
+        => TryReadUsageNamed(body, "prompt_tokens", "completion_tokens", out tokensIn, out tokensOut);
+
+    /// <summary>
+    /// The native multimodal endpoint reports <c>input_tokens</c>/<c>output_tokens</c> where the
+    /// OpenAI-compatible one says <c>prompt_tokens</c>/<c>completion_tokens</c>. Accept either, so OCR
+    /// cost tracking does not silently fall back to a character estimate.
+    /// </summary>
+    public static bool TryReadVisionUsage(string? body, out long tokensIn, out long tokensOut)
+        => TryReadUsageNamed(body, "input_tokens", "output_tokens", out tokensIn, out tokensOut)
+            || TryReadUsageNamed(body, "prompt_tokens", "completion_tokens", out tokensIn, out tokensOut);
+
+    private static bool TryReadUsageNamed(string? body, string inName, string outName, out long tokensIn, out long tokensOut)
     {
         tokensIn = 0;
         tokensOut = 0;
@@ -50,8 +69,8 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
                 return false;
             }
 
-            tokensIn = ReadLong(usage, "prompt_tokens");
-            tokensOut = ReadLong(usage, "completion_tokens");
+            tokensIn = ReadLong(usage, inName);
+            tokensOut = ReadLong(usage, outName);
             return true;
         }
         catch (JsonException)

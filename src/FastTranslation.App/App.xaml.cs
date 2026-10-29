@@ -28,6 +28,7 @@ public partial class App : Application, IResultPresenter
     private ImageResultWindow? _imageWindow;
     private ImageTranslationCoordinator? _imageCoordinator;
     private IImageTranslationProvider? _imageProvider;
+    private IImageOcrProvider? _ocrProvider;
     private WriteBackService? _writeBack;
     private TranslationService? _translation;
     private SettingsService _settingsService = new();
@@ -180,14 +181,24 @@ public partial class App : Application, IResultPresenter
         var ownImageProvider = new QwenMtImageTranslator(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
         _imageProvider = new GatewayImageTranslationProvider(GatewayTranslateImageAsync, ownImageProvider);
+
+        // OCR 是 v48 新增的第二条图片链路：同一次框选要同时拿到「译图」和「原文」，
+        // 所以它是独立 provider，不塞进图片翻译的返回值里（两条路各有各的重试与计费）。
+        var ownOcr = new QwenOcrClient(() => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
+        _ocrProvider = new GatewayOcrProvider(GatewayRecognizeImageAsync, ownOcr);
+
         _imageWindow = new ImageResultWindow();
+        _imageWindow.SaveRequested += text => SaveScreenshotText(text);
         _imageCoordinator = new ImageTranslationCoordinator(
             _imageProvider,
+            _ocrProvider,
+            _translation,
             () => _settings,
             result => _imageWindow?.ShowResult(
                 result.JpegBytes,
-                $"{result.SourceLanguage} → {result.TargetLanguage} · {result.Model} · {result.ElapsedMs}ms"
-                + (string.IsNullOrWhiteSpace(result.Notice) ? "" : " · " + result.Notice)),
+                CaptureCaption(result),
+                result.SourceText.Length > 0 ? result.SourceText : null,
+                showActions: result.JpegBytes is not null),
             message => _tray?.ShowBalloon("截图翻译失败", message));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
 
@@ -623,6 +634,96 @@ public partial class App : Application, IResultPresenter
         return await provider.TranslateImageAsync(request, cancellationToken);
     }
 
+    /// <summary>
+    /// OCR 走网关时复用同一套令牌与设备头，只是路径换成 /v1/ocr。
+    /// 返回 null（没登录 / 拿不到令牌）让 <see cref="GatewayOcrProvider"/> 回落到用户自己的 Key。
+    /// </summary>
+    private async Task<ImageOcrResult?> GatewayRecognizeImageAsync(
+        ImageOcrRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_account is not { IsSignedIn: true } account) return null;
+        var token = await account.GetAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+
+        using var client = new QwenOcrClient(
+            () => token,
+            new QwenOcrOptions
+            {
+                BaseUrl = GatewayBaseUrl() + "/ocr",
+                TimeoutSeconds = 60,
+                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+            },
+            _gatewayHttp);
+        return await client.RecognizeAsync(request, cancellationToken);
+    }
+
+    /// <summary>译图窗标题栏：来源进程 + 文本链路的异常（有才拼）。</summary>
+    private static string CaptureCaption(ImageCaptureResult result)
+    {
+        var caption = string.IsNullOrWhiteSpace(result.OriginApp)
+            ? "截图翻译"
+            : "截图翻译 · 来自 " + result.OriginApp;
+        if (!string.IsNullOrWhiteSpace(result.TextError)) caption += " · " + result.TextError;
+        return caption;
+    }
+
+    /// <summary>
+    /// 译图窗里的「保存到单词本」：保存的是识别框里当前的文本（用户可能已经把 OCR 的错字改了），
+    /// 不再重新截图，也不再单独翻译——译文在复习时按需再要。
+    /// </summary>
+    private void SaveScreenshotText(string text)
+    {
+        var sourceText = text?.Trim() ?? string.Empty;
+        if (sourceText.Length == 0) return;
+        if (_account is not { IsSignedIn: true })
+        {
+            _tray?.ShowBalloon("Fast Translation", "先在账号里登录,保存的单词才能跨设备同步");
+            ShowAccount();
+            return;
+        }
+
+        _ = SaveScreenshotTextAsync(sourceText);
+    }
+
+    private async Task SaveScreenshotTextAsync(string sourceText)
+    {
+        if (_account is not { IsSignedIn: true }) return;
+        try
+        {
+            var saved = await _account.SaveNoteAsync(
+                NoteClassifier.Classify(sourceText),
+                sourceText,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                ForegroundInfo.ProcessName(),
+                CancellationToken.None);
+            if (saved.Succeeded)
+            {
+                _tray?.ShowBalloon("Fast Translation", "已保存到" + NoteKinds.Display(saved.Value!.Kind) + "本");
+                return;
+            }
+
+            if (saved.Error!.Code == AccountErrorCode.SubscriptionRequired)
+            {
+                _tray?.ShowBalloon("Fast Translation", saved.Error.Display);
+                ShowAccount();
+                return;
+            }
+
+            _tray?.ShowBalloon("Fast Translation", saved.Error.Code == AccountErrorCode.NotSignedIn
+                ? "先在账号里登录,保存的单词才能跨设备同步"
+                : saved.Error.Display);
+        }
+        catch (Exception ex)
+        {
+            Trace($"save screenshot note: {ex}");
+            _tray?.ShowBalloon("Fast Translation", "保存没成功,稍后再试一次");
+        }
+    }
+
     private string GatewayBaseUrl()
     {
         var host = string.IsNullOrWhiteSpace(_settings.AccountBaseUrl)
@@ -850,6 +951,7 @@ public partial class App : Application, IResultPresenter
         _toolbar?.Dispose();
         _card?.Dispose();
         _imageCoordinator?.Dispose();
+        _ocrProvider?.Dispose();
         _imageProvider?.Dispose();
         _imageWindow?.Dispose();
         _imageHotkey?.Dispose();
