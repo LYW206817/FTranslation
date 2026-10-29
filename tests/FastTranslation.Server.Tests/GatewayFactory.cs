@@ -79,6 +79,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
             ["Server:Gateway:ApiKey"] = UpstreamKey,
             ["Server:Gateway:BaseUrl"] = "http://upstream.test/v1",
             ["Server:Gateway:ImageBaseUrl"] = "http://upstream.test/image",
+            ["Server:Gateway:OcrBaseUrl"] = "http://upstream.test/ocr",
             ["Server:Gateway:DailyBudgetMicros"] = DailyBudgetMicros.ToString(),
             ["Server:Gateway:RequestsPerMinute"] = RequestsPerMinute.ToString(),
         }));

@@ -19,6 +19,11 @@ public static class Pricing
         ["qwen-mt-lite"] = new("qwen-mt-lite", 0.6m, 1.6m, 0m),
         ["qwen-mt-image-2.0"] = new("qwen-mt-image-2.0", 0m, 0m, 0.004m),
         ["qwen-mt-image"] = new("qwen-mt-image", 0m, 0m, 0.003m),
+
+        // Vision OCR: the screenshot goes in (billed as input tokens), the recognised text comes out.
+        // Numbers from the 2026-10 百炼 sheet; re-check the sheet before shipping a release, since a
+        // stale entry does not crash anything, it just skews the cost ledger.
+        ["qwen-vl-ocr"] = new("qwen-vl-ocr", 0.043m, 0.072m, 0m),
     };
 
     public static ModelPrice For(string? model) =>

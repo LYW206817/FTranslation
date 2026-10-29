@@ -5,15 +5,28 @@ using FastTranslation.Platform.Windows;
 namespace FastTranslation.App;
 
 /// <summary>
-/// 截屏翻译的编排：拖框选区域 → 图片翻译 → 交给展示层。
-/// 结果去向由两个回调决定（成功给译图，失败只给消息），所以这里不碰 WPF：
+/// 一次截图翻译交给展示层的全部东西：译图 + 识别到的原文 + 原文的译文。
+/// 三段都可能单独缺席（图片翻译失败、OCR 没认出字、译文没回来），所以全部可空。
+/// </summary>
+internal sealed record ImageCaptureResult(
+    byte[]? JpegBytes,
+    string SourceText,
+    string? TargetText,
+    string? TextError,
+    string OriginApp);
+
+/// <summary>
+/// 截屏翻译的编排：拖框选区域 → 图片翻译（A）与 OCR（B）并行 → 原文再翻一遍文字（C）→ 交给展示层。
+/// 结果去向由两个回调决定（成功给载荷，失败只给消息），所以这里不碰 WPF：
 /// App 里分别是 ImageResultWindow 和托盘气泡，测试/换展示方式都不用改这个类。
 /// </summary>
 internal sealed class ImageTranslationCoordinator : IDisposable
 {
     private readonly IImageTranslationProvider _provider;
+    private readonly IImageOcrProvider _ocr;
+    private readonly TranslationService _translation;
     private readonly Func<AppSettings> _settings;
-    private readonly Action<ImageTranslationResult> _present;
+    private readonly Action<ImageCaptureResult> _present;
     private readonly Action<string> _reportError;
     private readonly CancellationTokenSource _lifetime = new();
 
@@ -21,11 +34,15 @@ internal sealed class ImageTranslationCoordinator : IDisposable
 
     public ImageTranslationCoordinator(
         IImageTranslationProvider provider,
+        IImageOcrProvider ocr,
+        TranslationService translation,
         Func<AppSettings> settings,
-        Action<ImageTranslationResult> present,
+        Action<ImageCaptureResult> present,
         Action<string> reportError)
     {
         _provider = provider;
+        _ocr = ocr;
+        _translation = translation;
         _settings = settings;
         _present = present;
         _reportError = reportError;
@@ -40,6 +57,9 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0) return;
         try
         {
+            // origin_app 必须在拖框之前读：拖框 overlay 起来后前台就变成了本程序。
+            var originApp = ForegroundInfo.ProcessName();
+
             var captured = await ScreenRegionPicker.PickAsync(_lifetime.Token);
             if (captured is null) return;
 
@@ -47,11 +67,41 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             var (source, target) = ImageTranslationPolicy.Resolve(settings.SourceLanguage, settings.TargetLanguage);
             // Model 留空：设置页里的 Model 是文本模型，图片翻译要用适配器自己的默认模型
             var request = new ImageTranslationRequest(captured.PngBytes, source, target, string.Empty);
-            var result = await _provider.TranslateImageAsync(request, _lifetime.Token);
+
+            // A（图片翻译）与 B（OCR）并行：用户等的是两者较慢的那个，不是两者之和。
+            var imageTask = _provider.TranslateImageAsync(request, _lifetime.Token);
+            var ocrTask = _ocr.RecognizeAsync(new ImageOcrRequest(captured.PngBytes), _lifetime.Token);
+            await Task.WhenAll(imageTask, ocrTask).ConfigureAwait(false);
+
+            var image = imageTask.Result;
+            var ocr = ocrTask.Result;
+
+            if (!image.Succeeded && !ocr.Succeeded)
+            {
+                _reportError(image.Error?.Message ?? ocr.Error?.Message ?? "截图翻译失败");
+                return;
+            }
+
+            var recognized = ocr.Succeeded ? ocr.Text : string.Empty;
+            string? textError = ocr.Succeeded ? null : ocr.Error?.Message;
+
+            // C：把识别出的原文再过一遍文字翻译。图片翻译给的是「译图」，用户想存单词本还缺一句译文。
+            string? translated = null;
+            if (recognized.Length > 0)
+            {
+                var translatedResult = await _translation.TranslateAsync(recognized, settings, _lifetime.Token).ConfigureAwait(false);
+                if (translatedResult.Succeeded) translated = translatedResult.TranslatedText;
+                else textError = translatedResult.Error?.Message;
+            }
+
             if (_lifetime.IsCancellationRequested) return;
 
-            if (result.Succeeded) _present(result);
-            else _reportError(result.Error?.Message ?? "截图翻译失败");
+            _present(new ImageCaptureResult(
+                image.Succeeded ? image.JpegBytes : null,
+                recognized,
+                translated,
+                textError,
+                originApp));
         }
         catch (OperationCanceledException)
         {

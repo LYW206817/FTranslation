@@ -26,6 +26,7 @@ public static class GatewayEndpoints
 
         group.MapPost("/chat/completions", ChatCompletions);
         group.MapPost("/image", Image);
+        group.MapPost("/ocr", Ocr);
     }
 
     private static async Task<IResult> ChatCompletions(
@@ -143,6 +144,71 @@ public static class GatewayEndpoints
             0,
             0,
             Pricing.ImageCostMicros(model),
+            database.NowUnix);
+
+        return Results.Content(response.Body, "application/json");
+    }
+
+    /// <summary>
+    /// Screenshot OCR. The body is forwarded untouched to the multimodal endpoint; the difference from
+    /// <see cref="ChatCompletions"/> is that the payload carries an image rather than text, so there is
+    /// no character ceiling to police and the quota is charged as one screenshot (same equivalent as
+    /// <see cref="Image"/>). Cost, however, is real token accounting: the model bills vision tokens even
+    /// though the quota side thinks in characters.
+    /// </summary>
+    private static async Task<IResult> Ocr(
+        HttpContext context,
+        ClaimsPrincipal principal,
+        [FromServices] GatewayOptions gateway,
+        [FromServices] AccountStore store,
+        [FromServices] ServerDatabase database,
+        [FromServices] GatewayRateLimiter limiter,
+        [FromServices] DashScopeGateway upstream,
+        CancellationToken ct)
+    {
+        if (!gateway.IsConfigured)
+        {
+            return Fail(StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
+        }
+
+        var body = await ReadBodyAsync(context, ct);
+        if (body is null)
+        {
+            return Fail(StatusCodes.Status400BadRequest, "body_invalid");
+        }
+
+        // One OCR is priced like one image translation for quota purposes: both take a picture in.
+        var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
+        if (Intent(context, principal, store, database, gateway, limiter, quotaChars) is { } refusal)
+        {
+            return refusal;
+        }
+
+        var response = await upstream.SendOcrAsync(body, ct);
+        if (!response.Succeeded)
+        {
+            // Same rule as chat: forward the upstream status verbatim and never bill a refusal.
+            return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
+        }
+
+        var (deviceId, userId) = Device(context, principal, store);
+        var model = string.IsNullOrWhiteSpace(gateway.OcrModel) ? "qwen-vl-ocr" : gateway.OcrModel.Trim();
+        var tokensIn = (long)quotaChars;
+        var tokensOut = 0L;
+        if (DashScopeGateway.TryReadVisionUsage(response.Body, out var reportedIn, out var reportedOut) && reportedIn > 0)
+        {
+            tokensIn = reportedIn;
+            tokensOut = reportedOut;
+        }
+
+        store.RecordUsage(
+            userId,
+            deviceId,
+            quotaChars,
+            model,
+            (int)Math.Min(tokensIn, int.MaxValue),
+            (int)Math.Min(tokensOut, int.MaxValue),
+            Pricing.TextCostMicros(model, tokensIn, tokensOut),
             database.NowUnix);
 
         return Results.Content(response.Body, "application/json");

@@ -17,7 +17,14 @@ public sealed class GatewayOptions
     /// <summary>Base URL for the image service; the client posts to this exact URL.</summary>
     public string ImageBaseUrl { get; set; } = "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis";
 
+    /// <summary>Vision/OCR is served by a different DashScope path than chat completions.</summary>
+    public string OcrBaseUrl { get; set; } =
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+
     public string Model { get; set; } = "qwen-mt-flash";
+
+    /// <summary>Must have a <see cref="Domain.Pricing"/> entry, otherwise accounting falls back to flash prices.</summary>
+    public string OcrModel { get; set; } = "qwen-vl-ocr";
 
     public int TimeoutSeconds { get; set; } = 60;
 
@@ -44,4 +51,10 @@ public sealed class GatewayOptions
 
     public string EffectiveBaseUrl =>
         string.IsNullOrWhiteSpace(BaseUrl) ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : BaseUrl.TrimEnd('/');
+
+    /// <summary>The OCR endpoint is a complete URL, so nothing is appended to it.</summary>
+    public string EffectiveOcrBaseUrl =>
+        string.IsNullOrWhiteSpace(OcrBaseUrl)
+            ? "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            : OcrBaseUrl.Trim();
 }
