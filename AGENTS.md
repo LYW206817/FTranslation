@@ -11,7 +11,7 @@ Windows 托盘划词翻译工具:选中文本 → 浮动工具条(复制 / 翻�
 - `src/FastTranslation.Core` — 与 UI 无关的逻辑:设置、翻译抽象、`ReleaseVersion` / `UpdateManifest` / `UpdateChecker`
 - `src/FastTranslation.Platform.Windows` — Win32:取词(UIA + 剪贴板)、浮层(`OverlayWindows.cs`)、托盘原生菜单、写回、`UpdateInstaller`、`InstallLayout`
 - `src/FastTranslation.Providers.QwenMt` — DashScope 实现
-- `tests/` — 三个 xunit 项目;`docs/IMPL.md` — 按版本号累加的实现记录(v1…v42);`docs/superpowers/specs/` — 设计规格
+- `tests/` — 四个 xunit 项目(Core / Platform.Windows / Providers.QwenMt / Server);`docs/IMPL.md` — 按版本号累加的实现记录(v1…v48);`docs/superpowers/specs/` — 设计规格
 - `installer/` — Inno Setup 脚本与简中语言包;`tools/qa/` — 验证脚本;`publish/` — 构建产物与临时探针(**整个目录在 .gitignore 里**)
 
 ## GitHub 令牌:不要再问用户要 PAT
@@ -33,7 +33,7 @@ $tok = [Environment]::GetEnvironmentVariable('GITHUB RELEASE','User')   # ghp_ �
 ```bash
 cd /d/FTranslation
 dotnet build FastTranslation.slnx -c Release     # 必须 0 警告 0 错误(TreatWarningsAsErrors=true)
-dotnet test                                      # 当前基线 75 + 83 + 40 = 198 全绿
+dotnet test                                      # 当前基线 4 个项目 408 全绿(138 + 58 + 87 + 125)
 ```
 
 ## 提交与合并请求规范
