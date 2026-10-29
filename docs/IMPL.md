@@ -879,3 +879,52 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - 没有配置日志轮转。`journalctl` 会自己滚,但 `/var/log/ft-backup.log` 会一直长(一天一行,可忽略)。
 - 备份只有本机一份。云盘挂了备份跟着挂,真要防灾得 `scp` 到别处。
 - `install.sh` 的静态站点同步是 `rm -rf` 再拷 —— 如果 `WEB_DIR` 被误设成 `/var/www`,会连别的站点一起删。脚本里用了 ${WEB_DIR:?},变量为空时直接退出,但这个保护只在变量未设置时生效。
+## v48 仓库瘦身:清掉过程文件与构建缓存(2026-10-29)✅
+
+**为什么这样改**
+
+仓库从 v1 长到 v47,攒下两类东西:每个历史版本的发布产物、几百个一次性探针脚本。它们都不在版本控制里(`.gitignore` 早就覆盖了 `publish/`、`assets/qa/`、`[Bb]in/`、`[Oo]bj/`),但会持续放大磁盘占用与备份体积,也让全仓 grep 变慢。这次做一次性盘点,顺便把「哪些东西其实没人引用」这件事查实。
+
+三个刻意的决定:
+
+- **只删在远端有备份的历史包**。9 个 `portable.zip` 与 7 个 `Setup.exe` 在 GitHub Release 里都有同名资产,本地副本零信息增量。反过来,1.2.2 的两个包必须留 —— 它们是对外分发的最新版本。
+- **探针工程从仓库里删,而不是继续留在库里**。`tools/Probe`、`ProbeBare`、`ProbeBare8`、`ProbeWf`、`E2EKeySmoke` 自 v22 基线入库后再未改动、不在 `FastTranslation.slnx` 里、`docs/IMPL.md` 零引用。留着只会让后来者以为它们还在用。
+- **`assets/qa` 只留被 IMPL.md 引用的 10 张**。整个目录被忽略,不设边界的话「截图即证据」这个说法就没有落点。删前逐个比对 `docs/IMPL.md` 里出现的文件名,保留的 10 个在 IMPL.md 中各命中 1 次。
+
+**删了什么**
+
+| 范围 | 删除前 | 删除后 |
+| --- | --- | --- |
+| `publish/` 全部 | 4157 文件 / 2591 MB | 992 文件 / 240.32 MiB |
+| ├ `publish/dist` 历史包 | 30 文件 / 947.4 MB(9 个 portable.zip、7 个 Setup.exe、2 个旧 MSI + wixpdb、9 个安装日志) | 3 文件 / 103.5 MB(仅 1.2.2 的 Setup.exe + portable.zip + README.txt) |
+| ├ 旧便携目录 | 8 个 × 263 文件,各约 134 MB | 0(只留 `ft-folder`,262 文件) |
+| ├ 一次性探针产物 | `probe/` 41 文件 91.4 MB、`caddy/` 79.1 MB、`server-linux/` 106.4 MB、`tmp/`、`probeout/`、`inno7.exe` 13.6 MB、`innosetup.exe`、`speed.bin` 3.8 MB | 全删 |
+| ├ 散装脚本与日志 | 根目录 257 个文件 19.85 MB(78 个 .ps1 探针、60 个 .py、56 个 .iss、20 个 .log、19 个发布载荷 json、9 个已并入 IMPL 的 md 分片、7 张 qa png) | 17 个文件(9 个按名保留的脚本 + `chm6.chm` + 7 张 `qa-notice-*.png`) |
+| ├ `img/` + `art/` | 37 文件 / 1,357,737 B(MDN 抓取素材、诊断脚本、badge png) | 全删(全仓 0 引用) |
+| 全部 `bin/obj` | 22 个目录 / 519,622,530 B(495.55 MiB) | 0 / 0 |
+| `assets/qa` | 190 png / 26,752,819 B(25.51 MiB) | 10 png / 2,166,795 B(2.07 MiB) |
+| `tools/` 探针工程 | 45 个被跟踪文件 | 0(`tools/` 下只剩 `qa/`) |
+| 陈旧 worktree `D:/ft-rel-113` | 537 MB(detached HEAD `a8dcf5b`) | 已 `git worktree remove --force` |
+| `.git` 对象库 | 404 文件 / 10.2 MB,`refs/original/` 残留 filter-branch 备份 | 34 文件 / 8.82 MiB,`size-pack: 8.75 MiB` |
+
+合计:仓库根 **约 3.13 GB / 约 7970 文件 → 262.60 MiB / 1317 文件**,释放约 2.87 GB;另有仓库外的 537 MB 陈旧 worktree 一并移除。
+
+**保留清单(逐项 EXISTS 校验)**
+
+`publish/` 下按名被引用的都留住了:`chmread.py` + `chm6/`(AGENTS.md 指定用它读 Inno 帮助)、`poll-manifest.sh` + `poll-manifest.ps1`、`shot-pages4.ps1`、`e2e-shot.ps1`、`inno-install.ps1`、`dir-args-test.ps1`、`dl-inno.sh`、`final-check.sh`、7 张 `qa-notice-*.png`、`CardProbe/`、`InstallProbe/`。`ft-folder/` **262 个文件**原样保留 —— 它是 `installer/FastTranslation.iss:81` 的 `Source: "..\\publish\\ft-folder\\*"` 输入,删了就打不出安装包。
+
+**验证**
+
+- 删净 `bin/obj` 后 `dotnet build FastTranslation.slnx -c Release`:**已成功生成 / 0 个警告 / 0 个错误**,10.59 秒 —— 证明 `obj` 里没有任何不可重建的状态。
+- `dotnet test`:4 个项目 **408 全绿**,失败 0 跳过 0(Core 138 / QwenMt 58 / Platform.Windows 87 / Server 125)。
+- `git fsck --no-progress` 退出码 0,无 corrupt / missing,只剩 11 个 dangling blob。
+- `git worktree list` 只剩 `D:/FTranslation  cb22e9c [master]`。
+- `git status --porcelain` 只剩 `.agents/design` 下他人进行中的 4 条,没有任何 `publish/` 残留。
+
+**残留风险**
+
+- `publish/` 仍有 240.32 MiB,主体是 `ft-folder`(262 文件)与 dist 的 1.2.2 两个包。这是打包流水线的输入与输出,**不是可回收空间**;真要再瘦只能改流水线成「按需 publish」。
+- 1.0.x–1.2.1 的二进制现在只存在于 GitHub Release。哪天误删 Release,这些版本的产物就找不回来了。
+- `assets/qa` 里被删的 180 张属于不存在于任何文档的调试截图,不可恢复;但 IMPL.md 引用的 10 张都在,证据链完整。
+- `bin/obj` 会在下次 `dotnet build` 时重新长出来(实测重建 18 个目录 / 97.25 MB),这是正常构建产物,不是垃圾。
+
