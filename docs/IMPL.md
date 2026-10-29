@@ -1286,3 +1286,50 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 **兼容性**:无接口与数据结构变化;`GatewayTranslationProvider` 只多一层 catch,原有五条回落规则(网关未登录 → 用自己 Key;网关成功 → 用网关;取消/超长 → 不重试;其余失败 → 用自己 Key 并附说明)全部保持,`Cancelled_DoesNotFallBack` 等旧用例未改仍绿。
 
 **残留风险**:①用户那次「翻译失败,请重试」在本机没能复现,现在只能保证**下次**一定留下 `coordinator error:` 行;真要定位还得等它再出现一次。②账号服务仍未部署到公网(默认 `AccountBaseUrl` 还是 `http://127.0.0.1:5199`),所以没架服务端时用量卡会显示「连不上账号服务器,请检查网络后重试。」——文案归文案,这不是网络问题,是还没有地址可连,v50 的域名槽没落地之前会一直这样。③`FT_UITEST=translate` 用的固定英文样例,中文选区的路径没被它覆盖。
+## v58 首译提速:网关探测、连接被拒不重试 ✅
+
+用户反馈「第一次启动之后的第一次翻译相较于后面几次很慢」。实测确实如此,而且慢得离谱:冷启动后第一次翻译约 **5 秒**,之后每次 **0.2 秒**。查下来是三个问题叠在一起,其中两个是真 bug。
+
+**一、`QwenMtProvider` 改写了别人给的 `HttpClient.Timeout`(真 bug,影响正常生产)**
+
+构造里原来无条件执行 `_http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds)`。网关链路每个请求都会 `new QwenMtProvider(..., _gatewayHttp)` 复用同一个 `HttpClient`,而 `HttpClient` **只要发过一次请求就拒绝再改 Timeout**,抛 `InvalidOperationException: This instance has already started one or more requests`。于是:
+
+- 第一次翻译:网关正常被问一次(超时设置成功);
+- 第二次起:`new QwenMtProvider` 直接抛异常 → 被 `GatewayTranslationProvider` 的 catch 当成「网关这次没结果」→ 静默回落到用户自己的 Key。
+
+也就是说**网关只会被问一次,之后永远被跳过**——在网关活着、额度在扣的生产环境下,这会让「先用网关、用完再回落自己的 Key」的整套策略失效,而且完全无声。修法:只给自己造的那个 client 设超时,别人给的一律不动(`_ownsHttp` 的语义顺便对齐)。
+
+**二、「积极拒绝」不该重试(真 bug,让每次翻译白等 2 秒)**
+
+`QwenMtProvider` 的异常重试对所有网络异常一视同仁:失败 → 等 400ms → 再来一次。而本机网关没起的时候,"目标计算机积极拒绝"重试一次结果一模一样。更要命的是这台机器上**连一个没人监听的本地端口要 2 秒才拿到 RST**(裸 `TcpClient.ConnectAsync` 也一样,和 .NET、和代理设置都无关,是系统层的过滤驱动/代理驱动拖的),两次就是 4.5 秒。
+
+修法:新增 `IsWorthRetrying` —— `ConnectionRefused / HostNotFound / NoData` 不重试,超时与连接重置照旧重试一次。三个新单测钉住:`ConnectionRefused_IsNotRetried`(只发 1 次)、`ConnectionReset_IsStillRetriedOnce`(发 2 次)、`InjectedHttpClient_KeepsItsOwnTimeout`(构造不再动 `Timeout`)。
+
+**三、连不上的网关要记住,别人不用陪着等**
+
+即使只重试一次,每次翻译仍要花 2 秒去问一个注定被拒的网关。加了两个机制:
+
+- 启动时 `ProbeGatewayAsync` 用一次 `TcpClient.ConnectAsync`(3 秒上限)探网关端口。**先乐观地标记「不可用 60 秒」再探**,探通就立刻清掉——不先占位的话,探测本身要等两秒,启动后头几秒里发生的第一次翻译仍会把这 2 秒吃进去。
+- 文本 / 图片 / OCR 三条网关链路都先看这个标记(`_gatewayDownUntil`),真发请求失败且错误码是 `Network` 时也写一次标记,60 秒后自动重试。429、额度用完、401 这些是网关**活着并且在回答**,不标记。
+
+**实测(同一台机器、本机网关未启动、用户自己的 Key 有效)**
+
+| 场景 | 改前 | 改后 |
+|---|---|---|
+| 冷启动后第 1 次翻译 | 5076 ms(其中网关两次连接 4510 ms) | **565 ms** |
+| 第 2 次 | 231 ms | 216 ms |
+| 第 3 次 | 216 ms | 293 ms |
+
+剩下的 565 − 216 ≈ 350 ms 是到 DashScope 的 TLS 握手 + 首次 JIT,属于正常的冷启动代价;没有为了这 350 ms 去加人工预热请求。
+
+**同时补的观测手段**:`FT_UITEST=translate` 钩子改成连续跑三次真实链路(三句不同文本,绕开 LRU 缓存),每次分别记录 `loading / call / provider / card` 四段耗时,这组数字是上面那张表的来源。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release --no-build` → **576 全绿**(Core 204 / Platform.Windows 87 / QwenMt **92** / Server 193),QwenMt 比 v57 多 3 个(见上)。
+- 版本号三处同步到 **1.3.4**。
+
+**改动文件**:`src/FastTranslation.Providers.QwenMt/QwenMtProvider.cs`(超时归属、`IsWorthRetrying`)、`src/FastTranslation.App/App.xaml.cs`(`CreateApiHttpClient` 统一三个 HttpClient、`ProbeGatewayAsync`、`_gatewayDownUntil`/`NoteGatewayFailure`、`FT_UITEST=translate` 三段计时)、`tests/FastTranslation.Providers.QwenMt.Tests/QwenMtProviderTests.cs`。
+
+**残留风险**:①`_gatewayDownUntil` 是进程内的,换机器/重启都要重新探一次;②网关恢复后最长要等 60 秒才会再被问到;③探测只连 TCP 不看 HTTP,端口通但服务 500 的情况仍按原逻辑走(会重试一次)。④那 350 ms 的 TLS 冷启动没有处理,如果以后要求「第一次也 <300 ms」再考虑预热连接。
+
