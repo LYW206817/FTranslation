@@ -229,6 +229,7 @@ public partial class App : Application, IResultPresenter
             () => _updates?.CheckAsync(interactive: true));
         _mainWindow.SettingsRequested += () => ShowPage(MainPageId.Settings);
         _mainWindow.ScreenshotRequested += RunScreenshotTranslation;
+        _mainWindow.ReviewRequested += ShowReview;
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
@@ -844,6 +845,7 @@ public partial class App : Application, IResultPresenter
     {
         var profile = _account?.Session?.Profile;
         _mainWindow?.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
+        _ = _mainWindow?.RefreshReviewBadgeAsync();
     }
 
     private async Task RestoreAccountAsync()
@@ -864,6 +866,25 @@ public partial class App : Application, IResultPresenter
     private void ShowNotes() => ShowPage(MainPageId.Word);
 
     private void ShowSettings() => ShowPage(MainPageId.Settings);
+
+    /// <summary>
+    /// 复习 is the one destination that is a window, not a page: it owns the keyboard for the whole
+    /// sitting (space / 1-4), which a page inside the shell could not take away from the sidebar.
+    /// Reuses the open window so double-clicking the sidebar cannot stack two queues.
+    /// </summary>
+    private void ShowReview()
+    {
+        if (Windows.OfType<ReviewWindow>().FirstOrDefault() is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        var window = new ReviewWindow(_account!);
+        window.NotesRequested += () => ShowPage(MainPageId.Word);
+        window.QueueSettled += () => _ = _mainWindow?.RefreshReviewBadgeAsync();
+        window.Show();
+    }
 
     /// <summary>Every in-app destination is a page of the single window now (design D13).</summary>
     private void ShowPage(MainPageId page)
