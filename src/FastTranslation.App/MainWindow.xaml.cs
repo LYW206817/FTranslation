@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
+using FastTranslation.Core.Account;
 using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
@@ -88,6 +89,40 @@ public partial class MainWindow : Window
             ? "账号:未登录"
             : "账号:" + email + (string.IsNullOrEmpty(planDisplay) ? string.Empty : "(" + planDisplay + ")");
         PlanLabel.Text = email is null || string.IsNullOrEmpty(planDisplay) ? string.Empty : planDisplay;
+    }
+
+    /// <summary>
+    /// Sidebar count of cards waiting today. Best effort: signed out or offline just means no badge,
+    /// and the review window says why on its own. Never awaited from <see cref="ShowPage"/>: a page
+    /// switch must not wait on the network.
+    /// </summary>
+    public async Task RefreshReviewBadgeAsync()
+    {
+        if (_account.Session is null)
+        {
+            SetBadge(ReviewBadge, ReviewBadgeText, 0);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        AccountApiResult<ReviewQueue> result;
+        try
+        {
+            result = await _account.ReviewQueueAsync(now - (now % 86_400L), 20, 50, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // a badge is decoration; an exception here must not escape onto the Dispatcher
+            return;
+        }
+
+        SetBadge(ReviewBadge, ReviewBadgeText, result.Succeeded ? result.Value!.Count : 0);
+    }
+
+    private static void SetBadge(Border badge, TextBlock text, int count)
+    {
+        badge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        text.Text = count > 99 ? "99+" : count.ToString();
     }
 
     /// <summary>
