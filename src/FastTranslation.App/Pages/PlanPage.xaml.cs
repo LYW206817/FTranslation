@@ -1,31 +1,44 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using FastTranslation.Core.Account;
-using FastTranslation.Platform.Windows;
 
-namespace FastTranslation.App;
+namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The account window: sign in / sign up when signed out, quota meters when signed in.
-/// One window, two panels — a second "usage window" would duplicate the same async states.
+/// The account page: sign in / sign up when signed out, quota meters and the subscription card
+/// when signed in. Same two panels as the old account window — a separate "usage page" would
+/// duplicate the same async states — but hosted in the shell instead of its own window.
+///
+/// <para>
+/// There is no payment channel in this build. The subscribe button records the choice and says so;
+/// it never pretends to open a checkout.
+/// </para>
 /// </summary>
-public partial class AccountWindow : Window
+public partial class PlanPage : UserControl
 {
     private readonly AccountCoordinator _account;
     private bool _registerMode;
     private bool _busy;
+    private bool _yearly = true;
     private bool _verificationRequired = true;
 
-    public AccountWindow(AccountCoordinator account)
+    public PlanPage(AccountCoordinator account)
     {
         InitializeComponent();
-        WindowChrome.Apply(this);
         _account = account;
         _account.Changed += OnAccountChanged;
-        Closed += (_, _) => _account.Changed -= OnAccountChanged;
+        Unloaded += (_, _) => _account.Changed -= OnAccountChanged;
         Render();
-        Loaded += async (_, _) => await LoadUsageAsync();
+    }
+
+    /// <summary>
+    /// Called by the host every time the page is shown: pages are cached, so <c>Loaded</c> fires
+    /// once and would leave stale quota meters after a long session.
+    /// </summary>
+    public void Reload()
+    {
+        Render();
+        if (_account.Session is not null) _ = LoadUsageAsync();
     }
 
     private void OnAccountChanged() => Dispatcher.BeginInvoke(Render);
@@ -35,13 +48,23 @@ public partial class AccountWindow : Window
         var session = _account.Session;
         SignedOutPanel.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
         SignedInPanel.Visibility = session is null ? Visibility.Collapsed : Visibility.Visible;
-        Headline.Text = session is null ? (_registerMode ? "注册账号" : "登录账号") : "我的账号";
         if (session is null) return;
 
         AccountEmail.Text = session.Profile.Email;
         PlanText.Text = session.Profile.PlanDisplay + " · " + session.Profile.QuotaMonthly.ToString("N0") + " 字符/月"
             + (session.Profile.QuotaDaily is { } daily ? ",每日 " + daily.ToString("N0") : string.Empty)
             + (session.Profile.ExpiryLine is { } expiry ? " · " + expiry : string.Empty);
+
+        // a paid plan makes the pitch redundant: the card becomes "what you already have"
+        var paid = !string.Equals(session.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
+        SubscribeButton.Content = paid ? "续订" : "订阅";
+        // the same card serves both audiences: a subscriber should not read "subscribe to unlock"
+        // for a feature they already paid for
+        SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与复习";
+        if (paid && SubscribeHint.Text.StartsWith("付款渠道", StringComparison.Ordinal))
+        {
+            SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay + ",续订会顺延到期时间。付款渠道尚未接通。";
+        }
     }
 
     private void Switch_Click(object sender, RoutedEventArgs e)
@@ -201,7 +224,33 @@ public partial class AccountWindow : Window
         SetError(null);
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Year_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(true);
+
+    private void Month_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(false);
+
+    /// <summary>Two cards, one selected: the border and fill move, nothing else changes.</summary>
+    private void SelectPlan(bool yearly)
+    {
+        _yearly = yearly;
+        Select(YearCard, yearly);
+        Select(MonthCard, !yearly);
+        // re-picking a card clears whatever the previous "recorded" message said
+        SubscribeHint.Text = "付款渠道尚未接通,当前版本点击后仅记录意向。";
+    }
+
+    private void Select(Border card, bool selected)
+    {
+        card.BorderThickness = new Thickness(selected ? 1.5 : 1);
+        card.BorderBrush = (System.Windows.Media.Brush)FindResource(
+            selected ? "BrandBrush" : "HairBrush");
+        card.Background = selected
+            ? (System.Windows.Media.Brush)FindResource("BrandFillBrush")
+            : System.Windows.Media.Brushes.Transparent;
+    }
+
+    private void Subscribe_Click(object sender, RoutedEventArgs e) =>
+        SubscribeHint.Text = "已记录你的选择(" + (_yearly ? "年付" : "月付")
+            + ")。付款渠道上线后会通知你。";
 
     private void SetBusy(bool busy)
     {
@@ -223,15 +272,4 @@ public partial class AccountWindow : Window
     private void Input_Changed(object sender, TextChangedEventArgs e) => SetError(null);
 
     private void Password_Changed(object sender, RoutedEventArgs e) => SetError(null);
-
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            Close();
-            e.Handled = true;
-            return;
-        }
-        base.OnKeyDown(e);
-    }
 }

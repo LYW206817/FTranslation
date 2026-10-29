@@ -1,0 +1,220 @@
+<UserControl x:Class="FastTranslation.App.Pages.PlanPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource WindowBgBrush}"
+             FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
+  <UserControl.Resources>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="14,12,14,14"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+
+    <Style x:Key="FieldLabelTight" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+    </Style>
+
+    <Style x:Key="MeterBar" TargetType="ProgressBar">
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Minimum" Value="0"/>
+      <Setter Property="Maximum" Value="1"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Border Background="{TemplateBinding Background}" CornerRadius="3" ClipToBounds="True">
+              <Border x:Name="PART_Track" Background="Transparent">
+                <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}"
+                        CornerRadius="3" HorizontalAlignment="Left"/>
+              </Border>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                Focusable="False">
+    <StackPanel Margin="24,18,24,18" MaxWidth="720" HorizontalAlignment="Left">
+
+      <!-- the sidebar already carries the product name, so the page title is just the title -->
+      <TextBlock x:Name="Headline" Text="我的账号" FontSize="17" FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+
+      <!-- ================= signed out ================= -->
+      <StackPanel x:Name="SignedOutPanel">
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock x:Name="EmailLabel" Text="邮箱" Style="{StaticResource FieldLabelTight}"/>
+            <TextBox x:Name="EmailBox" AutomationProperties.Name="邮箱"
+                     TextChanged="Input_Changed"/>
+            <TextBlock Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+            <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="密码"
+                         PasswordChanged="Password_Changed"/>
+            <TextBlock x:Name="PasswordHint" Style="{StaticResource Hint}"
+                       Text="至少 8 位。忘记密码暂时需要联系我们重置。"/>
+
+            <StackPanel x:Name="CodeRow" Visibility="Collapsed">
+              <TextBlock Text="邮箱验证码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="CodeBox" AutomationProperties.Name="验证码" MaxLength="6"/>
+                <Button x:Name="SendCodeButton" Grid.Column="1" Content="获取验证码" Margin="8,0,0,0"
+                        Style="{StaticResource SmallButton}" Click="SendCode_Click"/>
+              </Grid>
+              <TextBlock x:Name="CodeHint" Style="{StaticResource Hint}"
+                         Text="验证码 10 分钟内有效,会发到上面的邮箱。"/>
+            </StackPanel>
+
+            <TextBlock x:Name="ErrorText" Style="{StaticResource Hint}"
+                       Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+              <Button x:Name="SwitchButton" Content="去注册" Click="Switch_Click"/>
+              <Button x:Name="SubmitButton" Content="登录" MinWidth="96" Margin="0"
+                      Style="{StaticResource PrimaryButton}" Click="Submit_Click"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock x:Name="ModeHint" Style="{StaticResource Hint}" Margin="2,0,2,0"
+                   Text="登录后就能看到自己的免费额度用量。"/>
+      </StackPanel>
+
+      <!-- ================= signed in ================= -->
+      <StackPanel x:Name="SignedInPanel" Visibility="Collapsed">
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock x:Name="AccountEmail" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+            <TextBlock x:Name="PlanText" Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <!-- subscription: shown while signed in because the free plan is exactly when you buy.
+             There is no payment channel in this build, so the button records intent and says so. -->
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock x:Name="SubscribeTitle" Text="订阅后解锁单词本与复习" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,10"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <!-- yearly is the default: lower unit price, and people who land here want a year -->
+              <Border x:Name="YearCard" Grid.Column="0" BorderThickness="1.5" CornerRadius="8"
+                      BorderBrush="{DynamicResource BrandBrush}"
+                      Background="{DynamicResource BrandFillBrush}"
+                      Padding="12,10" Cursor="Hand" MouseLeftButtonUp="Year_Click">
+                <StackPanel>
+                  <TextBlock Text="年付" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"/>
+                  <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <TextBlock Text="¥144" FontSize="19" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="/年" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,2"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                  <TextBlock Text="约 ¥12/月 · 省 33%" FontSize="11" Margin="0,2,0,0"
+                             Foreground="{DynamicResource BrandBrush}"/>
+                </StackPanel>
+              </Border>
+
+              <Border x:Name="MonthCard" Grid.Column="2" BorderThickness="1" CornerRadius="8"
+                      BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
+                      Padding="12,10" Cursor="Hand" MouseLeftButtonUp="Month_Click">
+                <StackPanel>
+                  <TextBlock Text="月付" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"/>
+                  <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <TextBlock Text="¥18" FontSize="19" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,2"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                  <TextBlock Text="随时取消" FontSize="11" Margin="0,2,0,0"
+                             Foreground="{DynamicResource TextMutedBrush}"/>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <Button x:Name="SubscribeButton" Content="订阅" Height="34" Margin="0,12,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="Subscribe_Click"/>
+            <TextBlock x:Name="SubscribeHint" Style="{StaticResource Hint}"
+                       Text="付款渠道尚未接通,当前版本点击后仅记录意向。"/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="本月用量" Style="{StaticResource FieldLabelTight}"/>
+            <TextBlock x:Name="MonthlyText" FontSize="13"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
+
+            <StackPanel x:Name="DailyRow" Margin="0,14,0,0">
+              <TextBlock Text="今日用量" Style="{StaticResource FieldLabelTight}"/>
+              <TextBlock x:Name="DailyText" FontSize="13"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>
+            </StackPanel>
+
+            <TextBlock x:Name="UsageError" Style="{StaticResource Hint}"
+                       Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="激活码" Style="{StaticResource FieldLabelTight}"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBox x:Name="RedeemBox" AutomationProperties.Name="激活码" MaxLength="24"
+                       TextChanged="Input_Changed"/>
+              <Button x:Name="RedeemButton" Grid.Column="1" Content="兑换" Margin="8,0,0,0"
+                      Style="{StaticResource SmallButton}" Click="Redeem_Click"/>
+            </Grid>
+            <TextBlock x:Name="RedeemHint" Style="{StaticResource Hint}"
+                       Text="买到激活码后填在这里,兑换后套餐立刻生效。"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="RefreshButton" Content="刷新用量" Click="Refresh_Click"/>
+          <Button x:Name="SignOutButton" Content="退出登录" Margin="0" Click="SignOut_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
