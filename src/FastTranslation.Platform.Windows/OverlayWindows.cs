@@ -12,12 +12,12 @@ using FastTranslation.Core;
 
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>Design tokens shared by the overlay surfaces (matches App.xaml palette).</summary>
+/// <summary>浮层各界面共用的设计 token(与 App.xaml 的配色一致)。</summary>
 internal static class FtTheme
 {
-    // The overlay surfaces are built in code, so they cannot use the XAML brushes in App.xaml.
-    // They read the same hex values from ThemePalette instead (one palette for the whole app),
-    // and resolve them lazily so a palette picked at startup applies to every surface.
+    // 浮层界面是用代码建的，所以用不了 App.xaml 里的 XAML 画刷。
+    // 改为从 ThemePalette 读同一组十六进制色值(整个应用只有一套配色)，
+    // 并按需延迟解析，这样启动时选定的配色会应用到每个界面。
     private static readonly Dictionary<string, SolidColorBrush> Cache = new(StringComparer.Ordinal);
 
     internal static SolidColorBrush Brand => Freeze(ThemePalette.Active.Brand);
@@ -65,23 +65,23 @@ internal static class FtTheme
         return new ControlTemplate(typeof(Button)) { VisualTree = bd };
     }
 
-    /// <summary>Quiet pill button: transparent, fills on hover. Used inside the toolbar.</summary>
+    /// <summary>安静的胶囊按钮：透明，悬停时填色。用在工具条内部。</summary>
     internal static Style PillGhost() => TemplateStyle(
         bg: null, fg: TextPrimary, border: null, corner: new CornerRadius(6),
         hoverBg: Hover, hoverBorder: null, pressedBg: BrandFill);
 
-    /// <summary>Standard secondary button (white, hairline-strong border).</summary>
+    /// <summary>标准次要按钮(白底，强细线边框)。</summary>
     internal static Style Ghost() => TemplateStyle(
         bg: Surface, fg: TextPrimary, border: BorderStrong, corner: new CornerRadius(6),
         hoverBg: Hover, hoverBorder: Accent, pressedBg: BrandFill);
 
-    /// <summary>Primary brand button.</summary>
+    /// <summary>品牌主按钮。</summary>
     internal static Style Primary() => TemplateStyle(
         bg: Brand, fg: Brushes.White, border: Brand, corner: new CornerRadius(6),
         hoverBg: BrandHover, hoverBorder: null, pressedBg: BrandPressed,
         disabledBg: Freeze("#A9C0F2"), disabledFg: Freeze("#E9EEFB"));
 
-    /// <summary>Circular quiet button (card ✕).</summary>
+    /// <summary>圆形安静按钮(卡片的 ✕)。</summary>
     internal static Style RoundGhost() => TemplateStyle(
         bg: null, fg: TextSecondary, border: null, corner: new CornerRadius(12),
         hoverBg: Hover, hoverBorder: null, pressedBg: BrandFill,
@@ -98,8 +98,8 @@ internal static class FtTheme
         s.Setters.Add(new Setter(Button.CursorProperty, Cursors.Hand));
         s.Setters.Add(new Setter(Button.FocusableProperty, false));
         s.Setters.Add(new Setter(Button.TemplateProperty, ButtonTemplate(corner)));
-        // ALWAYS set Background (transparent counts): omitting it lets the Fluent theme's
-        // grey Button background bleed through TemplateBinding (v18 "grey boxes" bug)
+        // 必须总是设置 Background(透明也算)：不设的话，Fluent 主题的
+        // 灰色按钮底会透过 TemplateBinding 渗出来(v18 的「灰块」bug)
         s.Setters.Add(new Setter(Button.BackgroundProperty, bg ?? Brushes.Transparent));
         if (border is not null)
         {
@@ -132,7 +132,7 @@ internal static class FtTheme
     }
 
 
-    /// <summary>16-unit linear icon geometry (Lucide style, 1.5px round strokes).</summary>
+    /// <summary>16 单位线性图标几何(Lucide 风格，1.5px 圆头描边)。</summary>
     internal static class Icons
     {
         internal const string Copy =
@@ -166,8 +166,8 @@ internal static class FtTheme
 }
 
 /// <summary>
-/// Stage-1 selection toolbar (Doubao-style): shown on selection, NO auto translate.
-/// User explicitly picks 复制 or 翻译. Auto-hides on timeout / outside click / new selection.
+/// 第一阶段选区工具条(豆包风格)：选中即显示，绝不自动翻译。
+/// 由用户显式点「复制」或「翻译」。超时 / 点击外部 / 新选区时自动隐藏。
 /// </summary>
 public sealed class SelectionToolbar : IDisposable
 {
@@ -232,7 +232,7 @@ public sealed class SelectionToolbar : IDisposable
         copy.Click += (_, _) => Raise(CopyClicked);
         translate.Click += (_, _) => Raise(TranslateClicked);
         screenshot.Click += (_, _) => Raise(ScreenshotClicked);
-        // icon+text content no longer auto-exposes a name — keep the UIA contract (E2E + scripts)
+        // 图标+文字的内容不再自动暴露可访问名称——要保住 UIA 契约(E2E 与脚本都依赖)
         global::System.Windows.Automation.AutomationProperties.SetName(copy, "复制");
         global::System.Windows.Automation.AutomationProperties.SetName(translate, "翻译");
         global::System.Windows.Automation.AutomationProperties.SetName(screenshot, "截图翻译");
@@ -278,12 +278,12 @@ public sealed class SelectionToolbar : IDisposable
             NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE,
                 ex | NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_TOPMOST);
             HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
-            _dpi = VisualTreeHelper.GetDpi(_window); // cache at live time (M0: minimized windows report 96)
+            _dpi = VisualTreeHelper.GetDpi(_window); // 在活动状态下缓存(M0：最小化的窗口会报告 96)
         };
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
         _hideTimer.Tick += (_, _) =>
         {
-            if (IsMouseOverPhysical()) { _hideTimer.Stop(); _hideTimer.Start(); return; } // hover keeps it alive
+            if (IsMouseOverPhysical()) { _hideTimer.Stop(); _hideTimer.Start(); return; } // 悬停时保活
             _hideTimer.Stop();
             Hide();
         };
@@ -306,8 +306,8 @@ public sealed class SelectionToolbar : IDisposable
     }
 
     /// <summary>
-    /// Position near the selection: below its last line, above when no room (drag-upwards no
-    /// longer covers the text); clamped into the monitor work area; hover pauses auto-hide.
+    /// 贴着选区定位：放在它最后一行的下方，没空间时放到上方(向上拖选
+    /// 就不会再遮住文本)；再钳制进显示器工作区；悬停会暂停自动隐藏。
     /// </summary>
     public void ShowAt(CapturedSelection captured)
     {
@@ -322,7 +322,7 @@ public sealed class SelectionToolbar : IDisposable
         {
             leftPx = Math.Min(r.X + r.Width - wPx, WorkRight() - wPx);
             topPx = r.Y + r.Height + 6;
-            if (topPx + hPx > WorkBottom()) topPx = r.Y - hPx - 6; // flip above
+            if (topPx + hPx > WorkBottom()) topPx = r.Y - hPx - 6; // 翻到上方
         }
         else
         {
@@ -361,7 +361,7 @@ public sealed class SelectionToolbar : IDisposable
         catch { return false; }
     }
 
-    /// <summary>Physical-pixel hit test used for outside-click dismissal.</summary>
+    /// <summary>用于点击外部取消的物理像素命中测试。</summary>
     public bool ContainsPhysical(ScreenPoint p)
     {
         if (!_window.IsVisible) return false;
@@ -372,7 +372,7 @@ public sealed class SelectionToolbar : IDisposable
         return p.X >= l && p.X <= r && p.Y >= t && p.Y <= b;
     }
 
-    /// <summary>Create the HWND now (styles + DPI cache applied) so the first real show is instant.</summary>
+    /// <summary>现在就创建 HWND(应用样式 + 缓存 DPI)，让第一次真正显示瞬间完成。</summary>
     public void Prewarm() => _ = new WindowInteropHelper(_window).EnsureHandle();
 
     public void Dispose()
@@ -383,8 +383,8 @@ public sealed class SelectionToolbar : IDisposable
 }
 
 /// <summary>
-/// Stage-2 result card: loading state while translating, then the translation with
-/// 复制 / 替换原文 / 插入译文 actions and an explicit ✕ close. Outside click closes.
+/// 第二阶段结果卡：翻译中显示加载状态，结束后显示译文和
+/// 复制 / 替换原文 / 插入译文 操作以及一个显式的 ✕ 关闭。点击外部关闭。
 /// </summary>
 public sealed class ResultCardWindow : IDisposable
 {
@@ -461,8 +461,8 @@ public sealed class ResultCardWindow : IDisposable
         _replaceButton.Click += (_, _) => ReplaceRequested?.Invoke();
         _insertButton = ActionButton("插入译文", FtTheme.Ghost());
         _insertButton.Click += (_, _) => InsertRequested?.Invoke();
-        // 保存 is the paid gate (design §4.4): it is always visible so the free tier can be
-        // told what it would get, and the handler decides whether to save or to explain.
+        // 保存 是付费闸门(设计 §4.4)：它始终可见，好让免费层
+        // 知道会得到什么，由处理器决定是保存还是解释。
         _saveButton = ActionButton("保存", FtTheme.Ghost());
         _saveButton.Click += (_, _) => SaveRequested?.Invoke();
         _closeButton = new Button
@@ -476,14 +476,14 @@ public sealed class ResultCardWindow : IDisposable
         };
         _closeButton.Click += (_, _) => { Hide(); Dismissed?.Invoke(); };
 
-        // header: source snippet + close
+        // 头部：源片段 + 关闭
         var header = _header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(_closeButton, Dock.Right);
         _closeButton.Margin = new Thickness(10, -4, -4, 0);
         header.Children.Add(_closeButton);
         header.Children.Add(_sourceBlock);
 
-        // body: spinner + translation
+        // 主体：spinner + 译文
         var body = new Grid();
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -492,7 +492,7 @@ public sealed class ResultCardWindow : IDisposable
         body.Children.Add(_targetBlock);
         Grid.SetColumn(_targetBlock, 1);
 
-        // footer: status + actions
+        // 底部：状态 + 操作
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         actions.Children.Add(_saveButton);
         actions.Children.Add(_insertButton);
@@ -542,7 +542,7 @@ public sealed class ResultCardWindow : IDisposable
             _dpi = VisualTreeHelper.GetDpi(_window);
         };
         _noticeTimer.Tick += (_, _) => { _noticeTimer.Stop(); Hide(); };
-        // a notice must also restore the buttons for the next real card
+        // 提示也必须为下一张真实卡片恢复按钮
         _noticeTimer.Tick += (_, _) =>
         {
             _copyButton.IsEnabled = true;
@@ -599,7 +599,7 @@ public sealed class ResultCardWindow : IDisposable
     {
         StopSpinner();
         RestoreFullChrome();
-        // a failed translation must not offer 复制 for the red error text
+        // 翻译失败时，绝不能为红色错误文字提供「复制」
         _copyButton.IsEnabled = result.Succeeded;
         _saveButton.Content = "保存";
         _saveButton.IsEnabled = true;
@@ -622,14 +622,14 @@ public sealed class ResultCardWindow : IDisposable
             _replaceButton.Visibility = Visibility.Collapsed;
             _insertButton.Visibility = Visibility.Collapsed;
         }
-        // keep current position when transitioning loading → result
+        // 从加载态切到结果态时保持当前位置
         if (!_window.IsVisible) ShowAt(selection.Anchor, selection.Rects.Count > 0 ? selection.Rects[0] : null);
     }
 
     public void ShowAt(ScreenPoint anchor, ScreenRect? selectionRect)
     {
-        // clipboard-fallback captures carry a default anchor (no rects) — without this the
-        // card appeared at the top-left corner of the screen (bugbot P1)
+        // 剪贴板兜底的捕获带的是默认锚点(没有矩形)——不处理的话，
+        // 卡片会出现在屏幕左上角(bugbot P1)
         if (anchor.X == 0 && anchor.Y == 0 && selectionRect is null)
         {
             anchor = WindowsSelectionCapture.CurrentCursorPoint();
@@ -672,8 +672,8 @@ public sealed class ResultCardWindow : IDisposable
         return p.X >= l && p.X <= r && p.Y >= t && p.Y <= b;
     }
 
-    /// <summary>Non-modal transient notice replacing every MessageBox in the tray flow —
-    /// a modal dialog on the single UI thread freezes toolbar/card events app-wide.</summary>
+    /// <summary>非模态的短暂提示，取代托盘流程里所有 MessageBox——
+    /// 单 UI 线程上的模态对话框会冻结整个应用的工具栏/卡片事件。</summary>
     public void ShowNotice(string message)
     {
         StopSpinner();
@@ -713,7 +713,7 @@ public sealed class ResultCardWindow : IDisposable
         _footer.Margin = new Thickness(0, 14, 0, 0);
     }
 
-    /// <summary>Flips 保存 to a dead "已保存" so a second click cannot look like it did something.</summary>
+    /// <summary>把「保存」翻成不可点的「已保存」，第二次点击就不可能看起来像做了什么。</summary>
     public void MarkSaved()
     {
         _saveButton.Content = "已保存";
@@ -732,7 +732,7 @@ public sealed class ResultCardWindow : IDisposable
     private static string TrimForDisplay(string text, int max) =>
         text.Length <= max ? text : text[..max] + "…";
 
-    /// <summary>Create the HWND now (styles + DPI cache applied) so the first real show is instant.</summary>
+    /// <summary>提前创建 HWND(样式与 DPI 缓存已应用)，让首次真正显示时立即出现。</summary>
     public void Prewarm() => _ = new WindowInteropHelper(_window).EnsureHandle();
 
     public void Dispose() => _window.Close();

@@ -6,8 +6,8 @@ using FastTranslation.Core;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// Glues the LL-hook stream to the coordinator: gate decisions run on the UI thread
-/// (M0 D2), UIA first, clipboard fallback second. Implements Core's capture surface.
+/// 把 LL 钩子事件流接到协调器上：门控决策都跑在 UI 线程
+/// (M0 D2)，先试 UIA，失败再回退到剪贴板。实现 Core 的取词接口。
 /// </summary>
 public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
 {
@@ -23,12 +23,12 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
 
     public event Action<TriggerEvent>? TriggerRaised;
 
-    /// <summary>Raised for every left-button-down (physical px) — used for outside-click dismissal.</summary>
+    /// <summary>每次鼠标左键按下(物理像素)都会触发——用于点击外部关闭。</summary>
     public event Action<ScreenPoint>? RawMouseDown;
 
     /// <summary>
-    /// Raised on selection mouse-up with the selection captured right away (fresh = highest
-    /// success rate; M0). Selection is empty when nothing readable — UI still shows the toolbar.
+    /// 选区鼠标抬起时触发，并立刻携带当场捕获的选区(越新成功率越高，
+    /// 见 M0)。没有可读文本时选区为空——界面仍会显示工具条。
     /// </summary>
     public event Action<CapturedSelection>? SelectionToolbarRequested;
 
@@ -56,7 +56,7 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
 
     private void OnGesture(RawMouseSnapshot snapshot)
     {
-        // hook thread → marshal; decisions below need UIA + cursor, off the hook budget
+        // 钩子线程 → 派发；下面的决策需要 UIA + 光标，不能耗在钩子预算里
         _dispatcher.BeginInvoke(() =>
         {
             try { HandleGesture(snapshot); }
@@ -68,12 +68,12 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
     {
         Diag($"gesture up={s.UpPoint.X},{s.UpPoint.Y} clicks={s.ClickCount} ibUp={s.IBeamAtUp} ibDown={s.IBeamAtDown}");
         var drag = _monitor.IsDrag(s);
-        // M0 D2 gate: cheap cursor pass OR (I-beam at down + drag) OR semantic UIA check.
+        // M0 D2 门控：便宜的「光标形状」检查 OR(按下时是 I-beam + 发生了拖动)OR 语义化 UIA 检查。
         var cursorPass = s.IBeamAtUp || (s.IBeamAtDown && drag);
         var (kind, order) = Classify(s, drag);
         var processName = GetProcessName(s.SourceWindowHandle);
-        // excluded apps must not even reach the toolbar — rejecting here also skips the
-        // expensive UIA gate, and the coordinator's own check stays as the second line
+        // 被排除的应用连工具条都不该出现——在这里拒绝还能跳过
+        // 昂贵的 UIA 门控，协调器自己的检查仍作为第二道防线
         if (_isExcluded(processName))
         {
             Diag($"gate reject kind={kind} proc={processName} reason=excluded");
@@ -88,9 +88,9 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         var trigger = new TriggerEvent(
             kind, s.UpPoint, s.SourceWindowHandle, processName, Environment.TickCount64);
 
-        // UX direction (user, 2026-10-25): selection NEVER auto-translates. Capture immediately
-        // in the background while the selection is fresh, cache it, show the stage-1 toolbar;
-        // the explicit 翻译 click (or hotkey) enters the translate pipeline with the cached text.
+        // UX 方向(用户，2026-10-25)：选中文本绝不自动翻译。趁着选区还新鲜，
+        // 先把选区在后台立刻捕获、缓存下来，并显示第一阶段工具条；
+        // 用户显式点击「翻译」(或按热键)才带着缓存文本进入翻译流水线。
         if (kind != TriggerKind.Hotkey && kind != TriggerKind.PillClick)
         {
             var point = s.UpPoint;
@@ -122,15 +122,15 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         2 => (TriggerKind.DoubleClick, 0),
         >= 3 => (TriggerKind.TripleClick, 0),
         _ when drag => (TriggerKind.DragSelect, 0),
-        _ => (TriggerKind.Hotkey, -1), // plain single click without drag: no capture
+        _ => (TriggerKind.Hotkey, -1), // 不带拖动的普通单击：不取词
     };
 
     private static readonly bool DebugTrace = Environment.GetEnvironmentVariable("FT_DEBUG") == "1";
 
-    /// <summary>For expensive log-string interpolation outside this class.</summary>
+    /// <summary>供本类之外的昂贵日志字符串插值使用。</summary>
     public static bool DebugEnabled => DebugTrace;
 
-    /// <summary>Current cursor position for anchor-less captures (fallback errors etc.).</summary>
+    /// <summary>无锚点捕获(兜底失败等)时的当前光标位置。</summary>
     public static ScreenPoint CurrentCursorPoint()
     {
         try
@@ -142,14 +142,14 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         return default;
     }
 
-    /// <summary>Bring a source window (normalized to its GA_ROOT) to the foreground —
-    /// used by the clipboard fallback when the user switched windows after selecting.</summary>
+    /// <summary>把源窗口(归一到它的 GA_ROOT)带到前台——
+    /// 用户选完文本又切换了窗口时，剪贴板兜底会用到。</summary>
     public static void SwitchSourceToForeground(long windowHandle)
     {
         try
         {
             if (windowHandle == 0) return;
-            var root = NativeMethods.GetAncestor((IntPtr)windowHandle, 2 /* GA_ROOT */);
+            var root = NativeMethods.GetAncestor((IntPtr)windowHandle, 2 /* GA_ROOT：顶层根窗口 */);
             var target = root != IntPtr.Zero ? root : (IntPtr)windowHandle;
             if (NativeMethods.GetForegroundWindow() == target) return;
             NativeMethods.SwitchToThisWindow(target, false);
@@ -178,15 +178,15 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
     private CapturedSelection ReadSelectionAt(ScreenPoint point, string? sourceProcessName = null, long fallbackWindowHandle = 0)
     {
         var uia = _reader.ReadAt(point, sourceProcessName);
-        // On failure keep the source window: pages whose Chromium TextPattern returns empty
-        // (Qwen AI etc.) must still reach the click-time Ctrl+C fallback (v21)
+        // 失败时保留源窗口：Chromium 的 TextPattern 返回空文本的页面
+        // (Qwen AI 等)仍然要能走到点击时的 Ctrl+C 兜底(v21)
         if (uia is null || string.IsNullOrEmpty(uia.Text))
             return CapturedSelection.Failed(point, sourceProcessName ?? string.Empty, fallbackWindowHandle);
         var rects = uia.Rects
             .Where(r => !r.IsEmpty && r.Width > 0 && r.Height > 0)
             .Select(r => new ScreenRect((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height))
             .ToList();
-        // windowless elements (Chromium) carry no hwnd — the trigger's GA_ROOT fills in
+        // 无窗口元素(Chromium)没有 hwnd——由触发源的 GA_ROOT 补上
         var sourceWindow = uia.SourceWindowHandle != 0 ? uia.SourceWindowHandle : fallbackWindowHandle;
         return new CapturedSelection(
             uia.Text, rects, point, CaptureMethod.UiAutomation,
@@ -216,8 +216,8 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
     {
         if (!_fallbackEnabled())
             return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
-        // caller (UI thread): snapshot the FULL clipboard (all formats — text-only backup
-        // destroyed image/file content, bugbot P1), then send Ctrl+C synchronously
+        // 调用方(UI 线程)：先完整快照剪贴板(所有格式——只备份文本
+        // 会毁掉图片/文件内容，bugbot P1)，然后同步发出 Ctrl+C
         var backup = ClipboardService.SnapshotClipboard();
         var beforeSeq = ClipboardService.GetSequence();
         if (!ClipboardService.SendCtrlC())
@@ -225,23 +225,23 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
             ClipboardService.RestoreClipboard(backup);
             return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
         }
-        // poll on a worker thread via Win32 (no STA needed) — the old Thread.Sleep loop
-        // ran on the UI thread and froze it for up to 1.5 s per click (bugbot P1)
+        // 用 Win32 在工作线程上轮询(不需要 STA)——以前的 Thread.Sleep 循环
+        // 跑在 UI 线程上，每次点击都把它冻住最多 1.5 秒(bugbot P1)
         var text = await Task.Run(() => ClipboardService.PollNewTextWin32(1500, beforeSeq), cancellationToken);
         ClipboardService.RestoreClipboard(backup);
         return string.IsNullOrEmpty(text)
             ? CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle)
             : new CapturedSelection(
-                // Ctrl+C worked => the source is an editor; paste-based replace/insert is valid
-                // there (VSCode/Monaco exposes no UIA selection, validation degrades to fg-only).
+                // Ctrl+C 成功 => 源是一个编辑器；在那里用粘贴做替换/插入是可行的
+                // (VSCode/Monaco 不暴露 UIA 选区，校验降级为仅前台)。
                 text!, Array.Empty<ScreenRect>(), anchor, CaptureMethod.ClipboardFallback,
                 GetProcessName(sourceWindowHandle), sourceWindowHandle, null, IsWritable: true);
     }
 
-    /// <summary>The selection captured at the last mouse-up (empty until then).</summary>
+    /// <summary>最近一次鼠标抬起时捕获的选区(在此之前为空)。</summary>
     public CapturedSelection CachedSelection => Volatile.Read(ref _cached);
 
-    /// <summary>Static helper so the clipboard fallback can reuse the reader (write-back validation).</summary>
+    /// <summary>静态辅助方法，让剪贴板兜底能复用这个读取器(写回校验)。</summary>
     public UiaSelectionReader Reader => _reader;
 
     public void Dispose()

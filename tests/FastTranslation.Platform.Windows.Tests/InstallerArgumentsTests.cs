@@ -15,8 +15,8 @@ public class InstallerArgumentsTests
     [Fact]
     public void BuildInstallerArguments_RepeatsTheInstallFolder()
     {
-        // the wizard's folder page never shows in silent mode, so /DIR is the only way the
-        // profile keeps the location the user picked
+        // 静默模式下向导的目录页从不显示,所以 /DIR 是
+        // profile 保留用户所选位置的唯一途径
         var arguments = UpdateInstaller.BuildInstallerArguments(4321, @"D:\FT-Custom-Test");
         Assert.Equal(
             "/SILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEPID=4321 /DIR=D:\\FT-Custom-Test",

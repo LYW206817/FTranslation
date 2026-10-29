@@ -4,8 +4,8 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>Exercises the real SQLite schema against a throwaway file — no in-memory fakes, because
-/// the quota upserts and the device cap are exactly the parts a fake would hide.</summary>
+/// <summary>针对一次性文件演练真实 SQLite schema——不用内存里的假实现,因为
+/// 额度 upsert 与设备上限恰恰是假实现会掩盖的部分。</summary>
 public sealed class AccountStoreTests : IDisposable
 {
     private readonly string _databasePath;
@@ -31,7 +31,7 @@ public sealed class AccountStoreTests : IDisposable
         }
         catch (IOException)
         {
-            // Best effort: a stray temp file must never fail a test run.
+            // 尽力而为:残留的临时文件绝不能导致测试运行失败。
         }
     }
 

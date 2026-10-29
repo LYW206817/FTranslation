@@ -5,7 +5,7 @@
              Background="{DynamicResource WindowBgBrush}"
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <UserControl.Resources>
-    <!-- section heading above a card: small, quiet, and the only thing separating groups -->
+    <!-- 卡片上方的分区标题：小、安静，也是分组之间唯一的分隔 -->
     <Style x:Key="GroupLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -22,7 +22,7 @@
       <Setter Property="Margin" Value="0,0,0,14"/>
     </Style>
 
-    <!-- label directly above its input inside a card -->
+    <!-- 卡片内紧贴其输入框上方的标签 -->
     <Style x:Key="FieldLabelTight" TargetType="TextBlock">
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -36,7 +36,7 @@
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
-    <!-- compact secondary action used inside the exclusion card -->
+    <!-- 排除列表卡里用的紧凑次要操作 -->
     <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Padding" Value="10,4"/>
       <Setter Property="FontSize" Value="12"/>
@@ -75,13 +75,13 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- page title only: the page has no border of its own inside the shell -->
+    <!-- 只有页面标题：页面在外壳内部没有自己的边框 -->
     <TextBlock Grid.Row="0" Text="设置" FontSize="17" FontWeight="SemiBold"
                Foreground="{DynamicResource TextPrimaryBrush}" Margin="24,18,24,12"/>
 
-    <!-- ===== scrolling body: two columns of one card per concern. Grouping is by topic, not by
-         height, so the left column is "how it translates for me" and the right is "where it
-         talks to" — the two questions people come here with. ===== -->
+    <!-- ===== 可滚动主体：两列，每个关注点一张卡。分组按主题而不是按高度，
+         所以左列是「它怎么为我翻译」，右列是「它在跟谁通信」——正是人们来这里
+         带着的两个问题。 ===== -->
     <ScrollViewer x:Name="Body" Grid.Row="1"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   Focusable="False" PreviewMouseWheel="Body_PreviewMouseWheel">
@@ -245,9 +245,8 @@
       </Grid>
     </ScrollViewer>
 
-    <!-- ===== fixed footer: 保存/取消 never scroll away, and the hairline marks the boundary.
-         The hint on the left states the one thing people assume wrongly about a settings page
-         attached to an account. ===== -->
+    <!-- ===== 固定底栏：保存/取消 永远不会滚走，细线标出边界。
+         左边那行提示说的是：对一个绑定了账号的设置页，人们唯一会想错的那件事。 ===== -->
     <Border Grid.Row="2" BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
             Padding="24,11,24,12">
       <Grid MaxWidth="980">

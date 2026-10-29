@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
@@ -32,7 +32,7 @@ Start-Sleep -Milliseconds 300
 $r = New-Object CS3+RECT
 [CS3]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null
 $w = $r.R - $r.L; $ht = $r.B - $r.T
-# 3 attempts 550ms apart to catch caret-on phase (blink ~530ms half-cycle)
+# 间隔 550ms 截 3 次，抓光标亮起的阶段（闪烁半周期约 530ms）
 for ($i = 0; $i -lt 3; $i++) {
   $bmp = New-Object System.Drawing.Bitmap $w, $ht
   $g = [System.Drawing.Graphics]::FromImage($bmp)

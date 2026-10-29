@@ -7,8 +7,8 @@ using FastTranslation.Platform.Windows;
 namespace FastTranslation.App;
 
 /// <summary>
-/// The one place the updater talks to the user. Downloads inside this dialog so a failed or
-/// slow mirror shows its own progress instead of hanging behind a closed window.
+/// 更新器与用户交流的唯一场所。下载就在这个对话框里进行，这样镜像失败或变慢时能显示
+/// 自己的进度，而不是躲在已关闭的窗口后面干等。
 /// </summary>
 public partial class UpdateWindow : Window
 {
@@ -17,9 +17,9 @@ public partial class UpdateWindow : Window
     private CancellationTokenSource? _download;
 
     /// <param name="selfInstallable">
-    /// False for an extracted portable copy: the installer would place a second app in
-    /// %LOCALAPPDATA%\Programs instead of replacing this one, so that copy only offers the
-    /// download page.
+    /// 解压出来的便携版传 false：安装程序会把第二个应用装进
+    /// %LOCALAPPDATA%\Programs，而不是替换当前这一份，因此这种副本
+    /// 只提供下载页面。
     /// </param>
     public UpdateWindow(UpdateManifest manifest, ReleaseVersion currentVersion, bool selfInstallable)
     {
@@ -42,7 +42,7 @@ public partial class UpdateWindow : Window
         Closed += (_, _) => _download?.Cancel();
     }
 
-    /// <summary>Verified installer path once the download succeeded; null when the user declined.</summary>
+    /// <summary>下载成功后校验过的安装包路径；用户放弃时为 null。</summary>
     public string? DownloadedPath { get; private set; }
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
@@ -65,7 +65,7 @@ public partial class UpdateWindow : Window
             StatusText.Text = $"正在下载… {value * 100:F0}%";
         });
 
-        // own client: the mirrors differ by host, and a stalled socket must not be reused
+        // 单独的客户端：各镜像按主机不同，卡死的 socket 不能复用
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("FastTranslation-Updater");
 

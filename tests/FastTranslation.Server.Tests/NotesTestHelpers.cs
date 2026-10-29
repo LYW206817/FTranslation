@@ -5,10 +5,8 @@ using FastTranslation.Server.Domain;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// Shared fixtures for the notebook tests. Every call registers a fresh account so two tests can
-/// never see each other's notes; by default the account is upgraded because saving is the paywall.
-/// </summary>
+/// <summary>笔记测试的共享 fixture。每次调用都注册一个新账号,这样两个测试
+/// 永远不会看到彼此的笔记;默认会把账号升级,因为保存本身就是付费墙。</summary>
 internal static class NotesTestHelpers
 {
     public static async Task<HttpClient> SignedInNotesClientAsync(

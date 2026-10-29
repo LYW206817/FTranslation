@@ -8,9 +8,9 @@ using FastTranslation.Core.Account;
 namespace FastTranslation.Core.Notes;
 
 /// <summary>
-/// Talks to /api/v1/notes. Follows the same contract as <see cref="AccountApiClient"/>: never
-/// throws for transport or format problems, and reports failures as <see cref="AccountErrorCode"/>
-/// so the UI has one error path.
+/// 负责 /api/v1/notes。遵循与 <see cref="AccountApiClient"/> 相同的契约：
+/// 传输或格式问题从不抛异常，失败一律以 <see cref="AccountErrorCode"/> 上报，
+/// 好让界面只有一条错误路径。
 /// </summary>
 public sealed class NotesApiClient
 {
@@ -32,8 +32,8 @@ public sealed class NotesApiClient
     public string BaseUrl => _baseUrl;
 
     /// <summary>
-    /// Saves a pair. A duplicate (same kind + same source) returns the existing row rather than
-    /// an error, so a double-clicked 保存 is harmless.
+    /// 保存一对译文。重复项（同类型 + 同原文）返回已有的那行而不是报错，
+    /// 所以连点两下「保存」也不会出问题。
     /// </summary>
     public async Task<AccountApiResult<Note>> SaveAsync(
         string accessToken,
@@ -80,7 +80,7 @@ public sealed class NotesApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Partial update: null leaves that field alone.</summary>
+    /// <summary>部分更新：传 null 的字段保持不动。</summary>
     public async Task<AccountApiResult<Note>> UpdateAsync(
         string accessToken, Guid id, NoteKind? kind, string? note, CancellationToken cancellationToken)
     {
@@ -101,7 +101,7 @@ public sealed class NotesApiClient
             response, _ => new NoteDeleted(true), cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Today's review queue. <paramref name="dayStart"/> is the caller's local midnight.</summary>
+    /// <summary>今天的复习队列。<paramref name="dayStart"/> 是调用方的本地零点。</summary>
     public async Task<AccountApiResult<ReviewQueue>> ReviewQueueAsync(
         string accessToken, long dayStart, int newLimit, int limit, CancellationToken cancellationToken)
     {
@@ -246,7 +246,7 @@ public sealed class NotesApiClient
         note.Lapses,
         note.ReviewedAt);
 
-    // ---- wire shapes ----
+    // ---- 线上数据结构 ----
 
     private sealed record SaveBody(
         string? Kind, string SourceText, string TargetText,

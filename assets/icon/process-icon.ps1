@@ -1,10 +1,10 @@
-# Process icon-master.jpg -> transparent-corner master + sized PNGs + FastTranslation.ico
+﻿# 处理流程：icon-master.jpg → 四角透明的母版 + 各尺寸 PNG + FastTranslation.ico
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName PresentationCore
 $dir = 'D:\FTranslation\assets\icon'
 
-# --- stage 1: load 1280 jpg, apply antialiased rounded-rect alpha mask (r=252) ---
+# --- 第 1 步：读入 1280 的 jpg，用抗锯齿圆角矩形 alpha 蒙版（r=252）切出母版 ---
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
 using System.Drawing;
@@ -46,7 +46,7 @@ public static class IconMask {
 [IconMask]::Apply((Join-Path $dir 'icon-master.jpg'), (Join-Path $dir 'master-alpha.png'), 252)
 Write-Host 'master-alpha.png done'
 
-# --- stage 2: high-quality downscale to target sizes (System.Drawing bicubic) ---
+# --- 第 2 步：高质量缩放到目标尺寸（System.Drawing 双三次插值） ---
 function Save-Png([int]$size, [string]$out) {
     $src = [System.Drawing.Image]::FromFile((Join-Path $dir 'master-alpha.png'))
     $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
@@ -62,7 +62,7 @@ function Save-Png([int]$size, [string]$out) {
 foreach ($s in 256, 64, 48, 32, 24, 16) { Save-Png $s (Join-Path $dir "icon-$s.png") }
 Write-Host 'sized pngs done'
 
-# --- stage 3: assemble ICO (PNG-in-ICO) ---
+# --- 第 3 步：组装 ICO（PNG-in-ICO） ---
 $sizes = @(16, 24, 32, 48, 64, 256)
 $blobs = @()
 foreach ($s in $sizes) { $blobs += ,[System.IO.File]::ReadAllBytes((Join-Path $dir "icon-$s.png")) }

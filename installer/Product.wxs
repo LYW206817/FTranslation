@@ -10,14 +10,14 @@
     <SummaryInformation Description="划词翻译桌面工具(Qwen-MT)" />
     <Icon Id="AppIcon" SourceFile="D:\FTranslation\publish\ft-folder\FastTranslation.exe" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
-    <!-- a failed install must leave evidence in %TEMP%: without this, a report like
-         "a window flashed and vanished" gives us nothing to diagnose -->
+    <!-- 安装失败必须把证据留在 %TEMP%：否则像
+         「窗口闪一下就没了」这种反馈，我们什么都查不了 -->
     <Property Id="MsiLogging" Value="voicewarmupx" />
     <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 FastTranslation。" AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- per-user install, no elevation required (VS Code user-setup style location);
-         folder layout (not single-file) keeps private working set ~40MB vs ~125MB -->
+    <!-- 按用户安装，不需要提权（类似 VS Code 用户级安装的位置）；
+         目录布局（而非单文件）让私有工作集保持在约 40MB，单文件则约 125MB -->
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="InstallRoot" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="FastTranslation" />

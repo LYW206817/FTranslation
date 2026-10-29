@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
@@ -47,7 +47,7 @@ $cr = $combo.Current.BoundingRectangle
 $cx = [int]($cr.X + $cr.Width * 0.5); $cy = [int]($cr.Y + $cr.Height * 0.5)
 Write-Host ("combo center physical: $cx,$cy  main hwnd: " + $p.MainWindowHandle)
 
-# move cursor there WITHOUT clicking and ask which window owns the point
+# 把光标移过去但不点击，再问这个点属于哪个窗口
 $pt = New-Object HT+POINT
 $pt.X = $cx; $pt.Y = $cy
 $hAt = [HT]::WindowFromPoint($pt)

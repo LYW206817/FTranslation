@@ -7,8 +7,8 @@ using System.Text.Json.Serialization;
 namespace FastTranslation.Server.Auth;
 
 /// <summary>
-/// Hand-rolled HS256 JWT (issue + validate). No JWT package: this project deliberately carries
-/// zero third-party dependencies beyond Microsoft.Data.Sqlite, and HS256 is small enough to own.
+/// 手写的 HS256 JWT（签发 + 校验）。不引 JWT 包：本项目刻意只保留
+/// Microsoft.Data.Sqlite 这一个第三方依赖，而 HS256 足够小，自己实现即可。
 /// </summary>
 public sealed class TokenService
 {
@@ -65,7 +65,7 @@ public sealed class TokenService
         return signingInput + "." + Base64Url.EncodeToString(Sign(signingInput));
     }
 
-    /// <summary>Validates signature, issuer, audience and lifetime. Returns the principal on success.</summary>
+    /// <summary>校验签名、签发方、受众与有效期。成功时返回主体信息。</summary>
     public bool TryValidateAccessToken(string? token, out AccessTokenPrincipal principal)
     {
         principal = default;
@@ -141,7 +141,7 @@ public sealed class TokenService
 
     public static string CreateRefreshToken() => Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
 
-    /// <summary>Refresh tokens are stored hashed so a database leak does not hand out live sessions.</summary>
+    /// <summary>refresh token 以哈希形式存储，这样数据库泄露也不会直接交出可用会话。</summary>
     public static string HashRefreshToken(string token)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 

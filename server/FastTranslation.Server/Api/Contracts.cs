@@ -1,8 +1,8 @@
 namespace FastTranslation.Server.Api;
 
 /// <summary>
-/// Wire contracts. Field names are camelCase on the wire (default JSON policy) and are the
-/// contract with the WPF client — renaming any of them is a breaking client change.
+/// 传输契约。字段名在传输层为 camelCase（默认 JSON 策略），它们是
+/// 与 WPF 客户端之间的契约——重命名其中任何一个都会破坏客户端。
 /// </summary>
 public sealed record RegisterRequest(string Email, string Password, string? Code, string? DeviceFingerprint, string? DeviceName);
 
@@ -26,7 +26,7 @@ public sealed record AuthResponse(
     UsageDto Usage,
     string TokenType = "Bearer");
 
-/// <summary><paramref name="PlanExpiresAt"/> is unix seconds; null on a paid plan means "no end date".</summary>
+/// <summary><paramref name="PlanExpiresAt"/> 为 Unix 秒；付费套餐上为 null 表示“无到期时间”。</summary>
 public sealed record AccountDto(
     Guid Id,
     string Email,
@@ -36,12 +36,12 @@ public sealed record AccountDto(
     long? PlanExpiresAt,
     string DisplayName = "");
 
-/// <summary>An empty <c>DisplayName</c> clears it: the UI then falls back to the email.</summary>
+/// <summary>空的 <c>DisplayName</c> 表示清除：界面随后回落到邮箱。</summary>
 public sealed record UpdateProfileRequest(string? DisplayName);
 
 /// <summary>
-/// Changing the password returns a fresh token pair, so the device that did it stays signed in
-/// while every other refresh token is revoked.
+/// 修改密码会返回一对新 token，这样执行修改的设备保持登录，
+/// 而其他所有 refresh token 都被吊销。
 /// </summary>
 public sealed record ChangePasswordRequest(
     string? CurrentPassword, string? NewPassword, string? DeviceFingerprint, string? DeviceName);
@@ -72,31 +72,31 @@ public sealed record DeviceRequest(string? Fingerprint, string? Name);
 public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt);
 
 /// <summary>
-/// <paramref name="Days"/> null leaves any existing end date alone; 0 clears it (permanent grant);
-/// a positive number sets expiry to now + that many days.
+/// <paramref name="Days"/> 为 null 时保留已有的到期时间；为 0 时清除（永久授权）；
+/// 正数则把到期时间设为当前时间加相应天数。
 /// </summary>
 public sealed record PlanChangeRequest(string? Plan, int? Days = null);
 
-// ---- redeem (activation codes) ----
+// ---- 兑换（激活码） ----
 
-/// <summary>Whatever the buyer pasted; the server folds case, dashes and the FT prefix.</summary>
+/// <summary>买家粘贴的任意内容；服务端会归一大小写、连字符与 FT 前缀。</summary>
 public sealed record RedeemRequest(string? Code);
 
 /// <summary>
-/// The plan changed, so both blocks travel together: the client refreshes the plan line and the
-/// quota meters in one round trip instead of re-fetching /me and /usage.
+/// 套餐变了，所以两块数据一起返回：客户端一次性刷新套餐行与
+/// 额度计量，而不用再分别请求 /me 和 /usage。
 /// </summary>
 public sealed record RedeemResponse(AccountDto Account, UsageDto Usage);
 
 /// <summary>
-/// Batch for the operator. <paramref name="Days"/> is the length every code in the batch grants;
-/// <paramref name="Count"/> is capped in the handler so one request cannot mint thousands.
+/// 给运营人员的批量创建。<paramref name="Days"/> 是这批码每个授予的天数；
+/// <paramref name="Count"/> 在处理函数里设了上限，避免一次请求铸造数千个码。
 /// </summary>
 public sealed record CreateCodesRequest(string? Plan, int? Days, int? Count, string? Note);
 
 public sealed record CreateCodesResponse(IReadOnlyList<string> Codes, string Plan, int Days);
 
-/// <summary>Admin view of one code. <see cref="RedeemedEmail"/> stays null until somebody spends it.</summary>
+/// <summary>单个码的管理端视图。<see cref="RedeemedEmail"/> 在有人兑换前一直为 null。</summary>
 public sealed record RedeemCodeDto(
     string Code,
     string Plan,
@@ -107,10 +107,10 @@ public sealed record RedeemCodeDto(
     long? RedeemedAt,
     long? RevokedAt);
 
-/// <summary>The minted batch an operator lost track of is recoverable through this page.</summary>
+/// <summary>运营人员弄丢的已铸造批次可以通过这个分页接口找回。</summary>
 public sealed record RedeemCodePageResponse(IReadOnlyList<RedeemCodeDto> Items, int Total, int Limit, int Offset);
 
-// ---- notes (phase 1 notebook) ----
+// ---- 单词本（阶段一） ----
 
 public sealed record SaveNoteRequest(
     string? Kind,
@@ -144,10 +144,10 @@ public sealed record NoteDto(
     int Lapses = 0,
     long ReviewedAt = 0);
 
-/// <summary>One page plus the account-wide total, so the client can show "1 / 20" without a second call.</summary>
+/// <summary>一页数据加上账号总数，客户端无需第二次请求即可显示“1 / 20”。</summary>
 public sealed record NotePageResponse(IReadOnlyList<NoteDto> Items, int Total, int Limit, int Offset);
 
-/// <summary>Due = time-triggered, Fresh = today's new cards under quota (design §6.1).</summary>
+/// <summary>Due = 时间触发的，Fresh = 今日额度内的新卡（设计 §6.1）。</summary>
 public sealed record ReviewQueueResponse(
     IReadOnlyList<NoteDto> Due,
     IReadOnlyList<NoteDto> Fresh,

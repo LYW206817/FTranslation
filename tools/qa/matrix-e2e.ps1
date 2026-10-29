@@ -1,6 +1,6 @@
 ﻿﻿﻿﻿﻿param([string]$ExePath = 'D:\FTranslation\src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslation.exe')
-# FT Matrix E2E: every text scenario on a local HTML page in Edge, real mouse end-to-end.
-# ASCII only; Chinese via codepoints. App restarts with FT_DEBUG on; page pinned topmost.
+# FT Matrix E2E：在 Edge 里打开本地 HTML 页面，用真实鼠标把所有文本场景端到端跑一遍。
+# 仅用 ASCII，中文用码点表示。应用带 FT_DEBUG 重启；页面固定置顶。
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
@@ -71,7 +71,7 @@ function Do-Drag([int]$x1, [int]$y, [int]$x2) {
   Start-Sleep -Milliseconds 1200
 }
 
-# --- start app fresh with debug ---
+# --- 带调试参数重新启动应用 ---
 Stop-Process -Name FastTranslation -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 600
 $env:FT_DEBUG = '1'
@@ -80,7 +80,7 @@ $app = Start-Process -FilePath $ExePath -PassThru
 $script:appId = $app.Id
 Start-Sleep -Seconds 5
 
-# --- close leftover matrix windows from earlier runs (they stack topmost), then open fresh ---
+# --- 先关掉上次运行残留的 matrix 窗口（它们会一层层置顶），再重新打开 ---
 Add-Type @'
 using System; using System.Runtime.InteropServices; using System.Text;
 public static class CW {
@@ -103,7 +103,7 @@ $cbClose = {
     $sb = New-Object System.Text.StringBuilder 128
     [CW]::GetWindowText($h, $sb, 128) | Out-Null
     if ($sb.ToString().Contains('FT Matrix')) {
-      [CW]::SendMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
+      [CW]::SendMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE（0x0010，关窗消息）
       Write-Host 'closed leftover matrix window'
     }
   }
@@ -112,7 +112,7 @@ $cbClose = {
 [CW]::EnumWindows([CW+EnumProc]$cbClose, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 800
 
-# --- open matrix page in Edge, pin topmost ---
+# --- 在 Edge 打开 matrix 页面并置顶 ---
 Start-Process msedge.exe '--new-window', 'file:///D:/FTranslation/tools/qa/ft-matrix.html'
 Start-Sleep -Seconds 8
 $mxWin = $null
@@ -129,7 +129,7 @@ if (-not $mxWin) { Log 'FAIL: matrix page window not found'; Stop-Process -Id $a
 $uiaH = [IntPtr]$mxWin.Current.NativeWindowHandle
 [MX]::SwitchToThisWindow($uiaH, $false)
 Start-Sleep -Milliseconds 500
-# activate the FT Matrix tab (the window hosts many tabs; the active one shows on top)
+# 激活 FT Matrix 标签页（窗口里有很多标签，只有活动标签显示在最上面）
 $tabCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'FT Matrix')
 $tab = $mxWin.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)))
 $tabF = $null
@@ -147,12 +147,12 @@ if ($tabF) {
 } else { Log 'WARN: FT Matrix tab item not found' }
 [MX]::SetWindowPos($uiaH, [IntPtr](-1), 0, 0, 0, 0, 0x0001) | Out-Null
 Start-Sleep -Milliseconds 300
-# move app main window aside
+# 把应用主窗口挪到一旁
 $mh = [IntPtr]$app.MainWindowHandle
 if ($mh -ne [IntPtr]::Zero) { [MX]::SetWindowPos($mh, [IntPtr](-2), 20, 40, 0, 0, 0x0001) | Out-Null }
 Log ("matrix window ready hwnd=0x" + $uiaH.ToString("X"))
 
-# --- per-scenario drags: coordinates resolved from real element rects via UIA ---
+# --- 逐场景拖选：坐标由 UIA 读取真实元素矩形换算 ---
 $results = @()
 
 function Scroll-IntoView([object]$el) {
@@ -166,8 +166,8 @@ function Scroll-IntoView([object]$el) {
 }
 
 function Get-Element([string]$namePrefix) {
-  # Chromium does not surface HTML ids as AutomationId for most elements:
-  # match by the element's Name (its text content) instead
+  # Chromium 对多数元素不会把 HTML id 暴露成 AutomationId：
+  # 所以改用元素的 Name（即文本内容）来匹配
   $docCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Document)
   $doc = $mxWin.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $docCond)
   if (-not $doc) { return $null }
@@ -236,7 +236,7 @@ function Test-ScenarioRect([string]$name, [string]$namePrefix, [string]$expectCl
   Log $msg
 }
 
-# bottom-up: ScrollIntoView only scrolls up, one direction, no page reloads needed
+# 自下而上看：ScrollIntoView 只能向上滚动，方向单一，不需要重新加载页面
 Test-ScenarioRect 'F-INPUT'    '单行输入框'     'TEXT'  300
 Test-ScenarioRect 'D-CODE'     'var greeting'  'TEXT'  440
 Test-ScenarioRect 'C-NOSELECT' '这段文字被'     'ANY'   440

@@ -64,7 +64,7 @@ public partial class OnboardingWindow : Window
 
     private void Later_Click(object sender, RoutedEventArgs e)
     {
-        // without a key the app still runs; translations will fail until one is set
+        // 没有 Key 应用照样能跑；在设置好之前翻译都会失败
         Close();
     }
 }

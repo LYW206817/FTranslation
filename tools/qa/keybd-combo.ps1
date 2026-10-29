@@ -39,7 +39,7 @@ if (-not $main) { Write-Host 'MAIN NOT FOUND'; Stop-Process -Id $app.Id -Force; 
 $combo = $main.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ComboBox)))
 try { $combo.SetFocus() } catch { Write-Host ('SetFocus failed: ' + $_.Exception.Message) }
 Start-Sleep -Milliseconds 300
-# real click on combo center
+# 在下拉框中心做一次真实点击
 [K2]::Key(0x73, $false); Start-Sleep -Milliseconds 50; [K2]::Key(0x73, $true)
 Start-Sleep -Milliseconds 900
 $p2 = Get-Process -Id $app.Id -ErrorAction SilentlyContinue

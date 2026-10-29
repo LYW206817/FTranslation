@@ -1,19 +1,19 @@
 namespace FastTranslation.Server.Domain;
 
 /// <summary>
-/// Decides which shelf a saved pair belongs on when the client did not say. The rules are
-/// deliberately blunt (design §4.2): a learner can always re-file an item from 单词 to 短语,
-/// so a wrong guess costs one PATCH, while a clever guess that surprises people costs trust.
+/// 客户端未指定时，决定保存的词对属于哪个书架。这些规则
+/// 刻意保持粗放（设计 §4.2）：学习者随时可以把条目从单词改归到短语，
+/// 所以猜错只多一次 PATCH，而猜得“聪明”却让人意外则要付出信任代价。
 /// </summary>
 public static class NoteClassifier
 {
-    /// <summary>A "word" longer than this is almost always a mis-typed phrase.</summary>
+    /// <summary>超过这个长度的“单词”几乎总是误录的短语。</summary>
     public const int MaxWordLength = 24;
 
-    /// <summary>Beyond this many words the text is a sentence even without terminal punctuation.</summary>
+    /// <summary>词数超过这个数，即使没有句末标点也按句子处理。</summary>
     public const int MaxPhraseWords = 6;
 
-    /// <summary>Longer than this is treated as a sentence regardless of word count.</summary>
+    /// <summary>超过这个长度时，不论词数多少都按句子处理。</summary>
     public const int MaxPhraseLength = 80;
 
     public static NoteKind Classify(string? source)
@@ -24,8 +24,8 @@ public static class NoteClassifier
             return NoteKind.Sentence;
         }
 
-        // Terminal punctuation wins over the "no spaces" test: "Really?" and "她走了。" carry no
-        // whitespace either, and filing them as words would be plainly wrong to a learner.
+        // 句末标点优先于“无空格”判据：“Really?” 和“她走了。”同样不含空格，
+        // 把它们归为单词在学习者看来显然错误。
         if (EndsWithTerminalPunctuation(text) || text.Length > MaxPhraseLength)
         {
             return NoteKind.Sentence;

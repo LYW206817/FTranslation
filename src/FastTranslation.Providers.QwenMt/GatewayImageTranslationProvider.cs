@@ -5,7 +5,7 @@ namespace FastTranslation.Providers.QwenMt;
 /// <summary>
 /// 图片翻译的组合 provider，与 <see cref="GatewayTranslationProvider"/> 同构：
 /// 开发者网关不接收这次请求（没登录 / 没有令牌，回调返回 null）或额度已用完时，
-/// 安静地改用用户自己的 Key；两张链路都失败时报用户自己 Key 的错。
+/// 安静地改用用户自己的 Key；两条链路都失败时报用户自己 Key 的错。
 /// </summary>
 public sealed class GatewayImageTranslationProvider : IImageTranslationProvider
 {

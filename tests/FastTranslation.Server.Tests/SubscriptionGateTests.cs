@@ -9,7 +9,7 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>Saving is the paywall (D8): a free or expired account must be refused, not degraded.</summary>
+/// <summary>保存就是付费墙(D8):免费或已过期账号必须被拒绝,而不是降级。</summary>
 public class SubscriptionGateTests : IClassFixture<ServerFactory>
 {
     private readonly ServerFactory _factory;
@@ -76,8 +76,8 @@ public class SubscriptionGateTests : IClassFixture<ServerFactory>
     {
         var (client, email) = await SignedInAsync(PlanTier.Light, days: 1);
 
-        // Expiry is stored as an absolute instant; rewriting it into the past is the honest way to
-        // test the clock rather than the plan field.
+        // 到期时间存为绝对时刻;把它改写到过去是
+        // 如实测试时钟的办法,而不是改套餐字段。
         var accounts = _factory.Services.GetRequiredService<AccountStore>();
         var user = accounts.FindUserByEmail(email)!;
         Assert.True(accounts.SetPlan(user.Id, PlanTier.Light, DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds()));
@@ -95,7 +95,7 @@ public class SubscriptionGateTests : IClassFixture<ServerFactory>
 
         var response = await client.GetAsync("/api/v1/notes/");
 
-        // Reading must never be gated: an account that saved while paid keeps its library viewable.
+        // 读取绝不能被闸门拦住:在付费期间保存过的账号,其词库仍可查看。
         response.EnsureSuccessStatusCode();
     }
 }

@@ -1,16 +1,15 @@
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>Resolved appearance. The setting is "system" | "light" | "dark"; a resolved value is
-/// only ever Light or Dark.</summary>
+/// <summary>解析后的外观。设置值是 "system" | "light" | "dark"；解析结果只会是
+/// Light 或 Dark。</summary>
 public enum AppTheme
 {
     Light,
     Dark,
 }
 
-/// <summary>One complete palette. Hex strings are the single source of truth: App.xaml resource
-/// brushes are built from them, and the overlay surfaces (which cannot use XAML resources) build
-/// their frozen brushes from the same values.</summary>
+/// <summary>一整套调色板。十六进制字符串是唯一数据源：App.xaml 里的资源
+/// 画刷由它们生成，浮层界面(用不了 XAML 资源)也用同一批值构建自己的冻结画刷。</summary>
 public sealed record ThemeColors(
     string Brand,
     string BrandHover,
@@ -31,9 +30,9 @@ public sealed record ThemeColors(
     string Notice);
 
 /// <summary>
-/// Light/dark palettes plus the startup-time decision of which one to use.
-/// StaticResource is resolved when a control is loaded, so picking the palette before the first
-/// window is created switches the whole UI without a single XAML change (v24).
+/// 浅色/深色调色板，以及启动时决定用哪一套。
+/// StaticResource 在控件加载时才解析，因此在第一个窗口创建之前选定调色板，
+/// 无需改动任何一行 XAML 就能切换整个 UI(v24)。
 /// </summary>
 public static class ThemePalette
 {
@@ -79,12 +78,12 @@ public static class ThemePalette
         Danger: "#FF6B6B",
         Notice: "#FF9A5C");
 
-    /// <summary>Palette in effect for surfaces created from now on.</summary>
+    /// <summary>从此刻起创建的界面所使用的调色板。</summary>
     public static AppTheme Current { get; private set; } = AppTheme.Light;
 
     public static ThemeColors Active => Current == AppTheme.Dark ? Dark : Light;
 
-    /// <summary>Maps a stored setting to a concrete theme. Unknown values fall back to the system.</summary>
+    /// <summary>把存储的设置值映射为具体主题。未知值回退到跟随系统。</summary>
     public static AppTheme Resolve(string? setting, bool systemPrefersDark) => setting?.Trim().ToLowerInvariant() switch
     {
         LightSetting => AppTheme.Light,
@@ -95,9 +94,8 @@ public static class ThemePalette
     public static AppTheme Resolve(string? setting) => Resolve(setting, SystemPrefersDark());
 
     /// <summary>
-    /// Reads HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme.
-    /// Missing key or unreadable value means light — the conservative choice for a tray app whose
-    /// window must stay legible.
+    /// 读取 HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme。
+    /// 键缺失或值不可读时视为浅色——对托盘应用来说这是保守选择，窗口必须保持可读。
     /// </summary>
     public static bool SystemPrefersDark()
     {
@@ -113,6 +111,6 @@ public static class ThemePalette
         }
     }
 
-    /// <summary>Must run before the first window is constructed (windows parse StaticResource at load).</summary>
+    /// <summary>必须在第一个窗口构造之前调用(窗口加载时会解析 StaticResource)。</summary>
     public static void Use(AppTheme theme) => Current = theme;
 }

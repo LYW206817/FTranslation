@@ -15,8 +15,8 @@
       <Setter Property="Padding" Value="0"/>
       <Setter Property="Margin" Value="0,0,0,2"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-      <!-- without this the row name falls back to record ToString(), which a screen reader
-           would read out as raw field assignments -->
+      <!-- 没有这一项，行名会回落到 record 的 ToString()，屏幕阅读器
+           会把原始字段赋值直接念出来 -->
       <Setter Property="AutomationProperties.Name" Value="{Binding SourceText}"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -55,7 +55,7 @@
       </Setter>
     </Style>
 
-    <!-- the four grades: one row, equal width, quiet until hovered (design D12) -->
+    <!-- 四档评分：一行等宽，悬停前保持安静（设计 D12） -->
     <Style x:Key="GradeButton" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -99,10 +99,10 @@
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
-    <!-- header: title + count on the left, refresh on the right -->
+    <!-- 头部：左边标题 + 数量，右边刷新 -->
     <DockPanel Grid.Row="0" Margin="0,0,0,14">
-      <!-- the review window is a separate window, but the entry point belongs here too:
-           you land on a shelf, notice you have reviews due, and want one click out of it -->
+      <!-- 复习窗口是独立的窗口，但入口也应该放在这里：
+           你落在某层书架上，发现今天有复习，就想一键跳出去 -->
       <Button x:Name="ReviewButton" Content="去复习" DockPanel.Dock="Right" Padding="14,5"
               Margin="0,0,8,0" VerticalAlignment="Center" Click="Review_Click"/>
       <Button x:Name="RefreshButton" Content="刷新" DockPanel.Dock="Right" Padding="14,5"
@@ -122,7 +122,7 @@
         <ColumnDefinition Width="*" MinWidth="260"/>
       </Grid.ColumnDefinitions>
 
-      <!-- left: search + the list -->
+      <!-- 左侧：搜索 + 列表 -->
       <Grid Grid.Column="0">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -131,7 +131,7 @@
 
         <Grid Grid.Row="0" Margin="0,0,0,10">
           <TextBox x:Name="SearchBox" AutomationProperties.Name="搜索" TextChanged="Search_Changed"/>
-          <!-- a TextBox has no watermark of its own; the overlay hides as soon as there is text -->
+          <!-- TextBox 自己带不了水印；一有文字，覆盖层就隐藏 -->
           <TextBlock x:Name="SearchHint" Text="搜索原文或译文…" IsHitTestVisible="False" Margin="11,0,0,0"
                      VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMutedBrush}">
             <TextBlock.Style>
@@ -183,7 +183,7 @@
         </Border>
       </Grid>
 
-      <!-- right: detail -->
+      <!-- 右侧：详情 -->
       <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
               BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="16,14,16,16">
         <Grid>

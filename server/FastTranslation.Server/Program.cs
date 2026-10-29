@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Options are resolved lazily from IConfiguration (not from builder.Configuration) so that
-// configuration sources added by the host — appsettings per environment and, in tests,
-// WebApplicationFactory overrides — are all visible.
+// 选项从 IConfiguration 惰性解析（而不是从 builder.Configuration 直接取），这样
+// 宿主添加的配置源——按环境区分的 appsettings，以及测试中的
+// WebApplicationFactory 覆盖——都可见。
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection(ServerOptions.SectionName).Get<ServerOptions>() ?? new ServerOptions());
 builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Smtp);
@@ -80,7 +80,7 @@ static byte[] ResolveSigningKey(ServerOptions options, IHostEnvironment environm
         }
         catch (FormatException)
         {
-            // Not base64 — fall through to the raw-bytes path.
+            // 不是 base64——继续走原始字节路径。
         }
 
         var raw = System.Text.Encoding.UTF8.GetBytes(options.SigningKey);
@@ -102,10 +102,10 @@ static byte[] ResolveSigningKey(ServerOptions options, IHostEnvironment environm
             "Server:SigningKey is required outside Development. Set it in appsettings.Production.json or the environment.");
     }
 
-    // Development convenience only: a random key invalidates tokens on every restart, which is exactly
-    // what we want for a throwaway local box.
+    // 仅用于开发便利：随机密钥会让 token 在每次重启后失效，这正是
+    // 我们希望对一次性本地环境达到的效果。
     return RandomNumberGenerator.GetBytes(32);
 }
 
-/// <summary>Exposed so integration tests can boot the same app with an isolated database.</summary>
+/// <summary>公开出来，便于集成测试用隔离数据库启动同一个应用。</summary>
 public partial class Program;

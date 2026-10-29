@@ -1,4 +1,4 @@
-param([string]$ExePath, [string]$Theme, [string]$Out)
+﻿param([string]$ExePath, [string]$Theme, [string]$Out)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @"
@@ -25,7 +25,7 @@ $cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Aut
 $win = $root.FindAll([System.Windows.Automation.TreeScope]::Children,$cond) | Select-Object -First 1
 $h = [IntPtr]$win.Current.NativeWindowHandle
 Write-Host ("hwnd={0} before rect={1}" -f $h, $win.Current.BoundingRectangle)
-$null = [W]::SetWindowPos($h, [IntPtr]::Zero, 0, 0, 0, 0, 0x0001 -bor 0x0004)  # NOSIZE|NOZORDER
+$null = [W]::SetWindowPos($h, [IntPtr]::Zero, 0, 0, 0, 0, 0x0001 -bor 0x0004)  # NOSIZE|NOZORDER（只移动，不改大小和 Z 序）
 Start-Sleep -Seconds 2
 $r = New-Object W+RECT
 $null = [W]::GetWindowRect($h, [ref]$r)

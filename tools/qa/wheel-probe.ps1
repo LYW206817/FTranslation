@@ -1,4 +1,4 @@
-# Wheel probe: is the settings page's scroll "blocked" because the UI is busy (CPU) or because the wheel event is not applied (idle)?
+﻿# 滚轮探针：设置页「滚不动」是因为 UI 忙（CPU 高），还是滚轮事件根本没被应用（空闲）?
 param(
   [Parameter(Mandatory=$true)][string]$ExePath,
   [int]$Notches = 10,

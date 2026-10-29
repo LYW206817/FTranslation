@@ -102,7 +102,7 @@ public class NotesEndpointTests : IClassFixture<ServerFactory>
         var words = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/?kind=word");
         Assert.Single(words!.Items);
         Assert.Equal("meticulous", words.Items[0].SourceText);
-        // the total is what the shelf header prints, so it has to follow the same filter
+        // total 就是书架头部打印的数量,所以必须遵循同一套过滤条件
         Assert.Equal(1, words.Total);
 
         var phrases = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/?kind=phrase");
@@ -182,7 +182,7 @@ public class NotesEndpointTests : IClassFixture<ServerFactory>
         var page = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/");
         Assert.Equal(0, page!.Total);
 
-        // Deleting again is a no-op miss, not a resurrection.
+        // 再次删除是一次无操作的未命中,而不是复活。
         Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/api/v1/notes/{note.Id}")).StatusCode);
     }
 

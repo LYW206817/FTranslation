@@ -3,15 +3,15 @@ using Microsoft.Win32;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// Per-user autostart via HKCU\...\Run — no admin, no service, no system-wide state
-/// (spec 983: "开机启动用 HKCU Run（应用内开关）"). Portable builds may use it too.
+/// 通过 HKCU\...\Run 实现按用户开机自启——不需要管理员权限、不装服务、不产生系统级状态
+/// (spec 983：“开机启动用 HKCU Run（应用内开关）”)。便携版同样可以使用。
 /// </summary>
 public static class StartupRegistration
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "FastTranslation";
 
-    /// <summary>Quoted absolute path of the running executable.</summary>
+    /// <summary>当前运行中可执行文件的绝对路径(带引号)。</summary>
     public static string Command()
     {
         var path = Environment.ProcessPath;
@@ -29,7 +29,7 @@ public static class StartupRegistration
         catch { return false; }
     }
 
-    /// <summary>Writes or deletes the Run value. Returns false when the registry refused.</summary>
+    /// <summary>写入或删除 Run 值。注册表拒绝操作时返回 false。</summary>
     public static bool SetEnabled(bool enabled)
     {
         try

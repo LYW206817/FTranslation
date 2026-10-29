@@ -19,8 +19,8 @@ public sealed class AppSettings
 
     public string OverrideBaseUrl { get; set; } = "";
 
-    // Account service (FastTranslation.Server). Empty = the built-in default host; a settings
-    // field rather than a constant so a test server or a self-hosted deployment needs no rebuild.
+    // 账号服务（FastTranslation.Server）。留空 = 内置默认主机；做成设置项而不是常量，
+    // 这样测试服务器或自建部署都不必重新编译。
     public string AccountBaseUrl { get; set; } = "";
     public bool FirstRunCompleted { get; set; }
     public string Theme { get; set; } = "system";
@@ -29,8 +29,8 @@ public sealed class AppSettings
 }
 
 /// <summary>
-/// JSON settings in %LOCALAPPDATA%\FastTranslation\settings.json.
-/// Any read/deserialize failure resets to defaults (corruption tolerance).
+/// %LOCALAPPDATA%\FastTranslation\settings.json 里的 JSON 设置。
+/// 任何读取/反序列化失败都回落到默认值（容忍损坏）。
 /// </summary>
 public sealed class SettingsService
 {
@@ -70,10 +70,10 @@ public sealed class SettingsService
 }
 
 /// <summary>
-/// API key stored via DPAPI (CurrentUser). The provider takes the plaintext key;
-/// persistence never leaves the machine unencrypted.
-/// Platform note: the DPAPI calls live in Platform.Windows (only allowed NuGet there);
-/// Core defines the abstraction and an in-memory default for tests.
+/// 用 DPAPI（CurrentUser）保存的 API Key。provider 拿到的是明文 Key；
+/// 落盘时永远不会以未加密形式离开本机。
+/// 平台说明：DPAPI 调用在 Platform.Windows（只有那里允许引 NuGet）；
+/// Core 只定义抽象与测试用的内存实现。
 /// </summary>
 public interface ISecretStore
 {

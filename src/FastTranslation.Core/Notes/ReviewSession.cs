@@ -1,16 +1,15 @@
 namespace FastTranslation.Core.Notes;
 
 /// <summary>
-/// The cards of one sitting plus how far into them you are (v52, design D16). Review used to live in
-/// its own window, where the window's fields were the state; now it is a page, and the page needs
-/// something that can be tested without a Dispatcher. Nothing here talks to the server: grading is
-/// still the page's job, this only tracks position.
+/// 一次复习的卡片集合以及当前进度（v52，设计 D16）。复习过去独占一个窗口，窗口字段就是状态；
+/// 现在它变成一个页面，页面需要一份不依赖 Dispatcher 也能测的状态。这里不碰服务端：
+/// 打分仍是页面的职责，本类只记位置。
 /// </summary>
 public sealed class ReviewSession
 {
     private readonly List<Note> _cards;
 
-    /// <summary>Takes a snapshot: the caller may keep mutating its own queue afterwards.</summary>
+    /// <summary>取快照：之后调用方可以继续改自己的队列。</summary>
     public ReviewSession(IEnumerable<Note> cards)
     {
         ArgumentNullException.ThrowIfNull(cards);
@@ -21,17 +20,17 @@ public sealed class ReviewSession
 
     public int Total => _cards.Count;
 
-    /// <summary>How many cards have been graded or skipped so far.</summary>
+    /// <summary>到目前为止已评分或跳过多少张卡。</summary>
     public int Completed { get; private set; }
 
-    /// <summary>The card on screen, or null once the sitting is over.</summary>
+    /// <summary>当前屏幕上的卡片；一轮复习结束后为 null。</summary>
     public Note? Current => Completed < _cards.Count ? _cards[Completed] : null;
 
     public bool IsFinished => Completed >= _cards.Count;
 
     /// <summary>
-    /// Moves past the current card. Returns whether another one is waiting, so the caller can
-    /// render the done state in the same call instead of asking twice.
+    /// 前进到下一张卡。返回是否还有卡片等待，这样调用方可以在同一次调用里渲染完成态，
+    /// 而不必再问一次。
     /// </summary>
     public bool Advance()
     {

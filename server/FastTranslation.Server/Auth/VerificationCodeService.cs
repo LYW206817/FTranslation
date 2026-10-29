@@ -6,8 +6,8 @@ using FastTranslation.Server.Storage;
 namespace FastTranslation.Server.Auth;
 
 /// <summary>
-/// Issues and checks the 6-digit registration code. Codes are stored hashed, expire, and are
-/// burn-on-use; resend is throttled so the endpoint cannot be used as a mail bomb.
+/// 签发并校验 6 位注册验证码。验证码以哈希形式存储、会过期，且
+/// 用后即焚；重发有节流，避免该接口被当作邮件轰炸工具。
 /// </summary>
 public sealed class VerificationCodeService(AccountStore store, ServerDatabase database, ServerOptions options)
 {
@@ -32,7 +32,7 @@ public sealed class VerificationCodeService(AccountStore store, ServerDatabase d
         return new IssueResult(true, null, 0, code);
     }
 
-    /// <summary>Returns null when the code is valid (and burns it), otherwise a stable error token.</summary>
+    /// <summary>验证码有效时返回 null（并焚毁它），否则返回稳定的错误标记。</summary>
     public string? Consume(string email, string? code)
     {
         var normalized = AccountStore.NormalizeEmail(email);

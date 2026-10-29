@@ -1,4 +1,4 @@
-param([string]$ExePath, [string]$Mode = 'all')
+﻿param([string]$ExePath, [string]$Mode = 'all')
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Drawing, UIAutomationClient, UIAutomationTypes
 Add-Type @'
@@ -47,7 +47,7 @@ function Snap([IntPtr]$hwnd, [string]$out) {
   Write-Host "saved $out ($w x $h)"
 }
 
-# enumerate visible windows of the app; find toolbar (copy btn, no x) and card (x btn)
+# 枚举应用的可见窗口：工具条靠「复制」按钮识别（没有关闭按钮），结果卡靠关闭按钮识别
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $pidCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $app.Id)
 $wins = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $pidCond)

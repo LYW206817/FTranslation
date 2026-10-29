@@ -1,7 +1,7 @@
 namespace FastTranslation.Server.Auth;
 
 /// <summary>
-/// Shared validation for the auth surface. Kept in one place so register/login/reset cannot drift.
+/// 认证接口共用的校验。集中在一处，避免注册/登录/重置各写一套而逐渐走样。
 /// </summary>
 public static class CredentialRules
 {

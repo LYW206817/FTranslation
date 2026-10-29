@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
@@ -56,7 +56,7 @@ $g.CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
 $bmp.Save('D:\FTranslation\assets\qa\dropdown-open.png', [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'captured'
-# select second item by clicking below
+# 点击下方第 2 项来选中
 Start-Sleep -Milliseconds 200
 [R2]::Mouse(2, $cx, ($cy + 60)); Start-Sleep -Milliseconds 60; [R2]::Mouse(4, $cx, ($cy + 60))
 Start-Sleep -Milliseconds 500

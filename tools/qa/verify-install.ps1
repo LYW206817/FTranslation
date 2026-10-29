@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\FastTranslation'
 $inst = @(Get-ChildItem $dir -Recurse -File)
 Write-Host ('installed files = ' + $inst.Count)
@@ -7,7 +7,7 @@ Write-Host ('exe hash matches build = ' + ((Get-FileHash $exe).Hash -eq (Get-Fil
 Write-Host ('start menu shortcut = ' + (Test-Path (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Fast Translation.lnk')))
 Write-Host ('desktop shortcut = ' + (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Fast Translation.lnk')))
 
-# ARP entry: a per-user MSI can land under HKCU or (32-bit package) HKLM\WOW6432Node
+# ARP 卸载项：按用户安装的 MSI 可能落在 HKCU，也可能是 32 位包落在 HKLM\WOW6432Node
 Write-Host '--- ARP entry ---'
 $roots = @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',

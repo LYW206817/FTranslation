@@ -5,22 +5,22 @@ namespace FastTranslation.Platform.Windows.Tests;
 
 public class TrayIconEntryTests
 {
-    /// <summary>Build a minimal ICO container: header, one directory entry per (width, payload).</summary>
+    /// <summary>构造一个最小 ICO 容器:文件头,每个(宽度, 载荷)一项目录项。</summary>
     private static byte[] BuildIco(params (int Width, byte[] Payload)[] entries)
     {
         var buffer = new List<byte>();
-        buffer.AddRange(new byte[] { 0, 0, 1, 0 });                                   // reserved + type=icon
-        buffer.AddRange(BitConverter.GetBytes((ushort)entries.Length));                // count
+        buffer.AddRange(new byte[] { 0, 0, 1, 0 });                                   // 保留字段 + 类型=图标
+        buffer.AddRange(BitConverter.GetBytes((ushort)entries.Length));                // 数量
         var dataOffset = 6 + 16 * entries.Length;
         var payloads = new List<byte>();
         foreach (var (width, payload) in entries)
         {
-            buffer.Add((byte)(width >= 256 ? 0 : width)); // 0 means 256
+            buffer.Add((byte)(width >= 256 ? 0 : width)); // 0 表示 256
             buffer.Add((byte)(width >= 256 ? 0 : width));
-            buffer.Add(0);                                 // palette
-            buffer.Add(0);                                 // reserved
-            buffer.AddRange(BitConverter.GetBytes((ushort)1));                // planes
-            buffer.AddRange(BitConverter.GetBytes((ushort)32));               // bpp
+            buffer.Add(0);                                 // 调色板
+            buffer.Add(0);                                 // 保留字段
+            buffer.AddRange(BitConverter.GetBytes((ushort)1));                // 位面数
+            buffer.AddRange(BitConverter.GetBytes((ushort)32));               // 位深
             buffer.AddRange(BitConverter.GetBytes((uint)payload.Length));
             buffer.AddRange(BitConverter.GetBytes((uint)(dataOffset + payloads.Count)));
             payloads.AddRange(payload);
@@ -81,7 +81,7 @@ public class TrayIconEntryTests
     public void PickIcoEntry_RejectsPayloadOutsideBuffer()
     {
         var ico = BuildIco((16, new byte[8]));
-        // lie about the payload length so the declared range runs past the end
+        // 谎报载荷长度,让声明的范围越过末尾
         var entry = 6;
         BitConverter.GetBytes(4096u).CopyTo(ico, entry + 8);
         Assert.Null(TrayIconService.PickIcoEntry(ico, 16));

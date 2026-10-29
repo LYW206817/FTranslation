@@ -1,8 +1,8 @@
 namespace FastTranslation.Core.Notes;
 
 /// <summary>
-/// The three shelves of the notebook. One table filtered by this value — a saved item can be
-/// re-filed from 单词 to 短语 without being re-saved (design §4.3).
+/// 单词本的三个书架。同一张表按这个值过滤——已保存的条目可以从「单词」改归到「短语」，
+/// 而不必删了重存（设计 §4.3）。
 /// </summary>
 public enum NoteKind
 {
@@ -39,7 +39,7 @@ public static class NoteKinds
     };
 }
 
-/// <summary>One saved pair as the client sees it (server timestamps are unix seconds).</summary>
+/// <summary>客户端视角下的一条已保存译文对（服务端时间戳为 unix 秒）。</summary>
 public sealed record Note(
     Guid Id,
     NoteKind Kind,
@@ -61,7 +61,7 @@ public sealed record Note(
 {
     public string KindDisplay => NoteKinds.Display(Kind);
 
-    /// <summary>"上次:忘记 / 上次:模糊 / 上次:熟悉 / 上次:记住 / 还没评过" — detail-pane status line.</summary>
+    /// <summary>"上次:忘记 / 上次:模糊 / 上次:熟悉 / 上次:记住 / 还没评过"——详情面板的状态行。</summary>
     public string GradeDisplay => LastGrade switch
     {
         "forgot" => "上次:忘记",
@@ -71,7 +71,7 @@ public sealed record Note(
         _ => "还没评过",
     };
 
-    /// <summary>"未排期 / 今天到期 / 明天 / 3 天后" — third line of a list row.</summary>
+    /// <summary>"未排期 / 今天到期 / 明天 / 3 天后"——列表行的第三行。</summary>
     public string DueLine
     {
         get
@@ -89,7 +89,7 @@ public sealed record Note(
         }
     }
 
-    /// <summary>True when the card is due today or overdue — the list tints that line to say "open me".</summary>
+    /// <summary>卡片今天到期或已逾期时为 true——列表会给这一行着色，提示「打开我」。</summary>
     public bool DueNow
     {
         get
@@ -100,10 +100,10 @@ public sealed record Note(
         }
     }
 
-    /// <summary>"chrome · 10-28 · 今天到期" — the provenance line plus the schedule, never a window title.</summary>
+    /// <summary>"chrome · 10-28 · 今天到期"——来源行加排期，绝不用窗口标题。</summary>
     public string MetaLine => OriginLine + " · " + DueLine;
 
-    /// <summary>"chrome · 10-28" — the provenance line under a card, never the window title.</summary>
+    /// <summary>"chrome · 10-28"——卡片下方的来源行，绝不用窗口标题。</summary>
     public string OriginLine
     {
         get
@@ -114,13 +114,13 @@ public sealed record Note(
     }
 }
 
-/// <summary>Result of a delete; a record rather than a bare bool so it can ride the generic result type.</summary>
+/// <summary>删除结果；用 record 而不是裸 bool，这样它能搭上通用结果类型。</summary>
 public sealed record NoteDeleted(bool Deleted);
 
-/// <summary>One page of the notebook plus the account-wide total so the window can show a count.</summary>
+/// <summary>单词本的一页，外加上账号级总数，好让窗口显示数量。</summary>
 public sealed record NotePage(IReadOnlyList<Note> Items, int Total);
 
-/// <summary>One day's queue: what is due by time plus what is new under today's quota.</summary>
+/// <summary>一天的队列：按时间到期的，加上今日配额内的新卡。</summary>
 public sealed record ReviewQueue(
     IReadOnlyList<Note> Due,
     IReadOnlyList<Note> Fresh,

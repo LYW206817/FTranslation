@@ -1,5 +1,5 @@
-# Idle CPU probe: is the app spinning while nothing happens, and does the settings window make it worse?
-# ASCII only (Chinese via [char]0xXXXX) so a BOM-less .ps1 is not mangled.
+﻿# 空闲 CPU 探针：没事可做时应用是不是在空转？打开设置窗口会不会更糟？
+# 仅用 ASCII（中文用 [char]0xXXXX 表示），避免无 BOM 的 .ps1 中文乱码。
 param([string]$Exe = (Join-Path $env:LOCALAPPDATA 'Programs\FastTranslation\FastTranslation.exe'))
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -29,7 +29,7 @@ try {
   Sample $app.Id 'A start-up settle (no window)' 2000
   Sample $app.Id 'B idle, main window open' 3000
 
-  # hide main window via the tray toggle is not scriptable; instead open settings on top
+  # 托盘菜单里的「隐藏主窗口」没法脚本化，改为把设置窗口开在顶层
   $root = $AE::RootElement
   $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $app.Id)
   $main = $null

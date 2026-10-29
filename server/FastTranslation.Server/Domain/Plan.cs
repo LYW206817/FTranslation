@@ -1,6 +1,6 @@
 namespace FastTranslation.Server.Domain;
 
-/// <summary>Tier stored in users.plan. The wire names are the contract with the client.</summary>
+/// <summary>存于 users.plan 的档位。传输名是与客户端之间的契约。</summary>
 public enum PlanTier
 {
     Free = 0,
@@ -14,7 +14,7 @@ public static class Plans
     public const int LightMonthlyChars = 50_000;
     public const int StandardMonthlyChars = 200_000;
 
-    /// <summary>Free tier is additionally capped per device per day (anti-abuse, design §7.4).</summary>
+    /// <summary>免费档还额外限制每台设备每日用量（防滥用，设计 §7.4）。</summary>
     public const int FreeDailyChars = 2_000;
 
     public const int MaxDevicesPerAccount = 3;
@@ -26,7 +26,7 @@ public static class Plans
         _ => FreeMonthlyChars,
     };
 
-    /// <summary>Null means "no daily cap" — paid tiers are only bounded by the monthly quota.</summary>
+    /// <summary>Null 表示“无每日上限”——付费档只受月度额度约束。</summary>
     public static int? DailyQuota(PlanTier tier) => tier == PlanTier.Free ? FreeDailyChars : null;
 
     public static string ToWire(PlanTier tier) => tier switch

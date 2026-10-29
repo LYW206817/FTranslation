@@ -5,9 +5,9 @@ using FastTranslation.Core.Notes;
 namespace FastTranslation.App;
 
 /// <summary>
-/// Owns the one signed-in session for the process: restores it at startup, refreshes an expired
-/// access token, and hides the "token expired, try again" case from every caller. The window and
-/// the main page both read <see cref="Session"/>; nothing else touches the session store.
+/// 负责进程中唯一的登录会话：启动时恢复它、刷新过期的 access token，并对所有调用方
+/// 隐藏「token 过期，请重试」这种情况。窗口和首页都只读 <see cref="Session"/>，
+/// 会话存储不经过任何其他代码。
 /// </summary>
 public sealed class AccountCoordinator
 {
@@ -42,14 +42,13 @@ public sealed class AccountCoordinator
     public string BaseUrl => _client.BaseUrl;
     public string NotesBaseUrl => _notes?.BaseUrl ?? _client.BaseUrl;
 
-    /// <summary>The gateway bills the per-device daily quota, so it must see the same fingerprint
-    /// sign-in used — otherwise every translation lands on a fresh anonymous device row.</summary>
+    /// <summary>网关按设备记日额度，所以它必须看到和登录时相同的指纹——否则每次翻译
+    /// 都会落到一个新的匿名设备行上。</summary>
     public string DeviceFingerprint => _deviceFingerprint;
 
     /// <summary>
-    /// Access token for a call this class does not own (the translation gateway). Rotates first
-    /// when the token is within a minute of expiring: a gateway request that dies on 401 costs a
-    /// whole wasted round trip in front of every translation.
+    /// 提供给不属于本类的调用（翻译网关）的 access token。令牌距过期不足一分钟时先行轮换：
+    /// 否则一个死在 401 上的网关请求，会让每次翻译白搭一整个往返。
     /// </summary>
     public async Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken)
     {
@@ -72,12 +71,12 @@ public sealed class AccountCoordinator
         }
     }
 
-    /// <summary>Raised whenever the session changes so any visible surface can re-render.</summary>
+    /// <summary>会话一变就触发，好让任何可见界面都能重绘。</summary>
     public event Action? Changed;
 
     /// <summary>
-    /// Restores the stored session. A live access token is used as-is; an expired one is rotated.
-    /// Returns null on success (signed in or genuinely signed out) and the failure otherwise.
+    /// 恢复已存储的会话。仍有效的 access token 直接用；过期的先轮换。成功（已登录或确实
+    /// 未登录）返回 null，失败返回对应错误码。
     /// </summary>
     public async Task<AccountError?> TryRestoreAsync(CancellationToken cancellationToken)
     {
@@ -96,8 +95,8 @@ public sealed class AccountCoordinator
 
         if (!stored.IsExpired(DateTimeOffset.UtcNow))
         {
-            // the plan and quotas in the stored blob go stale on an upgrade; only the token is
-            // worth caching. Usage is fetched by the caller, which also refreshes the profile.
+            // 升级之后存储里的套餐和额度会过期；只有令牌值得缓存。
+            // 用量由调用方去取，它同时也会刷新资料。
             SetSession(restored);
             var profile = await _client.GetProfileAsync(restored.AccessToken, cancellationToken).ConfigureAwait(true);
             if (profile.Succeeded)
@@ -105,7 +104,7 @@ public sealed class AccountCoordinator
                 SetSession(restored with { Profile = profile.Value! });
                 return null;
             }
-            if (profile.Error!.Code != AccountErrorCode.Unauthorized) return null; // keep the session; the token is still valid
+            if (profile.Error!.Code != AccountErrorCode.Unauthorized) return null; // 保留会话；令牌仍然有效
         }
 
         return await RefreshAsync(restored, cancellationToken).ConfigureAwait(true);
@@ -119,8 +118,7 @@ public sealed class AccountCoordinator
             Apply(result.Value!);
             return null;
         }
-        // a rejected refresh token is the only failure worth signing out for; a dead network keeps
-        // the session so the next launch can try again
+        // 只有刷新令牌被拒才值得登出；网络断了则保留会话，下次启动还能再试
         if (result.Error!.Code is AccountErrorCode.Unauthorized or AccountErrorCode.InvalidResponse)
         {
             _store.Clear();
@@ -151,7 +149,7 @@ public sealed class AccountCoordinator
         return result;
     }
 
-    /// <summary>A server with no SMTP answers "verification disabled" — the form then skips the field.</summary>
+    /// <summary>没配 SMTP 的服务端会回「验证已禁用」，表单随后就不显示这个字段。</summary>
     public Task<AccountApiResult<CodeRequestResult>> RequestCodeAsync(string email, CancellationToken cancellationToken) =>
         _client.RequestVerificationCodeAsync(email, cancellationToken);
 
@@ -159,8 +157,8 @@ public sealed class AccountCoordinator
         WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken, _deviceFingerprint), cancellationToken);
 
     /// <summary>
-    /// Redeeming rewrites the plan, so the refreshed profile replaces the stored one in place —
-    /// otherwise the window would keep showing 免费版 until the next sign-in.
+    /// 兑换会改写套餐，所以刷新后的资料要就地替换已存储的那份——否则窗口会一直显示
+    /// 免费版，直到下一次登录。
     /// </summary>
     public async Task<AccountApiResult<AccountRedeem>> RedeemAsync(string code, CancellationToken cancellationToken)
     {
@@ -177,9 +175,8 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
-    /// The display name lives on the profile, so a successful save has to replace the stored profile
-    /// as well — the sidebar and the account card draw their label from the session, not from a
-    /// second copy of the name.
+    /// 显示名存在资料里，所以保存成功也必须替换已存储的资料——侧边栏和账号卡片是从
+    /// 会话取标签的，不是从名字的第二份副本。
     /// </summary>
     public async Task<AccountApiResult<AccountProfile>> UpdateDisplayNameAsync(
         string displayName, CancellationToken cancellationToken)
@@ -198,9 +195,8 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
-    /// Changing the password revokes every session on the server, so the reply carries a new token
-    /// pair for this device: the caller must apply it, or this client would be the one that got
-    /// logged out.
+    /// 改密码会让服务端吊销所有会话，因此回包会给本设备带一对新令牌：调用方必须应用它，
+    /// 否则被登出的就是这台客户端自己。
     /// </summary>
     public async Task<AccountApiResult<AccountSignIn>> ChangePasswordAsync(
         string currentPassword, string newPassword, CancellationToken cancellationToken)
@@ -218,8 +214,8 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
-    /// Saves one pair. The whole notebook rides on the session wrapper so an expired access token
-    /// is rotated instead of surfacing as "token expired" in a card the user just clicked.
+    /// 保存一组配对。整个单词本的请求都走会话包装层，这样过期的 access token 会被轮换，
+    /// 而不是在用户刚点过的卡片上冒出「token 过期」。
     /// </summary>
     public Task<AccountApiResult<Note>> SaveNoteAsync(
         NoteKind? kind,
@@ -289,8 +285,8 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
-    /// Runs a call with the live access token and retries exactly once after a refresh: an
-    /// access token lives 30 minutes, so "expired" is the normal case, not an error to surface.
+    /// 用当前有效的 access token 执行调用，并在刷新后恰好重试一次：access token 只有
+    /// 30 分钟寿命，所以「过期」是常态，不是该抛给用户的错误。
     /// </summary>
     private async Task<AccountApiResult<T>> WithSessionAsync<T>(
         Func<string, Task<AccountApiResult<T>>> call, CancellationToken cancellationToken) where T : class
@@ -307,7 +303,7 @@ public sealed class AccountCoordinator
             if (current is null) return AccountApiResult<T>.Fail(AccountErrorCode.NotSignedIn);
             if (!ReferenceEquals(current, session))
             {
-                // another caller refreshed while this one waited — just retry with the new token
+                // 另一个调用方趁这次等待期间刷新过了——直接用新令牌重试就行
                 return await call(current.AccessToken).ConfigureAwait(true);
             }
             var failure = await RefreshAsync(current, cancellationToken).ConfigureAwait(true);

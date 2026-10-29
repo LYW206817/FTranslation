@@ -7,10 +7,8 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// The activation code is how money reaches an account without a payment provider: the operator
-/// mints a batch, the buyer pastes one code. What must hold is that a code pays out exactly once.
-/// </summary>
+/// <summary>激活码是资金在没有支付服务商时进入账号的途径:运营方
+/// 铸造一批码,买家粘贴一个。必须成立的是:一个码恰好兑现一次。</summary>
 public class RedeemEndpointTests : IClassFixture<ServerFactory>
 {
     private readonly ServerFactory _factory;
@@ -93,7 +91,7 @@ public class RedeemEndpointTests : IClassFixture<ServerFactory>
         var client = await SignedInAsync();
         var code = await MintAsync(PlanTier.Light);
 
-        // lower case, dashes stripped, and the FT prefix dropped: still the same code.
+        // 小写、去掉连字符、再去掉 FT 前缀:仍然是同一个码。
         var retyped = code.Replace("-", string.Empty, StringComparison.Ordinal)[2..].ToLowerInvariant();
 
         var response = await RedeemAsync(client, retyped);
@@ -150,7 +148,7 @@ public class RedeemEndpointTests : IClassFixture<ServerFactory>
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("redeem_plan_downgrade", await refused.Content.ReadAsStringAsync());
 
-        // The refusal must not burn the code: somebody on a cheaper plan can still use it.
+        // 拒绝不能烧掉这个码:用更便宜套餐的人仍然可以用它。
         var other = await SignedInAsync();
         (await RedeemAsync(other, cheaper)).EnsureSuccessStatusCode();
     }
@@ -179,7 +177,7 @@ public class RedeemEndpointTests : IClassFixture<ServerFactory>
         (await RevokeAsync(code)).EnsureSuccessStatusCode();
         var response = await RedeemAsync(client, code);
 
-        // 410, not 404: the buyer needs to be able to prove the code was real and was cancelled.
+        // 410 而不是 404:买家需要能够证明这个码真实存在且已被作废。
         Assert.Equal(HttpStatusCode.Gone, response.StatusCode);
         Assert.Contains("redeem_code_revoked", await response.Content.ReadAsStringAsync());
     }
@@ -197,8 +195,8 @@ public class RedeemEndpointTests : IClassFixture<ServerFactory>
         response.EnsureSuccessStatusCode();
         var after = (await response.Content.ReadFromJsonAsync<RedeemResponse>())!;
         Assert.Equal(Plans.ToWire(PlanTier.Standard), after.Account.Plan);
-        // Buying up is the case that used to throw paid-for days away: the clock must move by the
-        // new code's days from the old end date, not restart today.
+        // 升档正是过去会白白丢掉已付费天数的场景:时钟必须从
+        // 旧到期日按新码的天数前移,而不是从今天重新开始。
         Assert.True(after.Account.PlanExpiresAt > before, "an upgrade must extend the subscription");
         Assert.InRange(after.Account.PlanExpiresAt!.Value - before, 30L * 86_400L - 60L, 30L * 86_400L + 60L);
     }
@@ -243,8 +241,8 @@ public class RedeemEndpointTests : IClassFixture<ServerFactory>
         (await RevokeAsync(fresh)).EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.OK, (await RevokeAsync(fresh)).StatusCode);
 
-        // A code that already paid out is the customer's property: revoking it would delete days
-        // they bought, which is exactly what this ledger must never do.
+        // 已经兑现过的码是客户的财产:作废它会删掉
+        // 他们买下的天数,而这正是这个账本绝不能做的事。
         var spent = await MintAsync(PlanTier.Light);
         (await RedeemAsync(await SignedInAsync(), spent)).EnsureSuccessStatusCode();
         var refused = await RevokeAsync(spent);

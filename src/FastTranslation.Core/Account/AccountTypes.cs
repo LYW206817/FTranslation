@@ -1,8 +1,8 @@
 namespace FastTranslation.Core.Account;
 
 /// <summary>
-/// What went wrong talking to the account service. The wire codes come from the server's
-/// {"error":"..."} body; everything the server does not name lands in <see cref="Server"/>.
+/// 与账号服务通信时出了什么问题。线上错误码来自服务端 {"error":"..."} 响应体；
+/// 服务端未明确命名的都落到 <see cref="Server"/>。
 /// </summary>
 public enum AccountErrorCode
 {
@@ -30,7 +30,7 @@ public enum AccountErrorCode
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
 {
-    /// <summary>User-facing sentence; the window shows this verbatim, so it must read as advice.</summary>
+    /// <summary>面向用户的一句话；窗口原样显示，所以读起来要像建议。</summary>
     public string Display => Code switch
     {
         AccountErrorCode.Network => "连不上账号服务器,请检查网络后重试。",
@@ -64,11 +64,11 @@ public sealed record AccountProfile(
     long? PlanExpiresAtUnix = null,
     string DisplayName = "")
 {
-    /// <summary>What the UI shows as the account's name: the display name when set, else the email.</summary>
+    /// <summary>界面显示的账号名：设了显示名就用显示名，否则用邮箱。</summary>
     public string DisplayNameOrEmail => string.IsNullOrWhiteSpace(DisplayName) ? Email : DisplayName;
 
-    /// <summary>One character for the round avatar. Falls back to "?" for an address that cannot
-    /// start a name (an empty email only happens on a malformed response).</summary>
+    /// <summary>圆形头像用的一个字符。地址里取不出首字符时回落到 "?"（空邮箱只会在
+    /// 响应格式错误时出现）。</summary>
     public string Initial => DisplayNameOrEmail.Length == 0
         ? "?"
         : DisplayNameOrEmail[..1].ToUpperInvariant();
@@ -80,14 +80,14 @@ public sealed record AccountProfile(
         _ => "免费版",
     };
 
-    /// <summary>Null for the free plan: nothing was bought, so there is no date to show.</summary>
+    /// <summary>免费版为 null：没有购买任何东西，也就没有日期可显示。</summary>
     public string? ExpiryLine => Plan != "free" && PlanExpiresAtUnix is { } at
         ? "有效期至 " + DateTimeOffset.FromUnixTimeSeconds(at).ToLocalTime().ToString("yyyy-MM-dd")
         : null;
 }
 
-/// <summary>One quota window as the server reports it. Fractions are computed here so the
-/// progress bars never divide by zero on a plan that carries no daily limit.</summary>
+/// <summary>服务端上报的一个额度窗口。占比在这里算，好让没有每日上限的套餐
+/// 也不会让进度条除零。</summary>
 public sealed record AccountUsage(
     int UsedMonthlyChars,
     int? UsedDailyChars,
@@ -115,18 +115,17 @@ public sealed record AccountUsage(
         : "今日不限(付费版只有月度额度)";
 }
 
-/// <summary>A signed-in session as the client keeps it: tokens plus the profile they belong to.</summary>
+/// <summary>客户端保存的已登录会话：令牌及其所属的资料。</summary>
 public sealed record AccountSession(string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt, AccountProfile Profile);
 
 public sealed record AccountSignIn(AccountSession Session, AccountUsage Usage);
 
-/// <summary>What a redeemed activation code bought: the new plan and the meters that go with it.</summary>
+/// <summary>兑换激活码买到的东西：新套餐以及随之更新的用量表。</summary>
 public sealed record AccountRedeem(AccountProfile Profile, AccountUsage Usage);
 
 /// <summary>
-/// Whether this server actually mails a code. A server with verification turned off answers
-/// "verification_disabled", and the sign-up form must then hide the code field instead of
-/// rejecting an empty one.
+/// 这台服务器是否真的会发验证码。关闭了验证的服务器会回答 "verification_disabled"，
+/// 注册表单此时必须隐藏验证码输入框，而不是拒绝空值。
 /// </summary>
 public sealed record CodeRequestResult(bool VerificationRequired);
 

@@ -5,10 +5,8 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// The ledger outlives the endpoint that writes it, so the storage rules are tested without HTTP:
-/// a revoked code must never be claimable, and an existing production database must gain the column.
-/// </summary>
+/// <summary>账本比写它的端点活得久,所以存储规则不经过 HTTP 来测:
+/// 已作废的码绝不能可兑现,而现有生产库必须补上该列。</summary>
 public class RedeemStoreTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), "ft-server-tests", "redeem-" + Guid.NewGuid().ToString("N") + ".db");
@@ -38,7 +36,7 @@ public class RedeemStoreTests : IDisposable
         var buyer = SeedUser(database);
         Assert.True(store.TryClaim(code, buyer, database.NowUnix));
 
-        // The buyer already paid: clawing the code back would delete days they own.
+        // 买家已经付过钱:把码收回会删掉他们拥有的天数。
         Assert.False(store.Revoke(code, database.NowUnix));
         Assert.Null(store.Find(code)!.RevokedAt);
     }
@@ -60,10 +58,8 @@ public class RedeemStoreTests : IDisposable
         Assert.False(RedeemStore.IsKnownStatus("pending"));
     }
 
-    /// <summary>
-    /// Production already has a redeem_codes table without revoked_at and CREATE TABLE IF NOT EXISTS
-    /// never adds a column, so this builds the pre-v49 shape on purpose and migrates it.
-    /// </summary>
+    /// <summary>生产环境已经有 redeem_codes 表,但没有 revoked_at,而
+    /// CREATE TABLE IF NOT EXISTS 从不加列,所以这里故意构造 v49 之前的形态并迁移它。</summary>
     [Fact]
     public void Migration_OldDatabaseGainsTheRevokedColumn()
     {
@@ -104,7 +100,7 @@ public class RedeemStoreTests : IDisposable
 
         Assert.Equal("INTEGER", columns["revoked_at"]);
 
-        // A code printed before the migration is still sellable, and still revocable.
+        // 迁移之前印出的码仍然可售,也仍然可作废。
         var store = new RedeemStore(database);
         var legacy = store.Find("FT-4G7M-2XQP-9HKV-3WTA");
         Assert.NotNull(legacy);
@@ -114,7 +110,7 @@ public class RedeemStoreTests : IDisposable
         Assert.True(store.Find("FT-4G7M-2XQP-9HKV-3WTA")!.IsRevoked);
     }
 
-    /// <summary>redeemed_by is a real foreign key, so a claim needs a buyer that exists.</summary>
+    /// <summary>redeemed_by 是真正的外键,所以兑现需要一个存在的买家。</summary>
     private static Guid SeedUser(ServerDatabase database)
     {
         var id = Guid.NewGuid();

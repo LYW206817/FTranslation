@@ -11,7 +11,7 @@
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
-    <!-- one row of the pick list: a checkbox, the kind chip, then what you saved -->
+    <!-- 选题列表的一行：一个复选框、种类标签，然后是保存的内容 -->
     <Style x:Key="PickRow" TargetType="ListBoxItem">
       <Setter Property="Padding" Value="0"/>
       <Setter Property="Margin" Value="0,0,0,2"/>
@@ -51,7 +51,7 @@
       </Setter>
     </Style>
 
-    <!-- the four grades inside the session: quiet until hovered, greyed until revealed -->
+    <!-- 练习中的四档评分：悬停前安静，揭晓前置灰 -->
     <Style x:Key="GradeButton" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -110,7 +110,7 @@
     </DockPanel>
 
     <Grid Grid.Row="1">
-      <!-- ===== mode 1: what is waiting, tick the ones you want ===== -->
+      <!-- ===== 模式 1：今天等什么，勾选想练的 ===== -->
       <Grid x:Name="PickHost">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -178,7 +178,7 @@
         </Border>
       </Grid>
 
-      <!-- ===== mode 2: one card at a time, in this same page ===== -->
+      <!-- ===== 模式 2：一次一张卡，就在本页里 ===== -->
       <Grid x:Name="SessionHost" Visibility="Collapsed">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -198,8 +198,8 @@
           <TextBlock Text=" "/>
         </DockPanel>
 
-        <!-- the card: the thing being tested on top, the answer slot below it. The slot has to sit
-             under the text, not over it: a mask painted across the middle hid the word. -->
+        <!-- 卡片：上面是被考的内容，下面是答案槽。这个槽必须落在文字
+             下方而不是盖在文字上：横在中间的一块遮罩会把单词挡住。 -->
         <StackPanel x:Name="CardHost" Grid.Row="1" VerticalAlignment="Center">
           <TextBlock x:Name="PromptText" FontSize="21" LineHeight="34" Margin="24,0"
                      TextWrapping="Wrap" TextAlignment="Center"
@@ -239,12 +239,12 @@
                      Visibility="Collapsed"/>
         </StackPanel>
 
-        <!-- four grades; greyed out until the answer is visible. Focusable="False" on purpose: the
-             keyboard path is 1/2/3/4, and a focusable button would both steal Space (which reveals)
-             and leave a focus ring behind after a mouse click. -->
+        <!-- 四档评分；答案可见之前置灰。故意设 Focusable="False"：
+             键盘路径是 1/2/3/4，若按钮可获得焦点，它既会抢走 Space（用来揭晓答案），
+             又会在鼠标点过之后留下一圈焦点框。 -->
         <Border x:Name="GradeBar" Grid.Row="2" BorderBrush="{DynamicResource HairBrush}"
                 BorderThickness="0,1,0,0" Padding="0,12,0,4">
-          <!-- kept narrow: four 320px-wide buttons read as a toolbar, not as four choices -->
+          <!-- 故意压窄：四个 320px 宽的按钮读起来像工具栏，而不是四个选项 -->
           <Grid MaxWidth="620">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
@@ -279,7 +279,7 @@
           </Grid>
         </Border>
 
-        <!-- done state: the sitting ended, but the page stays where it is -->
+        <!-- 完成态：这一轮结束了，但页面仍停在原地 -->
         <StackPanel x:Name="DonePanel" Grid.Row="1" Visibility="Collapsed"
                     HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="440">
           <TextBlock x:Name="DoneTitle" FontSize="17" TextAlignment="Center"

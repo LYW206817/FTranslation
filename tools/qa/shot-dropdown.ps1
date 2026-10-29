@@ -16,7 +16,7 @@ $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 5
 $p = Get-Process -Id $app.Id
 if (-not $p.MainWindowHandle -or $p.MainWindowHandle -eq 0) { Write-Host 'no main hwnd'; exit 1 }
-[F2]::ShowWindow($p.MainWindowHandle, 9) | Out-Null  # SW_RESTORE
+[F2]::ShowWindow($p.MainWindowHandle, 9) | Out-Null  # SW_RESTORE（9，还原并显示窗口）
 [F2]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
 Start-Sleep -Milliseconds 700
 

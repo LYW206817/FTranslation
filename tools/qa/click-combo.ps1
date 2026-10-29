@@ -1,4 +1,4 @@
-param([string]$ExePath)
+﻿param([string]$ExePath)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
@@ -54,7 +54,7 @@ $g.CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
 $bmp.Save('D:\FTranslation\assets\qa\dropdown-open.png', [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host 'captured dropdown-open.png'
-# close by pressing escape
+# 按 Esc 关闭下拉
 [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
 Start-Sleep -Milliseconds 400
 $p3 = Get-Process -Id $app.Id -ErrorAction SilentlyContinue

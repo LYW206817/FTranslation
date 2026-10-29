@@ -63,7 +63,7 @@ public class ThemePaletteTests
     [Fact]
     public void DarkPaletteDiffersFromLightWhereItMatters()
     {
-        // surfaces and text must actually flip, otherwise "dark mode" is a no-op
+        // 表面与文字必须真正翻转,否则“深色模式”形同虚设
         Assert.NotEqual(ThemePalette.Light.WindowBg, ThemePalette.Dark.WindowBg);
         Assert.NotEqual(ThemePalette.Light.Surface, ThemePalette.Dark.Surface);
         Assert.NotEqual(ThemePalette.Light.TextPrimary, ThemePalette.Dark.TextPrimary);

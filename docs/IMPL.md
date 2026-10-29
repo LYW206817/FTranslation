@@ -1333,3 +1333,27 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 
 **残留风险**:①`_gatewayDownUntil` 是进程内的,换机器/重启都要重新探一次;②网关恢复后最长要等 60 秒才会再被问到;③探测只连 TCP 不看 HTTP,端口通但服务 500 的情况仍按原逻辑走(会重试一次)。④那 350 ms 的 TLS 冷启动没有处理,如果以后要求「第一次也 <300 ms」再考虑预热连接。
 
+
+## v59 注释全面中文化（AGENTS 注释规范改为「一律中文」）
+
+**背景**
+- 用户要求仓库内注释一律中文，历史注释同样翻译。
+- `AGENTS.md` 的「注释」小节第一条从「语言跟随文件」改为「**一律用中文**」，并明确标识符、类型名、路径、URL、命令、版本号、错误码与代码片段保持原样；第三方文件（如 `installer/Languages/ChineseSimplified.isl`）不动。
+
+**改动**
+- 范围：174 个已跟踪文本文件（+1583/−1643 行），只改注释文字，不动代码、字符串字面量与标识符。
+- 分布：tools 32、server 30、tests 30、App 26、Core 20、Platform.Windows 18、deploy 7、Providers.QwenMt 3、installer 2、站点与根配置 6。
+- 类型：`.cs` 118、`.xaml` 8、`.ps1` 32、`.sh` 4，`.iss`/`.wxs`/`.py`/`.css`/`.csproj`/`.props`/`.gitignore`/`.gitattributes`/`Caddyfile`/`.service`/cron 各 1。
+- 26 个原本无 BOM 的 `.ps1` 补 BOM（PowerShell 5.1 读中文注释不乱码）；其余文件编码、行尾保持原状。
+- 保留英文：标识符、类型名、路径、URL、命令、版本号、错误码、引用的英文异常消息，以及 `<summary>` 等 XML 标签本身。
+
+**验证**
+- 代码不变性：`publish/verify_comments.py` 按语言剥离注释后与 `HEAD` 逐行比较，174 个文件 0 处代码差异；残留英文散文注释 0。
+- 语法：32 个改动 `.ps1` 全部通过 PowerShell AST 解析；4 个 `.sh` 通过 `bash -n`；11 个 XAML/XML/csproj/wxs 可解析；`.py` 可编译；`installer/FastTranslation.iss` 用 Inno Setup 6 编译通过（生成 1.3.4 安装包）。
+- `dotnet build FastTranslation.slnx -c Release`：0 警告 0 错误；`dotnet test`：576 全绿（Core 204 / Platform.Windows 87 / Providers.QwenMt 92 / Server 193）。
+- 注释中的中文标点统一为全角，行内代码片段、路径与命令保持半角。
+
+**风险**
+- 纯注释改动，无行为变化；构建、测试与安装器编译均证实。
+- `core.autocrlf` 下 `git` 会提示 “LF will be replaced by CRLF”，属仓库既有归一化行为，与本次无关。
+- `deploy/README.md` 等既有中文文档里的半角标点未在本轮统一。

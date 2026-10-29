@@ -6,6 +6,6 @@
 *.msi binary
 *.wixpdb binary
 
-# deployment assets must stay LF: scp copies the working tree verbatim, and
-# bash refuses a shebang line that ends in CRLF.
+# 部署资产必须保持 LF：scp 会原样拷贝工作树，而且
+# bash 会拒绝以 CRLF 结尾的 shebang 行。
 deploy/* text eol=lf

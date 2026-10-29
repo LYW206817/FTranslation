@@ -4,9 +4,9 @@ using Wpf = System.Windows;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// T9: clipboard fallback. Sends Ctrl+C to the source window and polls the clipboard
-/// sequence number; restores the previous plain-text content afterwards.
-/// The caller is responsible for refusing terminal hosts (Ctrl+C = SIGINT).
+/// T9：剪贴板兜底方案。向源窗口发送 Ctrl+C，并轮询剪贴板的
+/// 序列号；之后恢复原来的纯文本内容。
+/// 拒绝终端类宿主是调用方的责任(Ctrl+C = SIGINT)。
 /// </summary>
 public sealed class ClipboardService
 {
@@ -35,13 +35,13 @@ public sealed class ClipboardService
             var text = TryGetText();
             if (!string.IsNullOrEmpty(text))
             {
-                // success: restore the backup so we leave the user's clipboard intact
+                // 成功：恢复备份，让用户的剪贴板保持原样
                 WindowsSelectionCapture.Diag($"clipboard fallback: captured {text.Length}ch");
                 if (backup is not null) { try { SetText(backup); } catch { } }
                 return text;
             }
         }
-        // nothing arrived: restore whatever may have changed, return null
+        // 什么也没等到：恢复可能已被改动的内容，返回 null
         if (backup is not null)
         {
             try { if (TryGetText() != backup) SetText(backup); } catch { }
@@ -60,10 +60,10 @@ public sealed class ClipboardService
         }
         catch { return false; }
 
-        // release modifiers so Ctrl+C isn't shadowed by e.g. a lingering Alt
-        ReleaseModifier(0x12); // VK_MENU
-        ReleaseModifier(0x10); // VK_SHIFT
-        ReleaseModifier(0x11); // VK_CONTROL
+        // 先松开修饰键，避免 Ctrl+C 被残留的 Alt 等键吞掉
+        ReleaseModifier(0x12); // VK_MENU(Alt 键)
+        ReleaseModifier(0x10); // VK_SHIFT(Shift 键)
+        ReleaseModifier(0x11); // VK_CONTROL(Ctrl 键)
 
         var inputs = new[]
         {
@@ -81,8 +81,8 @@ public sealed class ClipboardService
         NativeMethods.SendInput(1, new[] { up }, Marshal.SizeOf<NativeMethods.INPUT>());
     }
 
-    /// <summary>Snapshot the whole clipboard (all formats) — restoring this preserves text,
-    /// HTML, images and files, unlike a text-only backup. Call on an STA thread.</summary>
+    /// <summary>对整个剪贴板做快照(所有格式)——恢复它才能保住文本、
+    /// HTML、图片和文件，纯文本备份做不到。请在 STA 线程上调用。</summary>
     public static System.Windows.IDataObject? SnapshotClipboard()
     {
         for (var attempt = 0; attempt < 3; attempt++)
@@ -106,11 +106,11 @@ public sealed class ClipboardService
 
     public static uint GetSequence() => NativeMethods.GetClipboardSequenceNumber();
 
-    /// <summary>Send Ctrl+C via SendInput (foreground must already be the source window).</summary>
+    /// <summary>通过 SendInput 发送 Ctrl+C(前台窗口必须已经是源窗口)。</summary>
     public static bool SendCtrlC() => SendCopyToSource(NativeMethods.GetForegroundWindow());
 
-    /// <summary>Poll for new clipboard text via Win32 (no STA/WPF needed — safe on any thread).
-    /// Returns null when the sequence number never advances within the timeout.</summary>
+    /// <summary>用 Win32 轮询新的剪贴板文本(不需要 STA/WPF——任意线程都安全)。
+    /// 超时内序列号始终没有前进时返回 null。</summary>
     public static string? PollNewTextWin32(int timeoutMs, uint beforeSeq)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -129,7 +129,7 @@ public sealed class ClipboardService
         if (!NativeMethods.OpenClipboard(IntPtr.Zero)) return null;
         try
         {
-            var handle = NativeMethods.GetClipboardData(13 /* CF_UNICODETEXT */);
+            var handle = NativeMethods.GetClipboardData(13 /* CF_UNICODETEXT，Unicode 文本格式 */);
             if (handle == IntPtr.Zero) return null;
             var ptr = NativeMethods.GlobalLock(handle);
             if (ptr == IntPtr.Zero) return null;
@@ -141,8 +141,8 @@ public sealed class ClipboardService
 
     public static string? TryGetText()
     {
-        // Clipboard.GetDataObject must run on an STA thread; we are called from the UI thread
-        // or a dedicated STA worker. WPF Clipboard retries internally on CLIPBRD_E_CANT_OPEN.
+        // Clipboard.GetDataObject 必须在 STA 线程上运行；本方法由 UI 线程
+        // 或专用 STA 工作线程调用。WPF 的 Clipboard 在 CLIPBRD_E_CANT_OPEN 时会内部重试。
         for (var attempt = 0; attempt < 3; attempt++)
         {
             try

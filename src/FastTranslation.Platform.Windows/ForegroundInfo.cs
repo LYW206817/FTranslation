@@ -2,8 +2,7 @@ using System.Diagnostics;
 
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>Process name of the current foreground window — powers the settings window's
-/// "add foreground app to exclusions" shortcut (spec 723).</summary>
+/// <summary>当前前台窗口的进程名——用于设置窗口里「把前台应用加入排除列表」的快捷入口(spec 723)。</summary>
 public static class ForegroundInfo
 {
     public static string ProcessName()

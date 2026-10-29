@@ -69,7 +69,7 @@
         <TextBlock x:Name="Headline" Text="账号" FontSize="17" FontWeight="SemiBold"
                    Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
 
-        <!-- ================= signed out ================= -->
+        <!-- ================= 未登录 ================= -->
         <Grid x:Name="SignedOutPanel">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -140,10 +140,10 @@
           </Border>
         </Grid>
 
-        <!-- ================= signed in ================= -->
+        <!-- ================= 已登录 ================= -->
         <StackPanel x:Name="SignedInPanel" Visibility="Collapsed">
 
-          <!-- identity: avatar, name, address, plan badge, and the one destructive action -->
+          <!-- 身份区：头像、名字、地址、套餐徽标，以及唯一一个破坏性操作 -->
           <Border Style="{StaticResource Card}">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -188,7 +188,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0">
-              <!-- the plan summary: name, validity, what is left. Buying lives on the 套餐 page -->
+              <!-- 套餐摘要：名称、有效期、剩余量。购买在套餐页 -->
               <Border Style="{StaticResource Card}">
                 <StackPanel>
                   <TextBlock Text="当前套餐" Style="{StaticResource CardTitle}"/>

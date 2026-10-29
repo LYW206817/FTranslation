@@ -4,22 +4,20 @@ using Microsoft.Win32;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// Whether the running copy is allowed to replace itself in place.
+/// 当前运行的副本是否允许原地替换自身。
 ///
-/// The folder the user picked in the setup wizard has to survive an upgrade. Inno's silent run
-/// inherits it through UsePreviousAppDir and the updater passes the same value as /DIR, so the
-/// uninstall record is the single source of truth: a copy that is not the registered install (an
-/// extracted portable zip, or a folder someone moved by hand) cannot be replaced and has to fall
-/// back to the download page.
+/// 用户在安装向导里选的目录必须在升级后保持不变。Inno 的静默运行通过 UsePreviousAppDir
+/// 继承该目录，更新器又以 /DIR 传入同一个值，因此卸载记录是唯一可信来源：不是已注册安装的
+/// 副本(解压出来的便携包，或被人手动搬走的文件夹)无法原地替换，只能退回下载页。
 /// </summary>
 public static class InstallLayout
 {
-    /// <summary>Inno's per-product uninstall key; the same for every install of this AppId.</summary>
+    /// <summary>Inno 按产品分配的卸载键；同一 AppId 的每次安装都相同。</summary>
     public const string UninstallKey = "{8B1F2C34-7A6D-4E58-9C21-5F3D8E7A1B60}_is1";
 
     /// <summary>
-    /// Directories a per-user install must never try to rewrite: PrivilegesRequired=lowest means
-    /// there is no elevation to ask for, so the silent run would fail after the app already exited.
+    /// 按用户安装绝不能尝试改写的目录：PrivilegesRequired=lowest 意味着
+    /// 无法请求提权，静默运行会在应用已经退出之后才失败。
     /// </summary>
     public static IReadOnlyList<string> ProtectedRoots() => new[]
     {
@@ -29,7 +27,7 @@ public static class InstallLayout
         Environment.GetFolderPath(Environment.SpecialFolder.Windows),
     };
 
-    /// <summary>InstallLocation of the registered copy, or null when this app was never installed.</summary>
+    /// <summary>已注册副本的 InstallLocation；本应用从未安装过时为 null。</summary>
     public static string? ReadRegisteredDirectory()
     {
         foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
@@ -46,7 +44,7 @@ public static class InstallLayout
                 }
                 catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
                 {
-                    // a hive we cannot read is a hive we cannot trust; keep looking
+                    // 读不了的注册表 hive 不可信任；继续找下一个
                 }
             }
         }
@@ -80,7 +78,7 @@ public static class InstallLayout
             var parent = Normalize(root);
             if (parent is null) continue;
             if (string.Equals(target, parent, StringComparison.OrdinalIgnoreCase)) return true;
-            // the separator keeps "C:\Program FilesX" from matching "C:\Program Files"
+            // 保留分隔符，避免 "C:\Program FilesX" 匹配到 "C:\Program Files"
             if (target.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 return true;
         }

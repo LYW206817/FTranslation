@@ -1,9 +1,9 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $dir = 'D:\FTranslation\publish\ft-folder'
 $all = Get-ChildItem -LiteralPath $dir -Recurse -File
 $root = @($all | Where-Object { $_.DirectoryName -eq $dir } | Sort-Object Name)
 
-# relative directory path -> generated Directory Id
+# 相对目录路径 → 生成的 Directory Id
 $subDirs = @{}
 foreach ($f in $all) {
   $rel = $f.DirectoryName.Substring($dir.Length).TrimStart('\')

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace FastTranslation.Providers.QwenMt.Tests;
 
-/// <summary>Fake upstream on a local HttpListener — no network, no real key.</summary>
+/// <summary>本地 HttpListener 上的假上游——不联网,也不需要真 Key。</summary>
 public sealed class FakeQwenServer : IDisposable
 {
     private readonly HttpListener _listener = new();
@@ -21,8 +21,8 @@ public sealed class FakeQwenServer : IDisposable
 
     public FakeQwenServer()
     {
-        // Bind by retry: a random port can already be taken by another test run or a stray
-        // process, and HttpListener.Start throws rather than picking a free one on its own.
+        // 通过重试来绑定:随机端口可能已被另一次测试运行或残留
+        // 进程占用,而 HttpListener.Start 会直接抛异常,不会自己另选空闲端口。
         var started = false;
         ListenerException = null;
         for (var attempt = 0; attempt < 20 && !started; attempt++)
@@ -120,7 +120,7 @@ public class QwenMtProviderTests
 
         var result = await provider.TranslateAsync(Request(), CancellationToken.None);
 
-        // Null means "unknown"; reporting 0 would silently claim the request was free.
+        // null 表示“未知”;报 0 会悄悄宣称这次请求免费。
         Assert.Null(result.Usage);
     }
 

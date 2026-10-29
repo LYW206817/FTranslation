@@ -15,18 +15,17 @@ public sealed class QwenMtOptions
     public int TimeoutSeconds { get; init; } = 30;
 
     /// <summary>
-    /// Headers sent with every request. Only the developer gateway needs them: the device id lets
-    /// the per-device daily quota land on the device that actually sent the text. DashScope itself
-    /// ignores unknown headers, so one class serves both routes.
+    /// 每个请求都带的请求头。只有开发者网关需要：设备标识让按设备的每日额度记到真正
+    /// 发出文本的那台设备上。DashScope 本身会忽略未知请求头，所以一个类同时服务两条链路。
     /// </summary>
     public IReadOnlyDictionary<string, string>? ExtraHeaders { get; init; }
 }
 
 /// <summary>
-/// Qwen-MT HTTP adapter. Protocol facts (from docs; re-verify before beta):
-/// - single user message only; no system message
-/// - translation_options is a TOP-LEVEL JSON field (source_lang/target_lang, English names)
-/// - Authorization: Bearer key
+/// Qwen-MT 的 HTTP 适配器。协议事实（来自文档；beta 前需再核对）：
+/// - 只发一条 user 消息；没有 system 消息
+/// - translation_options 是顶层 JSON 字段（source_lang/target_lang，用英文语言名）
+/// - 认证请求头形如 Authorization: Bearer key
 /// </summary>
 public sealed class QwenMtProvider : ITranslationProvider
 {
@@ -97,9 +96,9 @@ public sealed class QwenMtProvider : ITranslationProvider
                 }
 
                 var body = await SafeReadBodyAsync(response, ct).ConfigureAwait(false);
-                // The gateway refuses a spent quota with 429 as well, so only the body can tell the
-                // two apart. Retrying a spent quota just wastes the user's time, and the composite
-                // provider has to know this means "switch to your own key".
+                // 网关拒绝额度用尽时同样用 429，所以只能靠响应体区分这两种情况。
+                // 重试一次已用完的额度只是浪费用户时间，而组合 provider 需要知道
+                // 这意味着「改用你自己的 Key」。
                 if (QuotaRefusal.Describe(body) is { } quota)
                 {
                     return Fail(request, new TranslationError(TranslationErrorCode.QuotaExhausted, quota), started);
@@ -117,7 +116,7 @@ public sealed class QwenMtProvider : ITranslationProvider
             {
                 return Fail(request, TranslationError.Cancelled(), started);
             }
-            catch (TaskCanceledException) // HttpClient timeout
+            catch (TaskCanceledException) // HttpClient 超时
             {
                 if (attempt == 0) { await DelayAsync(attempt, ct).ConfigureAwait(false); continue; }
                 return Fail(request, TranslationError.Network("请求超时"), started);
@@ -175,8 +174,8 @@ public sealed class QwenMtProvider : ITranslationProvider
     }
 
     /// <summary>
-    /// Usage rides along in the same body, so reading it costs nothing extra. Absent fields mean the
-    /// consumer keeps its own estimate rather than reporting a fabricated zero.
+    /// 用量就带在同一个响应体里，读它不增加额外开销。字段缺失表示消费方保留自己的估算，
+    /// 而不是上报一个编造的零。
     /// </summary>
     internal static TokenUsage? ReadUsage(JsonElement root)
     {

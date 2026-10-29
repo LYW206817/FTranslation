@@ -2,13 +2,13 @@ namespace FastTranslation.Core;
 
 public enum UpdateCheckStatus
 {
-    /// <summary>A newer version is published and its manifest is valid.</summary>
+    /// <summary>有新版本发布且清单有效。</summary>
     Available,
 
-    /// <summary>The channel answered and the published version is not newer than ours.</summary>
+    /// <summary>通道有应答，且已发布版本不比我们新。</summary>
     UpToDate,
 
-    /// <summary>No source answered with a valid manifest; the caller stays silent.</summary>
+    /// <summary>没有任何源返回有效清单；调用方保持静默。</summary>
     Failed,
 }
 
@@ -22,9 +22,8 @@ public sealed record UpdateCheckResult(
 }
 
 /// <summary>
-/// What an interactive check says to the user. The wording lives here because a check reported
-/// only through a tray balloon is indistinguishable from one that never ran; Core keeps the text
-/// so a test can pin it while the App only decides how to show it.
+/// 主动检查更新时对用户说的话。文案放在这里，因为只靠托盘气泡上报的检查与压根没跑过的
+/// 检查无法区分；Core 保留文本，好让测试能固定它，而 App 只决定怎么展示。
 /// </summary>
 public readonly record struct UpdateCheckNotice(string Title, string Body, string? LinkUrl = null)
 {
@@ -39,12 +38,11 @@ public readonly record struct UpdateCheckNotice(string Title, string Body, strin
 }
 
 /// <summary>
-/// Where the updater looks for the manifest. The project repository is private, so the manifest
-/// lives in a separate public repository and is read from two endpoints raced in parallel: GitHub
-/// Pages (canonical) and gh-proxy over the github.com raw route. Both were measured from a mainland
-/// network. raw.githubusercontent.com is unreachable there (connection reset) and the jsDelivr
-/// mirror served a months-old manifest because it caches @main - a stale manifest is worse than a
-/// dead one: it turns "an update exists" into "you are already current" for good.
+/// 更新器去哪里找清单。项目仓库是私有的，所以清单放在另一个公开仓库，并从两个端点并行
+/// 竞速读取：GitHub Pages（权威）与 gh-proxy 走 github.com raw 路由。两者都在大陆网络实测过。
+/// 那边访问不到 raw.githubusercontent.com（连接被重置），而 jsDelivr 镜像因为缓存 @main
+/// 返回了几个月前的清单——过期清单比死链更糟：它会把「有更新」永久变成
+/// 「你已是最新」，而且再也回不来。
 /// </summary>
 public static class UpdateChannel
 {
@@ -58,19 +56,19 @@ public static class UpdateChannel
         "https://gh-proxy.com/https://github.com/" + Owner + "/" + Repository + "/raw/main/" + ManifestFile,
     };
 
-    /// <summary>Human-facing download page, used by portable copies that cannot self-install.</summary>
+    /// <summary>面向人的下载页，供无法自安装的便携版使用。</summary>
     public static string ReleasesPageUrl => "https://github.com/" + Owner + "/" + Repository + "/releases/latest";
 }
 
 /// <summary>
-/// Reads the update manifest, asking every channel URL at once and stopping at the first usable
-/// answer. Never throws for network or format problems: a failed check is silent by design.
+/// 读取更新清单：同时向所有通道 URL 发问，拿到第一个可用答案就停。
+/// 网络或格式问题从不抛异常：按设计，检查失败保持静默。
 /// </summary>
 public sealed class UpdateChecker
 {
     /// <summary>
-    /// An "up to date" answer is held open this long so a slower source can still contradict it:
-    /// a stale mirror answering first must not be the last word on whether an update exists.
+    /// 「已是最新」的回答会在这段时间内保持开放，让更慢的源还能推翻它：先应答的过期镜像
+    /// 不能成为「有没有更新」的最终结论。
     /// </summary>
     private static readonly TimeSpan StaleConfirmWindow = TimeSpan.FromMilliseconds(1500);
 
@@ -108,7 +106,7 @@ public sealed class UpdateChecker
 
             if (result.IsCancelled)
             {
-                // a cancelled caller must still see cancellation, not a failed check
+                // 调用方取消了，就必须让它看到取消，而不是检查失败
                 cancellationToken.ThrowIfCancellationRequested();
                 continue;
             }
@@ -126,7 +124,7 @@ public sealed class UpdateChecker
                     _currentVersion + " -> " + manifest.Version, result.Url);
             }
 
-            // equal or older: keep the highest one seen and give the other sources a moment
+            // 相同或更旧：记下目前见过的最高版本，并给其他源一点时间
             if (newest is null || manifest.Version.IsNewerThan(newest.Version))
             {
                 newest = manifest;
@@ -145,7 +143,7 @@ public sealed class UpdateChecker
             failures.Count == 0 ? "no manifest source answered" : JoinFailures(failures));
     }
 
-    /// <summary>Next finished source, or null once nothing is left or the grace window has passed.</summary>
+    /// <summary>下一个完成的源；没有剩余源或宽限窗口已过时返回 null。</summary>
     private static async Task<SourceResult?> NextAsync(List<Task<SourceResult>> pending, DateTime? graceEnds)
     {
         if (pending.Count == 0) return null;
@@ -160,8 +158,8 @@ public sealed class UpdateChecker
         var budget = ends - DateTime.UtcNow;
         if (budget <= TimeSpan.Zero) return null;
 
-        // intentionally not tied to a token: caller cancellation unwinds through the pending
-        // fetches, and an abandoned cancellable timer would leave an unobserved fault behind
+        // 刻意不绑定 token：调用方取消会经由在途请求自然展开，而一个被丢弃的可取消计时器
+        // 会留下没人观察的异常
         var timer = Task.Delay(budget);
         var winner = await Task.WhenAny(pending.Cast<Task>().Append(timer)).ConfigureAwait(false);
         if (winner == timer) return null;
@@ -197,7 +195,7 @@ public sealed class UpdateChecker
         }
         catch (OperationCanceledException)
         {
-            // HttpClient.Timeout fired: nobody cancelled, so this source really did hang
+            // HttpClient.Timeout 触发：没人取消，说明这个源确实挂住了
             return SourceResult.Failed(url, "timeout");
         }
         catch (Exception ex)

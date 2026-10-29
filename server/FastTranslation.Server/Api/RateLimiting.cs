@@ -4,9 +4,9 @@ using System.Threading.RateLimiting;
 namespace FastTranslation.Server.Api;
 
 /// <summary>
-/// Fixed-window per-IP limiting on the auth endpoints. Deliberately IP-keyed only for auth:
-/// quota enforcement must NOT key on IP, because campus/corporate NAT would punish real users
-/// (design §7.4) — quota is per account and per device instead.
+/// 认证类接口上按 IP 的固定窗口限流。刻意只在认证场景按 IP 限流：
+/// 额度执行绝不能按 IP 做键，否则校园/企业 NAT 会误伤真实用户
+/// （设计 §7.4）——额度改为按账号和按设备计。
 /// </summary>
 public static class RateLimiting
 {

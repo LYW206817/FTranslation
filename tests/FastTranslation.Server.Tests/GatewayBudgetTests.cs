@@ -6,7 +6,7 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>The day's spend ceiling, which stops a runaway bill even when every account still has quota.</summary>
+/// <summary>每日消费上限,即使每个账号还有额度,也能阻止账单失控。</summary>
 public sealed class TinyBudgetGatewayFactory : GatewayFactory
 {
     protected override long DailyBudgetMicros => 1;
@@ -57,7 +57,7 @@ public class GatewayBudgetTests : IClassFixture<TinyBudgetGatewayFactory>
         });
 }
 
-/// <summary>With no developer key configured the gateway must refuse rather than forward nowhere.</summary>
+/// <summary>未配置开发者 Key 时,网关必须直接拒绝,而不是把请求转发出去却无处可去。</summary>
 public class GatewayDisabledTests : IClassFixture<ServerFactory>
 {
     private readonly ServerFactory _factory;

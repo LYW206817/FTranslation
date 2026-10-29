@@ -7,8 +7,8 @@ using Microsoft.Extensions.Options;
 namespace FastTranslation.Server.Api;
 
 /// <summary>
-/// Bearer authentication backed by <see cref="TokenService"/>. Validating an HS256 token is a
-/// signature check, so a full JWT package would buy nothing.
+/// 由 <see cref="TokenService"/> 支撑的 Bearer 认证。校验 HS256 token 本质上就是
+/// 一次验签，所以引入完整的 JWT 包没有收益。
 /// </summary>
 public static class BearerScheme
 {

@@ -6,11 +6,9 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>
-/// The account page's two write paths: the display name and the password. Both are the only
-/// user-editable things on the server, so the tests here are about the guards (length, control
-/// characters, the current password) rather than about happy-path plumbing.
-/// </summary>
+/// <summary>账号页的两条写路径:显示名称与密码。这两者也是服务端仅有的
+/// 用户可编辑内容,所以这里的测试针对守卫(长度、控制字符、
+/// 当前密码),而不是顺利路径的接线。</summary>
 public class AccountProfileTests : IClassFixture<ServerFactory>
 {
     private readonly ServerFactory _factory;
@@ -46,7 +44,7 @@ public class AccountProfileTests : IClassFixture<ServerFactory>
 
         response.EnsureSuccessStatusCode();
         var updated = (await response.Content.ReadFromJsonAsync<AccountDto>())!;
-        // the value is trimmed before it is stored: a name is rendered in a single-line label
+        // 值在存储前会被裁剪:名称渲染在单行标签里
         Assert.Equal("永威", updated.DisplayName);
         Assert.Equal(auth.Account.Email, updated.Email);
     }
@@ -136,7 +134,7 @@ public class AccountProfileTests : IClassFixture<ServerFactory>
         changed.EnsureSuccessStatusCode();
         var fresh = (await changed.Content.ReadFromJsonAsync<AuthResponse>())!;
 
-        // the caller gets a usable pair back instead of being logged out of its own change
+        // 调用方拿回一对可用令牌,而不是被自己这次改密登出
         Assert.False(string.IsNullOrWhiteSpace(fresh.AccessToken));
         Assert.NotEqual(auth.RefreshToken, fresh.RefreshToken);
 

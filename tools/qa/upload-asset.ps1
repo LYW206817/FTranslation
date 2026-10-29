@@ -1,6 +1,6 @@
-# Uploads a release asset and reports success only for state=uploaded, which is the only
-# status that also guarantees a digest. A truncated upload keeps the declared size in the
-# API but stays state=starter and 404s on download, so size alone proves nothing.
+﻿# 上传发布资产，只有 state=uploaded 才报告成功 —— 也只有这个状态能保证有 digest。
+# 上传被截断时 API 里仍保留声明的大小，但状态停在 starter，下载会 404，
+# 所以光看大小证明不了什么。
 param(
     [Parameter(Mandatory = $true)][string]$Repo,
     [Parameter(Mandatory = $true)][string]$Token,

@@ -8,8 +8,8 @@ public class TextNormalizationTests
     [Theory]
     [InlineData("  hello   world  ", "hello world")]
     [InlineData("a\r\nb\nc", "a b c")]
-    [InlineData("你好\u200B世界", "你好世界")] // ZWSP dropped (Cf)
-    [InlineData("　　全角空格", "全角空格")]  // ideographic space collapses
+    [InlineData("你好\u200B世界", "你好世界")] // 零宽空格(ZWSP)被丢弃(Cf 类)
+    [InlineData("　　全角空格", "全角空格")]  // 表意空格被折叠
     [InlineData("", "")]
     [InlineData("   ", "")]
     public void Normalize_Cases(string input, string expected)

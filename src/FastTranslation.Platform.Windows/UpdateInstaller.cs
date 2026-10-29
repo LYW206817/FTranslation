@@ -11,46 +11,46 @@ using Microsoft.Win32.SafeHandles;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// Everything the updater does that touches the machine: mirror fallback and verified download.
+/// 更新器所有会碰到这台机器的动作都在这里：镜像回退与校验后下载。
 ///
-/// Applying the update is NOT done here. The app launches the downloaded Inno Setup installer
-/// detached and exits immediately; the installer owns the file replacement and, through its
-/// [Run] entry, starts the new build again. Replacing the exe from inside the running process
-/// is impossible anyway, so a separate applier process would only add a second thing to keep
-/// alive while the installer rewrites the very files it was started from.
+/// 应用更新不在这里做。应用把下载好的 Inno Setup 安装包以分离方式启动，
+/// 然后立刻退出；文件替换由安装器负责，它再通过自己的 [Run] 条目
+/// 重新启动新构建。反正也没法在运行中的进程内部替换 exe，
+/// 单独写一个应用进程只会多出一样需要保活的东西，而安装器要改写的
+/// 恰恰就是启动它的那些文件。
 /// </summary>
 public static class UpdateInstaller
 {
     private const string GitHubHost = "github.com";
 
     /// <summary>
-    /// Proxies for github.com release downloads, in the order they are tried. ghfast.top was
-    /// measured dead (connection never established, 5 s timeout) and was removed: a candidate that
-    /// cannot answer only costs the user another timeout before the direct host gets its turn.
+    /// github.com release 下载用的代理前缀，按顺序尝试。ghfast.top 实测
+    /// 已死(连接从未建立，5 秒超时)，因此移除：一个连不通的候选
+    /// 只会让用户多等一次超时，之后才轮到直连主机。
     /// </summary>
     private static readonly string[] ProxyPrefixes =
     {
         "https://gh-proxy.com/",
     };
 
-    // 8 MiB: below this the extra TLS+request round trips per segment cost more than the
-    // concurrency buys, and the only file this ever fetches is the ~46 MB installer.
+    // 8 MiB：低于这个值时，每段额外的 TLS+请求往返开销超过
+    // 并发带来的收益，而这里唯一会下载的文件就是约 46 MB 的安装包。
     private const long SegmentThresholdBytes = 8L * 1024 * 1024;
 
-    // Measured on the target link: 32 sockets gave 1.09 MB/s against 22-35 KB/s on one, while 64
-    // gave 1.65 MB/s — 1.5x is not worth 32 more sockets against a shared per-client limit.
+    // 在目标链路上实测：32 个套接字跑到 1.09 MB/s，单连接只有 22-35 KB/s；64 个
+    // 是 1.65 MB/s——1.5 倍的收益不值得为共享的单客户端限流再多开 32 个套接字。
     private const int MaxSegments = 32;
 
-    // 1 MiB keeps the 46.7 MB installer at the full 32 connections, and a single throttled socket
-    // strands at most this much of the file at the end of the run.
+    // 1 MiB 能让 46.7 MB 的安装包用满 32 个连接，而单个被限速的套接字
+    // 在收尾时最多只会拖住这么多字节。
     private const long SegmentSizeBytes = 1L * 1024 * 1024;
 
-    // Four attempts per segment, each resuming where the last one stopped, so an attempt costs no
-    // bytes: a link that loses the same range four times is not carrying the file at all.
+    // 每段最多尝试 4 次，每次从上一次停下的字节继续，所以一次尝试不浪费
+    // 字节：一条连 4 次都丢掉同一区间的链路，根本传不了这个文件。
     private const int SegmentAttempts = 4;
 
-    // Above the 22 KB/s single-socket floor this link shows, below the few KB/s a throttled socket
-    // decays to: such a socket strands the whole run at 97%, so it is dropped and asked again.
+    // 高于这条链路单套接字 22 KB/s 的下限，又低于被限速套接字衰减后的
+    // 几 KB/s：这种套接字会把整次下载卡在 97%，所以丢掉它重新请求。
     private static readonly TimeSpan StallWindow = TimeSpan.FromSeconds(10);
     private const long StallFloorBytes = 60L * 1024;
 
@@ -58,17 +58,17 @@ public static class UpdateInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastTranslation", "updates");
 
     /// <summary>
-    /// Download candidates in the order they should be tried. A mainland network cannot finish a
-    /// github.com release download (measured: ~9 KB/s from objects.githubusercontent.com, an hour and
-    /// a half for 46 MB), while the same URL behind a gh proxy answered at 0.3-2 MB/s — so for
-    /// github.com the proxies come first and the direct hosts are the fallback.
+    /// 按尝试顺序给出下载候选。大陆网络无法完成 github.com release 的
+    /// 下载(实测 objects.githubusercontent.com 只有约 9 KB/s，46 MB 要一个半小时)，
+    /// 而同一个 URL 走 gh 代理能到 0.3-2 MB/s——所以对 github.com 先走代理、
+    /// 直连主机作为兜底。
     ///
-    /// Every other host is left alone. The proxies only speak GitHub: prefixing a foreign URL with
-    /// them turns a download that worked into a guaranteed miss, which is why this list is built
-    /// host by host instead of being rewritten afterwards.
+    /// 其他主机一律不动。这些代理只会说 GitHub 的语言：给一个非 GitHub URL
+    /// 加上前缀，会把本来能成功的下载变成必然失败，所以这份列表按主机
+    /// 逐个拼出来，而不是事后再改写。
     ///
-    /// assets.githubusercontent.com is what api.github.com reports for a release asset, but the
-    /// browser URL is always the canonical form, so reordering is only ever done for github.com.
+    /// api.github.com 报告 release 资产用的是 assets.githubusercontent.com，
+    /// 但浏览器里的 URL 永远是规范形式，所以只对 github.com 做重排序。
     /// </summary>
     internal static IReadOnlyList<string> MirrorCandidates(string url)
     {
@@ -80,7 +80,7 @@ public static class UpdateInstaller
         foreach (var prefix in ProxyPrefixes) AddOnce(ordered, prefix + url);
         AddOnce(ordered, url);
 
-        // github.com and www.github.com reset connections differently on some networks
+        // 在某些网络上，github.com 与 www.github.com 的重置连接行为不同
         AddOnce(ordered, "https://www.github.com" + uri.PathAndQuery);
         return ordered;
     }
@@ -91,9 +91,9 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Byte ranges to fetch in parallel for a file of this length, in order and end to end.
-    /// A length under the threshold yields a single segment, which is how the caller recognises
-    /// "do not segment this" — the plan itself never returns an empty list for a real file.
+    /// 对一个该长度的文件，按顺序、首尾相接给出要并行抓取的字节区间。
+    /// 长度低于阈值时只给一段，调用方正是靠这一点识别「不要分段」——
+    /// 对真实文件来说，这份计划永远不会返回空列表。
     /// </summary>
     internal static IReadOnlyList<(long Start, long Length)> PlanSegments(long totalLength)
     {
@@ -104,7 +104,7 @@ public static class UpdateInstaller
         var count = (int)Math.Min(MaxSegments, wanted);
         var perSegment = totalLength / count;
 
-        // the first 'extra' segments carry one more byte, so no byte is lost to the division
+        // 前 'extra' 段各多分一个字节，这样没有字节因整除而丢失
         var extra = totalLength % count;
         var segments = new List<(long Start, long Length)>(count);
         long start = 0;
@@ -123,7 +123,7 @@ public static class UpdateInstaller
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
-    /// <summary>Size first (cheap, catches interrupted transfers), then the hash.</summary>
+    /// <summary>先比大小(便宜，能抓住传输中断)，再校验哈希。</summary>
     public static bool VerifyDownload(string path, string expectedSha256, long expectedSize, out string reason)
     {
         var info = new FileInfo(path);
@@ -146,12 +146,12 @@ public static class UpdateInstaller
     public sealed record DownloadResult(bool Success, string? Path, string Detail);
 
     /// <summary>
-    /// Downloads and verifies the installer. The manifest URL is tried first as parallel byte
-    /// ranges, because one mainland TCP connection to github.com is throttled far below what the
-    /// same link carries over many sockets; if ranging is unavailable or does not converge, the
-    /// mirrors are then tried one after another exactly as before. A candidate that fails
-    /// verification is discarded rather than trusted — a proxy that rewrites bytes must not be
-    /// able to hand us an executable.
+    /// 下载并校验安装包。先按并行字节区间尝试清单里的 URL，因为大陆到
+    /// github.com 的单条 TCP 连接被限速，远低于同一链路走多个套接字
+    /// 能拿到的带宽；若服务器不支持区间请求或没能收敛，再像以前那样
+    /// 逐个尝试各镜像。校验失败的候选直接丢弃，不予信任——
+    /// 一个会改写字节的代理，绝不能借它把可执行文件
+    /// 递到用户手里。
     /// </summary>
     public static async Task<DownloadResult> DownloadAsync(
         HttpClient http,
@@ -166,8 +166,8 @@ public static class UpdateInstaller
         var finalPath = Path.Combine(UpdatesDirectory, fileName);
         var failures = new List<string>();
 
-        // Segmented first, and only against the manifest's own URL: the recorded throughput was
-        // measured on the direct host, and re-probing a proxy would add a hop nobody measured.
+        // 先试分段，且只对清单里的原始 URL：记录下来的吞吐是在直连主机上
+        // 测的，重新探测代理会多出一跳没人测过的链路。
         if (await TrySegmentedAsync(http, manifest, partPath, finalPath, progress, failures, cancellationToken)
                 .ConfigureAwait(false))
         {
@@ -175,9 +175,9 @@ public static class UpdateInstaller
             return new DownloadResult(true, finalPath, $"{manifest.DownloadUrl} (segmented)");
         }
 
-        // MirrorCandidates already hands back proxies before the direct hosts for github.com, and
-        // nothing else is proxied. Reordering here would drag a non-GitHub URL through a proxy that
-        // cannot serve it and burn the only candidate that could have worked.
+        // 对 github.com，MirrorCandidates 已经会先返回代理、再返回直连主机，
+        // 其他主机则不加代理。在这里再重排，只会把一个非 GitHub URL 塞进
+        // 根本无法服务它的代理，白白烧掉唯一可能成功的候选。
         var candidates = MirrorCandidates(manifest.DownloadUrl);
 
         foreach (var candidate in candidates)
@@ -239,10 +239,10 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Range-downloads the installer in parallel and leaves a verified file at
-    /// <paramref name="finalPath"/>. Returns false — with the reason appended to
-    /// <paramref name="failures"/> — without throwing whenever the server or the link simply does
-    /// not support this route, so the caller can fall back to the sequential candidates.
+    /// 用并行区间下载安装包，并在 <paramref name="finalPath"/> 留下一个
+    /// 通过校验的文件。服务器或链路单纯不支持这条路时返回 false，
+    /// 原因追加到 <paramref name="failures"/>，而不是抛异常，
+    /// 好让调用方回退到逐个候选的串行下载。
     /// </summary>
     private static async Task<bool> TrySegmentedAsync(
         HttpClient http,
@@ -258,10 +258,10 @@ public static class UpdateInstaller
 
         try
         {
-            // A one-byte probe answers two questions at once: a server or proxy that ignores Range
-            // replies 200 here, and Content-Range carries the length the segments must add up to.
-            // That length is also the measured Content-Length the manifest size must agree with, so
-            // a stale manifest cannot be spliced into a mismatched file.
+            // 一次 1 字节的探测同时回答两个问题：忽略 Range 的服务器或代理
+            // 在这里会回 200，而 Content-Range 里带着各段必须凑齐的总长度。
+            // 这个长度也就是实测的 Content-Length，清单里的尺寸必须与它一致，
+            // 这样过期的清单不会拼出一个尺寸不符的文件。
             using (var probeRequest = new HttpRequestMessage(HttpMethod.Get, manifest.DownloadUrl))
             {
                 probeRequest.Headers.Range = new RangeHeaderValue(0, 0);
@@ -280,17 +280,17 @@ public static class UpdateInstaller
 
             if (File.Exists(finalPath)) File.Delete(finalPath);
 
-            // SetLength up front so every segment writes into an already-sized file and the file
-            // only ever holds the final byte count — no append bookkeeping, bounded memory.
+            // 先 SetLength 把文件定好大小，这样每段都写进一个已定尺寸的文件，
+            // 文件里始终只有最终字节数——不需要追加记账，内存也有界。
             var aggregated = new ProgressAggregator(manifest.SizeBytes, progress);
             var segmentFailures = new ConcurrentBag<string>();
-            // One handle for both sizing and writing, and closed again before the file is read back:
-            // a write handle left open makes the SHA256 pass and the final move fail on sharing.
+            // 定尺寸和写入共用一个句柄，并在回读文件前关闭：
+            // 写入句柄留着不关，SHA256 校验和最后的移动都会因共享冲突失败。
             using (var handle = File.OpenHandle(
                 partPath, FileMode.Create, FileAccess.Write, FileShare.Read, FileOptions.Asynchronous))
             {
-                // Writing the last byte is the preallocation; the segment covering it overwrites it, so
-                // the file only ever holds the final byte count and no append bookkeeping is needed.
+                // 写最后一个字节就是预分配；覆盖它的那段会重写它，
+                // 所以文件里始终只有最终字节数，也不需要追加记账。
                 await RandomAccess
                     .WriteAsync(handle, new byte[1], manifest.SizeBytes - 1, cancellationToken)
                     .ConfigureAwait(false);
@@ -327,9 +327,9 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Gives up on the segmented route: records why, cleans the partial file up, and leaves a trace
-    /// in update.log — the fallback costs roughly twenty times the download time, so a user whose
-    /// update crawled needs to be able to see which condition sent it down the slow path.
+    /// 放弃分段路线：记下原因，清理半成品文件，并在 update.log 里
+    /// 留一条痕迹——回退路线的耗时约是原来的二十倍，
+    /// 更新慢得离谱的用户得能看出是哪个条件把它逼上了慢路。
     /// </summary>
     private static bool AbandonSegmented(List<string> failures, string url, string partPath, string detail)
     {
@@ -354,8 +354,8 @@ public static class UpdateInstaller
         {
             try
             {
-                // a retry resumes at the byte it stopped on, so a reset socket costs one short
-                // request instead of the whole segment again
+                // 重试从停下的字节继续，所以一次套接字重置只多一个短请求，
+                // 而不是整段重来
                 written += await ReadSegmentAsync(http, url, handle, segment, written, progress, cancellationToken)
                     .ConfigureAwait(false);
                 return;
@@ -411,8 +411,8 @@ public static class UpdateInstaller
             windowBytes += read;
             progress.Advance(read);
 
-            // A connection that is alive but has crawled is worth far less than a fresh one: drop it
-            // and resume from this byte on a new connection instead of waiting it out.
+            // 一条活着但爬得极慢的连接远不如一条新连接：丢掉它，
+            // 在新连接上从这个字节续传，而不是干等。
             if (Stopwatch.GetElapsedTime(windowStart) < StallWindow) continue;
             if (windowBytes < StallFloorBytes)
                 throw new IOException(
@@ -424,7 +424,7 @@ public static class UpdateInstaller
         return written;
     }
 
-    /// <summary>Aggregates every segment's byte count into one monotonic 0..1 report.</summary>
+    /// <summary>把各段的字节数汇总成一个单调递增的 0..1 进度。</summary>
     private sealed class ProgressAggregator(long totalLength, IProgress<double>? progress)
     {
         private readonly object _gate = new();
@@ -462,14 +462,14 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Launches the installer detached and returns at once; the caller must exit right after.
-    /// /SILENT keeps a progress window (the user must see that something is happening) and
-    /// /SUPPRESSMSGBOXES keeps it unattended. Our own PID goes along in a custom /UPDATEPID=
-    /// switch so the installer can wait for this process to really be gone before it replaces
-    /// the exe — the tray app cancels a plain WM_CLOSE, so Restart Manager cannot clear it.
-    /// Closing the app from here is not an option either: the caller must not block.
-    /// /DIR repeats the folder the copy runs from, so the silent run cannot drift to the default
-    /// location: the wizard page where the user picked it never appears in this mode.
+    /// 以分离方式启动安装器并立即返回；调用方必须紧接着退出。
+    /// /SILENT 保留进度窗口(用户得看见有事在发生)，
+    /// /SUPPRESSMSGBOXES 让它无需交互。我们自己的 PID 通过自定义的
+    /// /UPDATEPID= 开关带过去，安装器就能等本进程真正消失后再替换
+    /// exe——托盘应用会取消普通的 WM_CLOSE，Restart Manager 清不掉它。
+    /// 在这里关闭应用也不行：调用方不能阻塞。
+    /// /DIR 重复指定副本运行的目录，这样静默运行不会漂到默认位置：
+    /// 这种模式下，用户选目录的那个向导页根本不会出现。
     /// </summary>
     public static bool LaunchInstaller(
         string setupPath, int ownProcessId, string? installDirectory, out string error)
@@ -503,8 +503,8 @@ public static class UpdateInstaller
 }
 
 /// <summary>
-/// The updater's own trace file. Diagnostics matter here: an update that silently fails
-/// leaves the user on an old version with no visible symptom.
+/// 更新器自己的痕迹文件。这里的诊断很重要：一次静默失败的更新
+/// 会把用户留在旧版本上，而没有任何可见症状。
 /// </summary>
 public static class UpdateLog
 {

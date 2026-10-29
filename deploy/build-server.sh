@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Publish the server as a self-contained linux-x64 binary.
-# Runs from Windows (Git Bash) or from the target box itself.
+# 把服务端发布成自包含的 linux-x64 二进制。
+# 可以在 Windows（Git Bash）或目标机器上执行。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

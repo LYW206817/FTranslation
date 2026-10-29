@@ -17,10 +17,10 @@ public sealed class RawMouseSnapshot
 }
 
 /// <summary>
-/// T7+T8: WH_MOUSE_LL on a dedicated thread. The callback ONLY snapshots and posts;
-/// every decision (gesture classification, semantic text checks, UIA) happens on the
-/// receiving thread — M0 proved exceptions leaking out of the hook crash the process
-/// (c000041d) and UIA calls can exceed LowLevelHooksTimeout.
+/// T7+T8：在专用线程上挂 WH_MOUSE_LL。回调只做快照和投递；
+/// 所有决策(手势分类、语义文本检查、UIA)都在接收线程上做——
+/// M0 已证明：异常从钩子回调里漏出会打崩进程(c000041d)，
+/// 而且 UIA 调用可能超过 LowLevelHooksTimeout。
 /// </summary>
 public sealed class LowLevelMouseMonitor : IDisposable
 {
@@ -34,7 +34,7 @@ public sealed class LowLevelMouseMonitor : IDisposable
     private readonly uint _doubleClickMs = GetDoubleClickTime();
     private IntPtr _ibeam = NativeMethods.LoadCursor(IntPtr.Zero, NativeMethods.IDC_IBEAM);
 
-    // click-train state (hook thread only)
+    // 点击串状态(仅钩子线程访问)
     private int _clickCount;
     private long _lastClickMs;
     private ScreenPoint _lastClickPoint;
@@ -103,8 +103,8 @@ public sealed class LowLevelMouseMonitor : IDisposable
         }
         catch
         {
-            // M0: an exception escaping a low-level hook callback is a fatal user-callback
-            // exception (c000041d) that kills the process. Swallow; observers handle state.
+            // M0：异常从低层钩子回调漏出属于致命的用户回调异常(c000041d)，会直接杀掉进程。
+            // 这里吞掉；状态由观察方处理。
         }
         return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
@@ -147,7 +147,7 @@ public sealed class LowLevelMouseMonitor : IDisposable
         {
             var hwnd = NativeExtensions.Win32WindowFromPoint(pt);
             if (hwnd == IntPtr.Zero) return 0;
-            var root = NativeMethods.GetAncestor(hwnd, 2 /* GA_ROOT */);
+            var root = NativeMethods.GetAncestor(hwnd, 2 /* GA_ROOT：顶层根窗口 */);
             return (root != IntPtr.Zero ? root : hwnd).ToInt64();
         }
         catch { return 0; }
@@ -159,7 +159,7 @@ public sealed class LowLevelMouseMonitor : IDisposable
         return NativeMethods.GetCursorInfo(ref ci) && ci.hCursor == _ibeam;
     }
 
-    /// <summary>True when the movement between down and up exceeds the system drag box.</summary>
+    /// <summary>按下到抬起之间的位移超过系统拖拽阈值时返回 true。</summary>
     public bool IsDrag(RawMouseSnapshot s)
     {
         var dx = Math.Abs(s.UpPoint.X - s.DownPoint.X);

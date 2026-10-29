@@ -5,12 +5,12 @@ using FastTranslation.Core.Account;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// The account page: who you are and the three things you can change about that (name, password,
-/// sign out). Signing in also lives here, because "账号" is where people look for it.
+/// 账号页：你是谁，以及围绕这件事能改的三样东西（名字、密码、退出登录）。登录也在这里，
+/// 因为大家找「账号」就是找这里。
 ///
 /// <para>
-/// Buying belongs to the 套餐 page; this page only shows what you currently have and links there,
-/// so the two pages never both claim to be "the account screen".
+/// 购买属于套餐页；本页只展示你当前拥有的内容并链过去，这样两个页面不会都自称
+/// 「账号界面」。
 /// </para>
 /// </summary>
 public partial class AccountPage : UserControl
@@ -20,7 +20,7 @@ public partial class AccountPage : UserControl
     private bool _busy;
     private bool _verificationRequired = true;
 
-    /// <summary>Raised when the user asks for the price list; the shell owns navigation.</summary>
+    /// <summary>用户要求看价目表时触发；导航由外壳负责。</summary>
     public event Action? PlanRequested;
 
     public AccountPage(AccountCoordinator account)
@@ -32,15 +32,15 @@ public partial class AccountPage : UserControl
         Render();
     }
 
-    /// <summary>Called by the host on every visit: pages are cached, so quotas would go stale.</summary>
+    /// <summary>每次访问都由宿主调用：页面是缓存的，否则额度会过期不更新。</summary>
     public void Reload()
     {
         Render();
         if (_account.Session is not null) _ = LoadUsageAsync();
     }
 
-    // the session can arrive after this page was first opened (startup restore is async), and
-    // Reload already ran by then — so a late account change re-asks for usage as well
+    // 会话可能在本页第一次打开之后才到（启动恢复是异步的），而那时 Reload 已经跑过了，
+    // 所以迟到的账号变更还要再问一次用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         Render();
@@ -57,8 +57,7 @@ public partial class AccountPage : UserControl
         var profile = session.Profile;
         AvatarText.Text = profile.Initial;
         NameText.Text = profile.DisplayNameOrEmail;
-        // without a display name the line above already reads as the address, so repeating it
-        // underneath is just noise
+        // 没有显示名时，上面那行读起来已经就是地址了，在下面再重复一遍纯属噪音
         EmailText.Text = profile.Email;
         EmailText.Visibility = string.IsNullOrWhiteSpace(profile.DisplayName)
             ? Visibility.Collapsed
@@ -70,8 +69,7 @@ public partial class AccountPage : UserControl
             ?? "免费版长期有效。标准版解锁单词本与四档复习。";
         NameBox.Text = profile.DisplayName;
 
-        // the remaining numbers arrive with usage; clearing them here avoids showing the previous
-        // account's leftovers for a frame when the user switches accounts
+        // 剩余数字是随用量一起到的；先在这里清空，免得用户切换账号时有一帧显示上一个账号的残留
         MonthlyLeftText.Text = "读取中…";
         DailyLeftText.Text = "读取中…";
     }
@@ -106,7 +104,7 @@ public partial class AccountPage : UserControl
 
     private void GotoPlan_Click(object sender, RoutedEventArgs e) => PlanRequested?.Invoke();
 
-    // ---------------- sign in / sign up ----------------
+    // ---------------- 登录 / 注册 ----------------
 
     private void Switch_Click(object sender, RoutedEventArgs e)
     {
@@ -136,7 +134,7 @@ public partial class AccountPage : UserControl
             }
             if (!result.Value!.VerificationRequired)
             {
-                // this server does not verify email: stop asking for a code that will never arrive
+                // 这个服务端不校验邮箱：别再去要一个永远不会到的验证码
                 _verificationRequired = false;
                 CodeRow.Visibility = Visibility.Collapsed;
                 SetError(null);
@@ -148,7 +146,7 @@ public partial class AccountPage : UserControl
         }
         finally
         {
-            // a resend is rate limited server-side too; the local cooldown just avoids a dead click
+            // 重发在服务端也有限流；本地冷却只是避免点下去没反应
             await Task.Delay(TimeSpan.FromSeconds(60));
             SendCodeButton.IsEnabled = true;
         }
@@ -191,7 +189,7 @@ public partial class AccountPage : UserControl
         _ => error.Display,
     };
 
-    // ---------------- profile edits ----------------
+    // ---------------- 资料编辑 ----------------
 
     private async void SaveName_Click(object sender, RoutedEventArgs e)
     {
@@ -286,7 +284,7 @@ public partial class AccountPage : UserControl
         SubmitButton.Content = busy ? "请稍候…" : _registerMode ? "注册并登录" : "登录";
     }
 
-    /// <summary>Signed-out errors and signed-in status share one slot per panel; only one shows.</summary>
+    /// <summary>未登录错误与登录后状态在每个面板各占一个位置；只显示其中一个。</summary>
     private void SetError(string? message)
     {
         ErrorText.Text = message ?? string.Empty;

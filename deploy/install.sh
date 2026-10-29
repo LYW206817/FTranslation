@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Install the published binary, the systemd unit, the Caddyfile, the backup job and the
-# static site. Run AFTER bootstrap.sh. Idempotent: re-running upgrades in place.
+# 安装发布好的二进制、systemd 单元、Caddyfile、备份任务和
+# 静态站点。在 bootstrap.sh 之后执行。幂等：重复执行等于原地升级。
 #
-# Expects this directory layout (scp the whole deploy/ folder plus the published output):
-#   /tmp/ftdeploy/bootstrap.sh
-#   /tmp/ftdeploy/install.sh
-#   /tmp/ftdeploy/fasttranslation.service
-#   /tmp/ftdeploy/Caddyfile
-#   /tmp/ftdeploy/backup.sh
-#   /tmp/ftdeploy/fasttranslation-backup.cron
-#   /tmp/ftdeploy/server/            <- publish/server-linux
-#   /tmp/ftdeploy/site/              <- site/
+# 期望的目录布局（scp 整个 deploy/ 目录加上发布产物）：
+#   /tmp/ftdeploy/bootstrap.sh          引导脚本
+#   /tmp/ftdeploy/install.sh            安装脚本
+#   /tmp/ftdeploy/fasttranslation.service  systemd 单元
+#   /tmp/ftdeploy/Caddyfile             反向代理配置
+#   /tmp/ftdeploy/backup.sh             数据库备份脚本
+#   /tmp/ftdeploy/fasttranslation-backup.cron  备份定时任务
+#   /tmp/ftdeploy/server/               发布产物（即 publish/server-linux）
+#   /tmp/ftdeploy/site/                 静态站点（即 site/）
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -29,10 +29,10 @@ chown root:ftserver "$APP_DIR/appsettings.Production.json"
 chmod 640 "$APP_DIR/appsettings.Production.json"
 
 echo "==> stop the service"
-# Checked before the copy, not after: Linux refuses to write over a running
-# executable (ETXTBSY), and the first real upgrade attempt died right there with
-# "cp: cannot create regular file '/opt/fasttranslation/./FastTranslation.Server':
-# Text file busy". The last section starts it again.
+# 在拷贝之前检查，而不是之后：Linux 拒绝覆盖正在运行的
+# 可执行文件（ETXTBSY），第一次真升级就死在这里，报错 "cp: cannot create regular file
+# '/opt/fasttranslation/./FastTranslation.Server': Text file busy"，即内核拒绝覆盖正在运行的程序。
+# 最后一节会重新启动服务。
 if systemctl is-active --quiet fasttranslation; then
 	systemctl stop fasttranslation
 	echo "    stopped for the duration of the copy"

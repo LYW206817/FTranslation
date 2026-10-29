@@ -1,6 +1,6 @@
-/* Fast Translation — product page.
-   Voice: a bilingual critical edition. Paper ground, ink text, marginalia,
-   one accent (selection blue) borrowed from the app's own result card. */
+/* Fast Translation —— 产品页。
+   气质：一本双语校勘版。纸底、墨字、页边批注，
+   只用一种强调色（选中蓝），取自应用自己的结果卡。 */
 
 :root {
   --paper: #FDFCF8;
@@ -43,7 +43,7 @@ a:hover { text-decoration-color: var(--blue); }
 
 .wrap { width: min(100% - 3rem, var(--measure)); margin-inline: auto; }
 
-/* ---------- nav ---------- */
+/* ---------- 导航 ---------- */
 
 .nav {
   position: sticky; top: 0; z-index: 20;
@@ -69,7 +69,7 @@ a:hover { text-decoration-color: var(--blue); }
 }
 .nav nav a:hover { border-bottom-color: var(--blue); color: var(--ink); }
 
-/* ---------- hero: text column + marginalia ---------- */
+/* ---------- 首屏：文字栏 + 页边批注 ---------- */
 
 .hero {
   display: grid;
@@ -98,7 +98,7 @@ h1 {
   text-wrap: balance;
 }
 
-/* The highlighter, not a gradient block: it reads as a pen mark on paper. */
+/* 用荧光笔，而不是渐变块：要读起来像纸上的一笔。 */
 mark {
   background: linear-gradient(180deg, rgba(0,0,0,0) 52%, var(--blue-wash) 52%, var(--blue-wash) 94%, rgba(0,0,0,0) 94%);
   color: inherit;
@@ -133,7 +133,7 @@ mark {
   letter-spacing: 0.02em;
 }
 
-/* marginalia — the page's spine, echoing the result card */
+/* 页边批注 —— 页面的书脊，呼应结果卡 */
 .note {
   position: relative;
   padding-left: 1.15rem;
@@ -161,7 +161,7 @@ mark {
 
 .sel { background: var(--blue); color: #fff; padding: 0.02em 0.14em; border-radius: 2px; }
 
-/* ---------- sections ---------- */
+/* ---------- 分节 ---------- */
 
 section { padding-block: 4.25rem; border-top: 1px solid var(--rule-soft); }
 
@@ -178,7 +178,7 @@ h2 .num { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); lett
 .sub { margin: 0; color: var(--ink-soft); max-width: 32rem; }
 .aside-note { font-size: 0.82rem; color: var(--muted); font-family: var(--mono); line-height: 1.7; border-left: 1px solid var(--rule); padding-left: 1.15rem; }
 
-/* toolbar replica */
+/* 工具条复刻 */
 .strip {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px; margin-top: 2.6rem;
@@ -195,7 +195,7 @@ h2 .num { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); lett
 .strip h3 { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }
 .strip p { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.65; }
 
-/* screenshot plates */
+/* 截图图版 */
 .plates { display: grid; gap: 1.25rem; margin-top: 2.6rem; grid-template-columns: 1fr 1fr; align-items: start; }
 .plate {
   margin: 0; background: var(--surface); border: 1px solid var(--rule-soft); border-radius: 12px;
@@ -208,21 +208,21 @@ h2 .num { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); lett
   font-family: var(--mono); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.03em;
 }
 
-/* data list */
+/* 数据列表 */
 .figures { margin: 2.6rem 0 0; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 2rem; }
 .figures div { border-top: 2px solid var(--ink); padding-top: 0.9rem; }
 .figures dt { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); }
 .figures dd { margin: 0.35rem 0 0; font-family: var(--serif); font-size: 2rem; line-height: 1.15; }
 .figures dd small { display: block; font-family: var(--sans); font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; line-height: 1.5; }
 
-/* prose lists */
+/* 正文列表 */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem 3.5rem; margin-top: 2.4rem; }
 .cols h3 { font-size: 0.95rem; margin: 0 0 0.6rem; letter-spacing: -0.005em; }
 ul.plain { margin: 0; padding: 0; list-style: none; }
 ul.plain li { position: relative; padding-left: 1.1rem; margin-bottom: 0.55rem; font-size: 0.93rem; color: var(--ink-soft); }
 ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--blue); }
 
-/* plans — quotas as two-line entries, no badges */
+/* 套餐 —— 额度做成两行条目，不用徽章 */
 .plans { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1.25rem; }
 .plan { border: 1px solid var(--rule); border-radius: 12px; padding: 1.5rem 1.4rem; background: var(--surface); }
 .plan.feature { border-color: var(--blue-wash); box-shadow: 0 0 0 3px rgba(37,98,255,0.06); }
@@ -255,7 +255,7 @@ ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--
 
 .plan .tag { display: inline-block; font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em; color: var(--blue-ink); background: var(--blue-wash); padding: 0.1rem 0.4rem; border-radius: 3px; margin-bottom: 0.7rem; }
 
-/* download */
+/* 下载 */
 .dl { margin-top: 2.4rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 .dl a.card {
   display: block; text-decoration: none; color: inherit;
@@ -267,12 +267,12 @@ ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--
 .dl .t { font-size: 1.05rem; font-weight: 650; margin: 0.3rem 0 0.25rem; }
 .dl .d { font-size: 0.86rem; color: var(--muted); }
 
-/* footer */
+/* 页脚 */
 footer { border-top: 1px solid var(--rule); padding-block: 2.6rem 3.4rem; font-size: 0.82rem; color: var(--muted); }
 .foot { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; align-items: baseline; }
 footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.03em; }
 
-/* ---------- narrow ---------- */
+/* ---------- 窄屏 ---------- */
 
 @media (max-width: 880px) {
   body { font-size: 16px; }
@@ -311,7 +311,7 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
   * { transition: none !important; }
 }
 
-/* ---------- live demo: the toolbar and card, rebuilt in CSS ---------- */
+/* ---------- 实时演示：用 CSS 重搭的工具条与卡片 ---------- */
 
 .stage {
   padding: 2.4rem clamp(1rem, 4vw, 3rem) 2.8rem;
@@ -342,7 +342,7 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
   padding: 0.02em 0.1em;
 }
 
-/* the floating toolbar */
+/* 浮动工具条 */
 .floatbar {
   position: absolute;
   top: 3.72rem;
@@ -367,7 +367,7 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
 .floatbar span.on { background: var(--blue); color: #fff; }
 .floatbar i { font-style: normal; font-size: 0.82rem; opacity: 0.85; }
 
-/* the result card */
+/* 结果卡 */
 .card-demo {
   margin-top: 1.5rem;
   background: var(--surface);

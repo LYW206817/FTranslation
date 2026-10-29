@@ -1,12 +1,12 @@
 namespace FastTranslation.Server.Domain;
 
-/// <summary>List price for one model, in CNY.</summary>
+/// <summary>单个模型的标价，单位为人民币元。</summary>
 public sealed record ModelPrice(string Model, decimal InputPerMillionTokens, decimal OutputPerMillionTokens, decimal PerImage);
 
 /// <summary>
-/// DashScope list prices (华北2 北京, 2026-10 sheet). Deliberately a table in code rather than
-/// configuration: a wrong price silently over- or under-bills every account, and these numbers are
-/// a published contract, not a per-deployment knob. Bump the table when the sheet moves.
+/// DashScope 标价（华北2 北京，2026-10 价目表）。刻意做成代码里的表而不是
+/// 配置项：价格写错会静默地对每个账号多计或少计费，而这些数字是
+/// 已公布的契约，不是按部署可调的旋钮。价目表变动时更新此表。
 /// </summary>
 public static class Pricing
 {
@@ -20,9 +20,9 @@ public static class Pricing
         ["qwen-mt-image-2.0"] = new("qwen-mt-image-2.0", 0m, 0m, 0.004m),
         ["qwen-mt-image"] = new("qwen-mt-image", 0m, 0m, 0.003m),
 
-        // Vision OCR: the screenshot goes in (billed as input tokens), the recognised text comes out.
-        // Numbers from the 2026-10 百炼 sheet; re-check the sheet before shipping a release, since a
-        // stale entry does not crash anything, it just skews the cost ledger.
+        // 视觉 OCR：截图作为输入（按输入 token 计费），输出识别出的文字。
+        // 数字来自 2026-10 百炼价目表；发版前要再核对一遍价目表，因为
+        // 过期条目不会让任何东西崩溃，只会让成本账本失真。
         ["qwen-vl-ocr"] = new("qwen-vl-ocr", 0.043m, 0.072m, 0m),
     };
 
@@ -32,8 +32,8 @@ public static class Pricing
             : Table[DefaultModel];
 
     /// <summary>
-    /// Text cost in micro-yuan (1e-6 CNY) so the ledger stays integer arithmetic. Micro-yuan is fine
-    /// because one flash request costs roughly 7,000 of them — rounding never reaches a cent.
+    /// 文本成本，单位为微元（1e-6 元），以便账本保持整数运算。用微元是可行的，
+    /// 因为一次 flash 请求约花费 7,000 微元——舍入误差到不了一分钱。
     /// </summary>
     public static long TextCostMicros(string? model, long tokensIn, long tokensOut)
     {

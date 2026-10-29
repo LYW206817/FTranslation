@@ -4,8 +4,8 @@ using System.Security.Cryptography;
 namespace FastTranslation.Server.Auth;
 
 /// <summary>
-/// PBKDF2-SHA256 password hashing. Format: <c>pbkdf2-sha256$iterations$salt$hash</c> (both base64).
-/// Iterations are stored per record so the cost can be raised later without invalidating old rows.
+/// PBKDF2-SHA256 密码哈希。格式：<c>pbkdf2-sha256$iterations$salt$hash</c>（salt 与 hash 均为 base64）。
+/// 迭代次数按记录存储，这样以后可以提高成本而不作废旧记录。
 /// </summary>
 public static class PasswordHasher
 {

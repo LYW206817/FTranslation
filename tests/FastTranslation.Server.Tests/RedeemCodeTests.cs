@@ -3,7 +3,7 @@ using Xunit;
 
 namespace FastTranslation.Server.Tests;
 
-/// <summary>Codes are typed by hand, so normalisation has to be forgiving without ever colliding.</summary>
+/// <summary>兑换码是手工输入的,所以规范化必须宽容,同时绝不能撞码。</summary>
 public class RedeemCodeTests
 {
     [Fact]
@@ -52,8 +52,8 @@ public class RedeemCodeTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("hello")]
-    [InlineData("FT-4G7M-2XQP-9HKV-3WT")]     // one character short
-    [InlineData("FT-4G7M-2XQP-9HKV-3WTAZ")]   // one character long
+    [InlineData("FT-4G7M-2XQP-9HKV-3WT")]     // 少一个字符
+    [InlineData("FT-4G7M-2XQP-9HKV-3WTAZ")]   // 多一个字符
     public void Normalize_RejectsAnythingThatIsNotOneCode(string? input)
     {
         Assert.Equal(string.Empty, RedeemCode.Normalize(input));

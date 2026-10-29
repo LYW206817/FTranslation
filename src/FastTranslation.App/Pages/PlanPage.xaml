@@ -76,7 +76,7 @@
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
 
-          <!-- left: what it costs -->
+          <!-- 左侧：多少钱 -->
           <StackPanel Grid.Column="0">
             <Border Style="{StaticResource Card}">
               <StackPanel>
@@ -90,7 +90,7 @@
                     <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
 
-                  <!-- yearly is the default: lower unit price, and people who land here want a year -->
+                  <!-- 默认选年付：单价更低，而且点进来的人多半就是想买一年 -->
                   <Border x:Name="YearCard" Grid.Column="0" BorderThickness="1.5" CornerRadius="8"
                           BorderBrush="{DynamicResource BrandBrush}"
                           Background="{DynamicResource BrandFillBrush}"
@@ -163,7 +163,7 @@
             </Border>
           </StackPanel>
 
-          <!-- right: what is left, and when it comes back -->
+          <!-- 右侧：还剩多少，什么时候回来 -->
           <StackPanel Grid.Column="2">
             <Border Style="{StaticResource Card}">
               <StackPanel>
@@ -189,7 +189,7 @@
               </StackPanel>
             </Border>
 
-            <!-- resets belong to the plan, so the rules sit next to the meters they explain -->
+            <!-- 重置规则属于套餐，所以放在它所解释的计量旁边 -->
             <Border Style="{StaticResource Card}">
               <StackPanel>
                 <TextBlock Text="额度怎么重置" Style="{StaticResource CardTitle}"/>

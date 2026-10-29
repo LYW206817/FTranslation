@@ -25,13 +25,13 @@ public sealed record NoteRecord(
     long ReviewedAt = 0);
 
 /// <summary>
-/// Every SQL statement behind /api/v1/notes. Deletion is soft (<c>deleted_at</c>) because the same
-/// rows will be synced between devices — a hard delete cannot be replayed to a client that was
-/// offline when it happened.
+/// /api/v1/notes 背后的所有 SQL 语句。删除是软删除（<c>deleted_at</c>），因为这些行会
+/// 在设备之间同步——硬删除无法重放给当时离线的
+/// 客户端。
 /// </summary>
 public sealed class NoteStore(ServerDatabase database)
 {
-    /// <summary>Hard ceiling per account so one runaway client cannot fill the disk.</summary>
+    /// <summary>每账号硬上限，避免某个失控的客户端把磁盘写满。</summary>
     public const int MaxNotesPerAccount = 20_000;
 
     public NoteRecord Create(
@@ -70,8 +70,8 @@ public sealed class NoteStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// The same translation saved twice is one entry: the client's 保存 button is easy to double
-    /// click, and a duplicated word in the notebook is noise, not data.
+    /// 同一条翻译保存两次只算一条记录：客户端的「保存」按钮很容易被连点，
+    /// 而单词本里重复的单词是噪声，不是数据。
     /// </summary>
     public NoteRecord? FindLive(Guid userId, NoteKind kind, string sourceText)
     {
@@ -94,8 +94,8 @@ public sealed class NoteStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// Live rows for one account. The shelf and search filters exist so a page's total matches the
-    /// rows it was asked for: without them the 单词 shelf reported the count of every shelf.
+    /// 某个账号的有效行。书架与搜索过滤存在的原因，是让分页总数与
+    /// 实际请求的行一致：没有它们时，单词书架会报出所有书架的总数。
     /// </summary>
     public int CountLive(Guid userId, NoteKind? kind = null, string? query = null)
     {
@@ -119,8 +119,8 @@ public sealed class NoteStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// One page of the notebook. <paramref name="kind"/> null means "every shelf";
-    /// <paramref name="query"/> matches either side of the pair, case-insensitively.
+    /// 单词本的一页。<paramref name="kind"/> 为 null 表示“全部书架”；
+    /// <paramref name="query"/> 忽略大小写匹配这一对的两侧。
     /// </summary>
     public IReadOnlyList<NoteRecord> List(Guid userId, NoteKind? kind, string? query, int limit, int offset)
     {
@@ -174,7 +174,7 @@ public sealed class NoteStore(ServerDatabase database)
         return reader.Read() ? ReadNote(reader) : null;
     }
 
-    /// <summary>Partial update: a null argument leaves that column alone (the client sends only what changed).</summary>
+    /// <summary>部分更新：参数为 null 时该列保持不变（客户端只发送变化的部分）。</summary>
     public NoteRecord? Update(Guid userId, Guid id, NoteKind? kind, string? note)
     {
         var existing = FindById(userId, id);
@@ -213,7 +213,7 @@ public sealed class NoteStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
-    /// <summary>Cards whose due time has passed, oldest first. Stage 0 is excluded: a new card is queued by quota, not by time.</summary>
+    /// <summary>到期时间已过的卡片，最旧的在前。排除第 0 档：新卡片按配额入队，而不是按时间。</summary>
     public IReadOnlyList<NoteRecord> ListDue(Guid userId, long nowUnix, int limit)
     {
         using var connection = database.Open();
@@ -237,7 +237,7 @@ public sealed class NoteStore(ServerDatabase database)
         return items;
     }
 
-    /// <summary>Ungraded cards saved today, oldest first. Stage 0 is exactly "never graded", so no extra queue table is needed.</summary>
+    /// <summary>今天保存且未评分的卡片，最旧的在前。第 0 档恰好等于“从未评分”，因此不需要额外的队列表。</summary>
     public (IReadOnlyList<NoteRecord> Items, int Total) ListFresh(Guid userId, long dayStartUnix, int limit)
     {
         using var connection = database.Open();
@@ -271,7 +271,7 @@ public sealed class NoteStore(ServerDatabase database)
         return (items, total);
     }
 
-    /// <summary>How many new cards today's quota has already consumed.</summary>
+    /// <summary>今日配额已经消耗掉多少张新卡片。</summary>
     public int CountFreshSince(Guid userId, long dayStartUnix)
     {
         using var connection = database.Open();
@@ -286,8 +286,8 @@ public sealed class NoteStore(ServerDatabase database)
     }
 
     /// <summary>
-    /// Writes one grade. Counters move here rather than in the endpoint so the "forgot increments
-    /// lapses" rule cannot drift away from the stage it belongs to.
+    /// 写入一次评分。计数器在这里更新而不是在端点里，这样“遗忘会累加
+    /// lapses”这条规则就不会与它所属的档位脱节。
     /// </summary>
     public NoteRecord? SetReview(
         Guid userId, Guid id, int stage, long dueAt, string grade, long reviewedAt)

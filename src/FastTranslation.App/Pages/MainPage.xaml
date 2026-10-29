@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:FastTranslation.App"
              Background="{DynamicResource WindowBgBrush}" FontFamily="Segoe UI, Microsoft YaHei UI">
   <UserControl.Resources>
-    <!-- the one accent: lightning-gradient quote rule for the translation -->
+    <!-- 唯一的重音：译文上方那道闪电渐变的引文线 -->
     <LinearGradientBrush x:Key="BoltRule" StartPoint="0,0" EndPoint="0.35,1">
       <GradientStop Offset="0" Color="#40A9FF"/>
       <GradientStop Offset="1" Color="#2562FF"/>
@@ -19,7 +19,7 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- input sheet: a quiet piece of paper, nothing else inside -->
+    <!-- 输入纸张：安静的一张纸，里面没有别的东西 -->
     <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
             BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="4">
       <Grid MinHeight="96">
@@ -34,7 +34,7 @@
       </Grid>
     </Border>
 
-    <!-- toolbar floats on the desk, clear of the sheet -->
+    <!-- 工具栏浮在桌面上，与纸张保持距离 -->
     <DockPanel Grid.Row="1" Margin="2,12,2,0">
       <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
         <local:FtComboBox x:Name="TargetCombo" Width="180"
@@ -54,7 +54,7 @@
       </StackPanel>
     </DockPanel>
 
-    <!-- the translation: a quote written on the desk -->
+    <!-- 译文：写在桌面上的一段引文 -->
     <ScrollViewer Grid.Row="2" Margin="2,18,2,0" VerticalScrollBarVisibility="Auto">
       <Grid VerticalAlignment="Top">
         <Grid.ColumnDefinitions>
@@ -69,7 +69,7 @@
       </Grid>
     </ScrollViewer>
 
-    <!-- footer: the two destinations this page can reach -->
+    <!-- 底栏：本页能去到的两个去处 -->
     <DockPanel Grid.Row="3" Margin="2,12,2,0">
       <Button x:Name="KeyButton" Content="配置 Key" DockPanel.Dock="Right" HorizontalAlignment="Right"
               Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>

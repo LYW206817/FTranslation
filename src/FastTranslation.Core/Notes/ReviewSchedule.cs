@@ -1,8 +1,8 @@
 namespace FastTranslation.Core.Notes;
 
 /// <summary>
-/// How well the user recalled a card. Order matters: the higher the value, the further out the card
-/// is scheduled. The wire names are the API contract and must not change.
+/// 用户对一张卡的回忆程度。顺序有意义：值越大，卡片排得越远。
+/// 线上字段名是 API 契约，不可改动。
 /// </summary>
 public enum ReviewGrade
 {
@@ -13,21 +13,20 @@ public enum ReviewGrade
 }
 
 /// <summary>
-/// A fixed ladder, not SM-2. The product asks for "classify it and bring it back later", which two
-/// counters and one lookup table answer exactly. Pure functions only — no clock, no IO — so the
-/// transition table is testable without a fixture.
+/// 固定阶梯，不是 SM-2。产品要的是「分个类，过阵子再拿出来」，两个计数器加一张查表就能
+/// 精确回答。只做纯函数——不碰时钟、不碰 IO——这样转移表不需要 fixture 也能测。
 /// </summary>
 public static class ReviewSchedule
 {
     public const int MaxStage = 7;
 
-    /// <summary>Seconds to wait after grading, indexed by the resulting stage. Index 0 means "never graded".</summary>
+    /// <summary>评分后等待的秒数，按结果阶段索引。索引 0 表示「从未评分」。</summary>
     public static readonly IReadOnlyList<long> IntervalsSeconds = new long[]
     {
         0L, 600L, 86_400L, 259_200L, 604_800L, 1_209_600L, 2_419_200L, 4_838_400L,
     };
 
-    /// <summary>Display order of the four buttons, left to right.</summary>
+    /// <summary>四个按钮从左到右的显示顺序。</summary>
     public static readonly IReadOnlyList<ReviewGrade> AllGrades = new[]
     {
         ReviewGrade.Forgot, ReviewGrade.Fuzzy, ReviewGrade.Familiar, ReviewGrade.Known,
@@ -41,10 +40,10 @@ public static class ReviewSchedule
     private static readonly string[] GradeLabels = ["忘记", "模糊", "熟悉", "记住"];
 
     /// <summary>
-    /// Four grades map onto four rungs. 记住 jumps to 7 days on the first try (the user already knows
-    /// it, there is no reason to show it again today) and then walks up one rung per success up to 56
-    /// days. Every downgrade has a floor of stage 1: stage 0 stays reserved for "never graded", so a
-    /// forgotten card is never demoted back into the new-card pile.
+    /// 四个评分对应四个档位。「记住」首次就跳到 7 天后（用户已经会了，
+    /// 没有理由今天再出现一次），之后每次成功逐档上移，最高到 56 天。
+    /// 所有降档的下限都是阶段 1：阶段 0 保留给「从未评分」，
+    /// 所以被遗忘的卡不会被降回新卡堆。
     /// </summary>
     public static int NextStage(int stage, ReviewGrade grade)
     {
@@ -58,7 +57,7 @@ public static class ReviewSchedule
         };
     }
 
-    /// <summary>Resulting stage plus the absolute due time in unix seconds.</summary>
+    /// <summary>结果阶段，以及用 unix 秒表示的绝对到期时间。</summary>
     public static (int Stage, long DueAt) Schedule(int currentStage, ReviewGrade grade, long nowUnix)
     {
         var stage = NextStage(currentStage, grade);
@@ -85,7 +84,7 @@ public static class ReviewSchedule
         _ => "known",
     };
 
-    /// <summary>The little caption under each grade button ("7 天后"), derived locally so it shows before any request.</summary>
+    /// <summary>每个评分按钮下方的小字说明（"7 天后"），本地推导，无需请求即可显示。</summary>
     public static string IntervalLabel(int stage) => Labels[Math.Clamp(stage, 0, MaxStage)];
 
     public static string Display(ReviewGrade grade) => GradeLabels[Math.Clamp((int)grade, 0, 3)];

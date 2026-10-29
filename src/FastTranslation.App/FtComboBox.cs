@@ -5,10 +5,10 @@ using System.Windows.Controls.Primitives;
 namespace FastTranslation.App;
 
 /// <summary>
-/// ComboBox with template-driven popup: template uses NO Bindings (InvariantGlobalization
-/// makes WPF binding culture resolution throw, which silently kills Popup.IsOpen bindings —
-/// v15 root cause of the dead dropdown). PART_Toggle clicks toggle IsDropDownOpen in code;
-/// the ControlTemplate opens PART_Popup via an IsDropDownOpen trigger.
+/// 由模板驱动弹出层的 ComboBox：模板里完全不用 Binding(InvariantGlobalization 会让 WPF
+/// 由模板驱动弹出层的 ComboBox：模板里完全不用 Binding（InvariantGlobalization 会让 WPF
+/// 根因）。PART_Toggle 的点击在代码里翻转 IsDropDownOpen；ControlTemplate 则通过
+/// IsDropDownOpen 触发器打开 PART_Popup。
 /// </summary>
 public class FtComboBox : ComboBox
 {

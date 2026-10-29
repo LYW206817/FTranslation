@@ -1,16 +1,16 @@
-# Fast Translation - static site plus API reverse proxy.
+# Fast Translation —— 静态站点加 API 反向代理。
 #
-# Replace the two placeholders before enabling:
-#   __DOMAIN__         ftranslation.cn - the token appears twice below (the apex and
-#                        the www. alias), so a single sed covers both hosts
-#   __ACME_EMAIL__     a mailbox that can receive certificate-expiry warnings
+# 启用前先替换这两个占位符：
+#   __DOMAIN__         ftranslation.cn —— 该标记在下面出现两次（裸域和
+#                        www 别名），所以一条 sed 就能覆盖两个主机名
+#   __ACME_EMAIL__     能接收证书到期提醒的邮箱
 #
-# Only do this once the ICP filing number has been issued: pointing the domain at a
-# mainland server before that is blocked, and ACME cannot issue for an unfiled host.
-#   sed -i 's/__DOMAIN__/ftranslation.cn/g; s/__ACME_EMAIL__/you@example.com/g' /etc/caddy/Caddyfile
+# 只在 ICP 备案号下来之后再动：备案前把域名指向大陆服务器会被封，
+# 而且 ACME 无法为未备案的主机签发证书。
+#   替换命令：sed -i 's/__DOMAIN__/ftranslation.cn/g; s/__ACME_EMAIL__/you@example.com/g' /etc/caddy/Caddyfile
 #
-# Ports 80 and 443 must be open in the ECS security group: Caddy needs 80 for the
-# ACME HTTP challenge and then redirects everything to 443.
+# ECS 安全组必须放行 80 和 443 端口：Caddy 需要 80 来做
+# ACME HTTP 校验，然后把所有流量重定向到 443。
 {
 	email __ACME_EMAIL__
 	admin off
@@ -19,11 +19,11 @@
 __DOMAIN__ www.__DOMAIN__ {
 	encode zstd gzip
 
-	# Static assets keep their names forever, so let browsers cache them for a year.
+	# 静态资源的文件名永远不变，所以让浏览器缓存一年。
 	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-	# The HTML shell must be revalidated, otherwise a deploy stays invisible.
+	# HTML 外壳必须重新校验，否则部署完用户看不到。
 	@document path / /index.html /robots.txt
 	header @document Cache-Control "no-cache"
 
@@ -34,8 +34,8 @@ __DOMAIN__ www.__DOMAIN__ {
 		-Server
 	}
 
-	# Account API, developer gateway and the health probe all terminate on the same
-	# Kestrel instance, which listens on loopback only.
+	# 账号 API、开发者网关和健康探针都落在同一个 Kestrel 实例上，
+	# 该实例只监听回环地址。
 	handle /v1/* {
 		reverse_proxy 127.0.0.1:5080
 	}

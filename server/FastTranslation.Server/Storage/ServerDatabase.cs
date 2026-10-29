@@ -3,8 +3,8 @@ using Microsoft.Data.Sqlite;
 namespace FastTranslation.Server.Storage;
 
 /// <summary>
-/// Owns the SQLite file and its schema. One short-lived connection per operation: SQLite serializes
-/// writers anyway, and a pooled connection avoids the "database is locked" dance under concurrency.
+/// 掌管 SQLite 文件及其 schema。每次操作使用短生命周期的连接：SQLite 本身会串行化
+/// 写入者，而连接池可以避免并发下反复出现“database is locked”。
 /// </summary>
 public sealed class ServerDatabase
 {
@@ -51,22 +51,22 @@ public sealed class ServerDatabase
         command.CommandText = Schema;
         command.ExecuteNonQuery();
 
-        // CREATE TABLE IF NOT EXISTS never adds a column to an existing table, so every column we
-        // introduce after v43 needs an explicit, idempotent ALTER here. Skipping this silently
-        // leaves production databases on the old shape and the reads below start throwing.
+        // CREATE TABLE IF NOT EXISTS 永远不会给已有表加列，所以 v43 之后新增的每一列
+        // 都需要在这里显式、幂等地 ALTER 一次。漏掉这一步会悄悄
+        // 让生产库停留在旧结构上，随后下面的读取就会开始抛异常。
         EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
         EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
 
-        // A display name is the only user-editable profile field (account page). Empty means "use the
-        // email local part", so old rows and new rows behave the same without a backfill.
+        // 显示名是用户唯一可编辑的资料字段（账号页）。为空表示“使用邮箱
+        // 本地部分”，这样旧行与新行行为一致，无需回填。
         EnsureColumn(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''");
 
-        // A code that was mis-typed or leaked before it ever sold has to be killable, otherwise the
-        // only way out is deleting the row and losing the audit trail.
+        // 从未售出前就录错或泄露的码必须能被作废，否则唯一出路就是
+        // 删除该行，同时丢失审计记录。
         EnsureColumn(connection, "redeem_codes", "revoked_at", "INTEGER");
 
-        // Review state (design §4.1). All six columns are NOT NULL DEFAULT so an old database
-        // migrates in place: every existing note becomes an ungraded card at stage 0.
+        // 复习状态（设计 §4.1）。六列全是 NOT NULL DEFAULT，这样旧数据库可以
+        // 原地迁移：每条已有记录都成为第 0 档的未评分卡片。
         EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "due_at", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "last_grade", "TEXT NOT NULL DEFAULT ''");
@@ -74,16 +74,16 @@ public sealed class ServerDatabase
         EnsureColumn(connection, "notes", "lapses", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "reviewed_at", "INTEGER NOT NULL DEFAULT 0");
 
-        // The review queue is the only query that scans by due time; the partial index keeps it
-        // small. It is created here rather than in Schema because on an existing database the
-        // notes table only gains due_at in the EnsureColumn calls above.
+        // 复习队列是按到期时间扫描的唯一查询；这个部分索引让它保持
+        // 很小。之所以在这里建而不是放进 Schema，是因为在已有数据库上，
+        // notes 表要到上面的 EnsureColumn 调用之后才拥有 due_at。
         using var index = connection.CreateCommand();
         index.CommandText =
             "CREATE INDEX IF NOT EXISTS ix_notes_user_due ON notes(user_id, due_at) WHERE deleted_at IS NULL";
         index.ExecuteNonQuery();
     }
 
-    /// <summary>Adds a column only when the table exists and does not already carry it.</summary>
+    /// <summary>仅当表存在且尚未包含该列时才添加。</summary>
     private static void EnsureColumn(SqliteConnection connection, string table, string column, string definition)
     {
         using var probe = connection.CreateCommand();
@@ -111,11 +111,11 @@ public sealed class ServerDatabase
     }
 
     /// <summary>
-    /// All timestamps are unix seconds (UTC). <c>users.plan</c> mirrors <see cref="Domain.PlanTier"/>.
-    /// <c>users.plan_expires_at</c> NULL means "granted without an end date" (see Domain/Entitlement).
-    /// <c>usage_monthly</c> is per account, <c>usage_daily</c> is per device — the free tier's
-    /// daily cap is per device by design, so that a shared account cannot pool it (design §7.4).
-    /// <c>usage_events.cost_micros</c> is micro-yuan so the whole spend ledger stays integer.
+    /// 所有时间戳都是 Unix 秒（UTC）。<c>users.plan</c> 对应 <see cref="Domain.PlanTier"/>。
+    /// <c>users.plan_expires_at</c> 为 NULL 表示“授权没有到期时间”（见 Domain/Entitlement）。
+    /// <c>usage_monthly</c> 按账号计，<c>usage_daily</c> 按设备计——免费档的
+    /// 每日上限按设计是按设备计的，这样共享账号也无法把它汇总使用（设计 §7.4）。
+    /// <c>usage_events.cost_micros</c> 以微元为单位，这样整个支出账本保持整数。
     /// </summary>
     private const string Schema = """
         PRAGMA journal_mode = WAL;

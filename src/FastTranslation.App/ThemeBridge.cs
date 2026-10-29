@@ -5,12 +5,12 @@ using FastTranslation.Platform.Windows;
 namespace FastTranslation.App;
 
 /// <summary>
-/// Copies the resolved palette into App.xaml resources at startup (v24).
+/// 启动时把解析好的调色板写入 App.xaml 资源（v24）。
 ///
-/// Every brush reference in the XAML is a `{DynamicResource …Brush}`, so swapping an entry here
-/// would in principle be enough — but the brushes are also mutated **in place**, because a frozen
-/// brush (XAML freezes brushes by default) would keep the light color in whatever already resolved
-/// it. The tokens carry `po:Freeze="False"` for that reason; both paths stay correct.
+/// XAML 里每处画刷引用都是 `{DynamicResource …Brush}`，所以原则上换掉这里的条目就够了，
+/// 但这些画刷还会被**就地修改**：冻结的画刷（XAML 默认就会冻结画刷）会把浅色一直留在
+/// 已经解析过它的元素上。这些 token 因此带着 `po:Freeze="False"`；
+/// 于是换条目与就地改色两条路径都仍然成立。
 /// </summary>
 internal static class ThemeBridge
 {
@@ -43,8 +43,8 @@ internal static class ThemeBridge
         var color = (Color)ColorConverter.ConvertFromString(hex);
         if (resources[key] is SolidColorBrush existing)
         {
-            // a frozen XAML brush cannot be mutated; replace it and let the element-level
-            // StaticResource lookups (which happen at window load, i.e. later) pick it up
+            // 冻结的 XAML 画刷无法修改；替换它，让元素级的 StaticResource 查找
+            //（发生在窗口加载时，也就是更晚）能取到新值
             if (!existing.IsFrozen && existing.Color != color)
             {
                 existing.Color = color;

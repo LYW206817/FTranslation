@@ -8,8 +8,8 @@ using System.Windows.Interop;
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// T12: native Shell_NotifyIcon tray icon (no WinForms). Single-click toggles capture,
-/// context menu: 设置/暂停取词/退出. No logging, no telemetry.
+/// T12：原生 Shell_NotifyIcon 托盘图标(不用 WinForms)。单击切换取词开关，
+/// 右键菜单：设置/暂停取词/退出。不写日志，不做遥测。
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
@@ -82,7 +82,7 @@ public sealed class TrayIconService : IDisposable
     private bool _added;
 
     public event Action? SettingsRequested;
-    public event Action<bool>? CaptureToggled; // true = enabled
+    public event Action<bool>? CaptureToggled; // true 表示已启用
     public event Action? ExitRequested;
     public event Action? MainWindowRequested;
     public event Action? UpdateRequested;
@@ -140,8 +140,8 @@ public sealed class TrayIconService : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        // explorer restart deletes every tray icon — re-add ours or the only path to
-        // settings/exit disappears (bugbot P2)
+        // explorer 重启会清掉所有托盘图标——必须重新添加，否则通往
+        // 设置/退出的唯一入口就消失了(bugbot P2)
         if (_taskbarCreatedMsg != 0 && msg == (int)_taskbarCreatedMsg && _added)
         {
             Shell_NotifyIcon(NIM_DELETE, ref _data);
@@ -169,8 +169,8 @@ public sealed class TrayIconService : IDisposable
 
     private void ShowContextMenu()
     {
-        // Native menu: a WPF ContextMenu on a message-only window is unreliable (never opens),
-        // which made the app impossible to close for the user. TrackPopupMenu is the standard.
+        // 原生菜单：在消息专用窗口上放 WPF ContextMenu 并不可靠(根本打不开)，
+        // 曾导致用户没法关闭应用。TrackPopupMenu 才是标准做法。
         var menu = CreatePopupMenu();
         if (menu == IntPtr.Zero) return;
         try
@@ -185,7 +185,7 @@ public sealed class TrayIconService : IDisposable
             AppendMenuW(menu, MF_STRING, 1003, "退出");
 
             GetCursorPos(out var pt);
-            // classic KB135788 dance so the menu dismisses when clicking elsewhere
+            // 经典的 KB135788 处理：让菜单在点击别处时能正常消失
             SetForegroundWindow(_sink.Handle);
             var cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
                 pt.X, pt.Y, 0, _sink.Handle, IntPtr.Zero);
@@ -211,14 +211,14 @@ public sealed class TrayIconService : IDisposable
         }
     }
 
-    /// <summary>One entry of an ICO container's directory, resolved to its in-buffer payload.</summary>
+    /// <summary>ICO 容器目录中的一项，已解析为缓冲区里的载荷。</summary>
     internal readonly record struct IcoEntry(int Index, int Width, int DataOffset, int DataLength);
 
     /// <summary>
-    /// Pick the directory entry whose width is closest to <paramref name="targetSize"/>
-    /// (a 0 width byte means 256). Returns null for a container that is truncated or whose
-    /// chosen payload lies outside the buffer — both used to reach CreateIconFromResourceEx
-    /// as garbage, which returns 0 and left the tray with no icon at all.
+    /// 挑选宽度最接近 <paramref name="targetSize"/> 的目录项
+    /// (宽度字节为 0 表示 256)。容器被截断、或选中的载荷落在缓冲区之外时
+    /// 返回 null——这两种情况以前会把垃圾数据传给 CreateIconFromResourceEx，
+    /// 该 API 返回 0，托盘于是连一个图标都没有。
     /// </summary>
     internal static IcoEntry? PickIcoEntry(byte[] ico, int targetSize)
     {
@@ -246,14 +246,14 @@ public sealed class TrayIconService : IDisposable
 
     private static IntPtr IconFromIcoBytes(byte[] ico)
     {
-        // Parse the ICO container manually: pick the directory entry closest to the tray
-        // small-icon size and feed its (PNG) payload to CreateIconFromResourceEx — the API
-        // takes a single icon image, not the container. Zero extra dependencies (no WinForms).
+        // 手动解析 ICO 容器：挑出最接近托盘小图标尺寸的目录项，
+        // 把它的(PNG)载荷交给 CreateIconFromResourceEx——该 API
+        // 只接受单张图标图，不接受整个容器。零额外依赖(不用 WinForms)。
         [DllImport("user32.dll")] static extern IntPtr CreateIconFromResourceEx(byte[] presbits, int dwResSize, bool fIcon, int dwVer, int cx, int cy, uint flags);
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
         try
         {
-            int cx = GetSystemMetrics(49); // SM_CXSMICON
+            int cx = GetSystemMetrics(49); // SM_CXSMICON(托盘小图标宽度)
             if (cx <= 0) cx = 16;
 
             if (PickIcoEntry(ico, cx) is not { } picked) return IntPtr.Zero;
@@ -267,7 +267,7 @@ public sealed class TrayIconService : IDisposable
 
     private static IntPtr CreateIcon()
     {
-        // 16x16 blue rounded square with "译" — drawn in software (no D3D, M0 D1)
+        // 16x16 蓝色圆角方块，中间一个「译」字——纯软件绘制(不用 D3D，见 M0 D1)
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
@@ -287,7 +287,7 @@ public sealed class TrayIconService : IDisposable
         encoder.Frames.Add(BitmapFrame.Create(bmp));
         using var ms = new MemoryStream();
         encoder.Save(ms);
-        // GDI icon from PNG bytes
+        // 由 PNG 字节生成 GDI 图标
         return NativeIconFromPng(ms.ToArray());
     }
 

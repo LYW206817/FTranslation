@@ -3,11 +3,11 @@ using System.Windows.Interop;
 
 namespace FastTranslation.Platform.Windows;
 
-/// <summary>T12: global hotkey via RegisterHotKey on a message-only window.</summary>
+/// <summary>T12：通过 RegisterHotKey 在消息专用窗口上注册全局热键。</summary>
 public sealed class HotkeyService : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
-    private const int HotkeyId = 0x5446; // "TF"
+    private const int HotkeyId = 0x5446; // "TF"——由两个 ASCII 字符组成的标识
 
     private readonly HwndSource _source;
     private uint _modifiers;
@@ -21,7 +21,7 @@ public sealed class HotkeyService : IDisposable
         public HwndSource Source { get; }
         public MessageWindow()
         {
-            var parameters = new HwndSourceParameters("FT.HotkeySink") { ParentWindow = new IntPtr(-3) }; // HWND_MESSAGE
+            var parameters = new HwndSourceParameters("FT.HotkeySink") { ParentWindow = new IntPtr(-3) }; // HWND_MESSAGE(消息专用窗口)
             Source = new HwndSource(parameters);
         }
     }
@@ -52,8 +52,8 @@ public sealed class HotkeyService : IDisposable
         if (!TryParse(hotkey, out _modifiers, out _vk) ||
             !NativeMethods.RegisterHotKey(_source.Handle, HotkeyId, _modifiers, _vk))
         {
-            // a failed re-registration must not leave the app without any hotkey
-            // (bugbot P1: settings failure said "previous kept" but never re-registered)
+            // 重新注册失败时不能让应用一个热键都不剩
+            // (bugbot P1：设置失败时提示「保留旧值」，但旧值其实从未重新注册)
             if (wasRegistered && NativeMethods.RegisterHotKey(_source.Handle, HotkeyId, previousModifiers, previousVk))
             {
                 _vk = previousVk;
@@ -106,15 +106,15 @@ public sealed class HotkeyService : IDisposable
 
     private static uint ParseNamedKey(string part)
     {
-        // f1..f24, "d1".."d0", and plain digits — "f5" used to parse as the F LETTER key
+        // f1..f24、"d1".."d0" 以及纯数字——"f5" 以前会被解析成 F 字母键
         if (part.Length >= 2 && (part[0] == 'f' || part[0] == 'F') &&
             uint.TryParse(part[1..], out var f) && f is >= 1 and <= 24)
         {
-            return 0x70 + f - 1; // VK_F1 = 0x70
+            return 0x70 + f - 1; // VK_F1 = 0x70，后续依次加一
         }
         if (part.Length == 2 && (part[0] == 'd' || part[0] == 'D') && char.IsDigit(part[1]))
         {
-            return part[1]; // VK_D0..VK_D9 are just the ASCII digit keys
+            return part[1]; // VK_D0..VK_D9 就是 ASCII 数字键本身
         }
         if (part.Length == 1 && char.IsDigit(part[0])) return part[0];
         return 0;

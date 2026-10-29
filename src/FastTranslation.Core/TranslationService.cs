@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 namespace FastTranslation.Core;
 
 /// <summary>
-/// Coordinates provider calls: LRU cache, single-flight cancellation (a new request
-/// cancels the previous in-flight one), short-circuits empty input.
+/// 协调 provider 调用：LRU 缓存、单飞取消（新请求会取消上一个在途请求）、
+/// 空输入直接短路。
 /// </summary>
 public sealed class TranslationService
 {
@@ -47,8 +47,8 @@ public sealed class TranslationService
         }
 
         var previous = Interlocked.Exchange(ref _inFlight, new CancellationTokenSource());
-        // Cancel only — disposing here races cancellation callbacks; the owning request's
-        // finally block disposes its own CTS when it completes.
+        // 只取消、不 Dispose——在这里释放会和取消回调竞争；由所属请求在完成时
+        // 于自己的 finally 块里释放它自己的 CTS。
         try { previous?.Cancel(); } catch { }
         var cts = _inFlight!;
 
@@ -67,7 +67,7 @@ public sealed class TranslationService
             var result = await _provider.TranslateAsync(request, token).ConfigureAwait(false);
             if (token.IsCancellationRequested)
             {
-                // superseded by a newer request: never surface the stale result
+                // 已被更新的请求取代：绝不要把过期结果抛给上层
                 RequestCompleted?.Invoke(result);
                 return result with { Error = TranslationError.Cancelled() };
             }

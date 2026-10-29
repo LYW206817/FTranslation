@@ -4,15 +4,15 @@ using System.Text.Json;
 
 namespace FastTranslation.Server.Gateway;
 
-/// <summary>What the upstream returned, verbatim. The gateway is a pipe, not a rewriter.</summary>
+/// <summary>上游返回的原样内容。网关只负责转发，不负责改写。</summary>
 public sealed record GatewayResponse(int StatusCode, string Body)
 {
     public bool Succeeded => StatusCode is >= 200 and < 300;
 }
 
 /// <summary>
-/// The one place that holds the developer's DashScope key. It forwards a caller's request body with
-/// the key attached and never lets the key (or an upstream URL) reach the client.
+/// 唯一持有开发者 DashScope Key 的地方。它把调用方的请求体连同
+/// 该 Key 一起转发，绝不让 Key（或上游 URL）到达客户端。
 /// </summary>
 public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler? handler = null) : IDisposable
 {
@@ -28,23 +28,23 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
         => await SendAsync(options.ImageBaseUrl, body, ct).ConfigureAwait(false);
 
     /// <summary>
-    /// OCR rides the multimodal-generation endpoint, which takes the same bearer key and body shape
-    /// (model + input.messages with an image_url), so it is one more pipe rather than a new client.
+    /// OCR 走 multimodal-generation 端点，它使用相同的 bearer key 和请求体结构
+    /// （model + 带 image_url 的 input.messages），所以只是多一条转发通道，而不是新客户端。
     /// </summary>
     public async Task<GatewayResponse> SendOcrAsync(string body, CancellationToken ct)
         => await SendAsync(options.EffectiveOcrBaseUrl, body, ct).ConfigureAwait(false);
 
     /// <summary>
-    /// Reads the token counts DashScope reports. A response without usage is not an error — the
-    /// caller falls back to an estimate so quota accounting never silently stops.
+    /// 读取 DashScope 报告的 token 数。响应里没有 usage 不算错误——
+    /// 调用方会回落到估算值，这样额度记账永远不会悄悄停摆。
     /// </summary>
     public static bool TryReadUsage(string? body, out long tokensIn, out long tokensOut)
         => TryReadUsageNamed(body, "prompt_tokens", "completion_tokens", out tokensIn, out tokensOut);
 
     /// <summary>
-    /// The native multimodal endpoint reports <c>input_tokens</c>/<c>output_tokens</c> where the
-    /// OpenAI-compatible one says <c>prompt_tokens</c>/<c>completion_tokens</c>. Accept either, so OCR
-    /// cost tracking does not silently fall back to a character estimate.
+    /// 原生多模态端点报告的是 <c>input_tokens</c>/<c>output_tokens</c>，而
+    /// OpenAI 兼容端点用的是 <c>prompt_tokens</c>/<c>completion_tokens</c>。两者都接受，这样 OCR
+    /// 成本统计不会悄悄回落到字符估算。
     /// </summary>
     public static bool TryReadVisionUsage(string? body, out long tokensIn, out long tokensOut)
         => TryReadUsageNamed(body, "input_tokens", "output_tokens", out tokensIn, out tokensOut)
@@ -97,7 +97,7 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
-            // Upstream unreachable: report it as a gateway failure, never as a quota event.
+            // 上游不可达：按网关故障上报，绝不能当成额度事件。
             return new GatewayResponse(StatusCodes.Status502BadGateway, string.Empty);
         }
     }

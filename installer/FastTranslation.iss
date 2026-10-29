@@ -1,7 +1,7 @@
-﻿; Fast Translation installer.
-; Replaces the v1.x WiX MSI for two reasons the user asked for: a classic setup wizard that lets
-; the user pick the install folder, and an unattended upgrade path the app can trigger itself.
-; Per-user install (no UAC) so an automatic update never shows a consent prompt.
+﻿; Fast Translation 安装器。
+; 用它替掉 v1.x 的 WiX MSI，原因有两条（都是用户提的）：要一个经典安装向导，让用户
+; 自选安装目录，还要一条程序自己就能触发的无人值守升级路径。
+; 按用户安装（不弹 UAC），这样自动更新永远不会弹同意框。
 
 #define AppName "Fast Translation"
 #define AppVersion "1.3.4"
@@ -9,8 +9,8 @@
 #define AppExeName "FastTranslation.exe"
 
 [Setup]
-; A different AppId than the MSI product code: this is a separate package, and reusing the
-; MSI identity would make Windows Installer try to repair the old one.
+; AppId 与 MSI 的 product code 不同：这是另一个包，如果复用
+; MSI 身份，Windows Installer 会去尝试修复旧的那个。
 AppId={{8B1F2C34-7A6D-4E58-9C21-5F3D8E7A1B60}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -21,10 +21,10 @@ AppSupportURL=https://github.com/LYW206817/FTranslation-Updates
 DefaultDirName={localappdata}\Programs\FastTranslation
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-; Default is "auto", which hides the folder page whenever this AppId is already registered —
-; that is why an upgrade showed no way to change the path. Always offer the page instead.
+; 默认值是 "auto"：只要这个 AppId 已注册，就隐藏目录页 ——
+; 这就是升级时看不到改路径入口的原因。改成始终显示该页。
 DisableDirPage=no
-; A silent upgrade must keep the folder the user originally picked.
+; 静默升级必须保留用户当初选的目录。
 UsePreviousAppDir=yes
 PrivilegesRequired=lowest
 OutputDir=..\publish\dist
@@ -37,30 +37,30 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; The app is a tray app whose Close button only hides the window, so Restart Manager cannot
-; close it. The update path waits for the caller's PID explicitly instead (see [Code]).
+; 应用是托盘程序，关闭按钮只是隐藏窗口，所以 Restart Manager 无法
+; 关掉它。升级路径改为显式等待调用方的 PID（见 [Code]）。
 CloseApplications=no
 RestartApplications=no
 DisableWelcomePage=no
 
-; --- appearance -----------------------------------------------------------------------------
-; "modern" drops the grey page fill and the bevel line, "polar" shifts the built-in palette towards
-; blue instead of neutral grey, and "hidebevels" removes the remaining horizontal rules so the pages
-; read as one surface. The page colour is the app's own #F7F9FC, so the wizard and the program look
-; like the same product.
-; Deliberately no "dynamic": the dark palette only recolours the form, not the notebook page
-; surfaces, so a dark Windows would render near-white text on a white page. One cream-white wizard
-; in both modes is honest; a half-recoloured one is unreadable.
+; --- 外观 -----------------------------------------------------------------------------
+; "modern" 去掉灰色页面填充和斜面分隔线，"polar" 把内置配色
+; 从中性灰偏向蓝色，"hidebevels" 去掉剩下那些横向分隔线，让各页
+; 看起来是一整块表面。页面底色就用应用自己的 #F7F9FC，让向导和程序
+; 看起来像同一个产品。
+; 故意不用 "dynamic"：深色调色板只重绘窗体，不重绘 notebook 页面
+; 的底色，所以深色 Windows 会在白底页面上渲染出接近白色的文字。两种模式下
+; 都用同一套奶白向导才诚实；只重绘一半的向导没法看。
 WizardStyle=modern polar hidebevels
 WizardBackColor=#F7F9FC
-; Left banner on the welcome/finished pages and the small square in the page header. Several
-; sizes are listed per DPI so the bitmap is never resampled; aspect ratio 164:314 and square.
+; 欢迎页/完成页左侧的横幅，以及页头里的小方块。
+; 按 DPI 列了多个尺寸，位图永远不会被重采样；横幅比例 164:314，方块为正方形。
 WizardImageFile=..\assets\installer\wizard-240x459.png,..\assets\installer\wizard-336x643.png,..\assets\installer\wizard-403x772.png
 WizardSmallImageFile=..\assets\installer\small-116.png,..\assets\installer\small-147.png,..\assets\installer\small-159.png
 WizardImageStretch=yes
-; Same font family as the app windows.
+; 字体族与应用窗口一致。
 DefaultDialogFontName=Microsoft YaHei UI
-; A single language means there is nothing to choose.
+; 只有一种语言，没什么可选的。
 ShowLanguageDialog=no
 
 [Languages]
@@ -86,8 +86,8 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; Runs in a silent upgrade too (no skipifsilent): the app hands the install over to us and exits,
-; so nothing else would bring it back.
+; 静默升级时也会执行（没有 skipifsilent）：应用把安装交给我们后退出，
+; 否则就没有别的东西能把它重新拉起来。
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall
 
 [Registry]
@@ -97,8 +97,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Code]
 const
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall';
-  { The app's own palette, as $BBGGRR (Delphi's TColor byte order), so the wizard and the
-    program agree on every colour that Pascal Script is actually allowed to paint. }
+  { 应用自己的调色板，按 $BBGGRR（Delphi 的 TColor 字节序），让向导和
+    程序在 Pascal Script 真正能绘制的每一种颜色上保持一致。 }
   LightBrand = $FF6225;      { #2562FF }
   DarkBrand = $FF824A;       { #4A82FF }
   LightPrimary = $36251B;    { #1B2536 }
@@ -107,7 +107,7 @@ const
   DarkSecondary = $BFAEA3;   { #A3AEBF }
   LightHair = $F3EAE4;       { #E4EAF3 }
   DarkHair = $3B312B;        { #2B313B }
-  LightBack = $FCF9F7;       { #F7F9FC, the WizardBackColor page fill }
+  LightBack = $FCF9F7;       { #F7F9FC，即 WizardBackColor 页面底色 }
   PageCount = 6;
 
 var
@@ -118,7 +118,7 @@ var
   AnimTimer: LongWord;
   AnimAlive: Boolean;
 
-{ Pascal Script has no Win32 import table; these four are the only API calls we need. }
+{ Pascal Script 没有 Win32 导入表；这几项是我们唯一需要的 API 调用。 }
 function OpenProcess(dwDesiredAccess: Cardinal; bInheritHandle: Boolean; dwProcessId: Cardinal): THandle;
   external 'OpenProcess@kernel32.dll stdcall';
 function WaitForSingleObject(hHandle: THandle; dwMilliseconds: Cardinal): Cardinal;
@@ -150,8 +150,8 @@ begin
   if IsDarkInstallMode then Result := DarkHair else Result := LightHair;
 end;
 
-{ Theme painting only works once a control stops deferring to the VCL style, and the style has
-  to be switched off before the colour is assigned. }
+{ 只有控件不再跟随 VCL 样式后主题绘制才生效，而且必须先关掉样式
+  再赋值颜色。 }
 procedure Paint(Panel: TPanel; Color: TColor; L, T, W, H: Integer);
 begin
   Panel.StyleElements := [];
@@ -166,8 +166,8 @@ begin
   Result.Parent := Parent;
 end;
 
-{ Dropping the style also drops the themed (transparent) background, so the label would paint a
-  white box over the page; its own Color has to be set to the page colour to stay invisible. }
+{ 去掉样式同时也去掉了主题（透明）背景，标签会在页面上画出一个白块；
+  必须把它自己的 Color 设成页面底色才看不出来。 }
 procedure ColorText(Text: TNewStaticText; Color: TColor; Back: TColor; Size: Integer; Bold: Boolean);
 begin
   Text.StyleElements := [];
@@ -177,7 +177,7 @@ begin
   if Bold then Text.Font.Style := [fsBold] else Text.Font.Style := [];
 end;
 
-{ /UPDATEPID= — set by the app when it upgrades itself. }
+{ /UPDATEPID= —— 应用自我升级时设置。 }
 procedure ParseUpdatePid();
 var
   i, p: Integer;
@@ -196,8 +196,8 @@ begin
   end;
 end;
 
-{ WaitForSingleObject returning WAIT_TIMEOUT means the process is still running. A dead pid
-  cannot be opened, which is the normal exit condition. }
+{ WaitForSingleObject 返回 WAIT_TIMEOUT 说明进程还在跑。已死的 pid
+  打不开，这正是正常的退出条件。 }
 function ProcessAlive(Pid: Cardinal): Boolean;
 var
   h: THandle;
@@ -228,11 +228,11 @@ begin
   Log(Format('waited %d ms for pid %d', [waited, UpdatePid]));
 end;
 
-{ The app is a tray program: its Close button only hides the window, so Restart Manager (the
-  CloseApplications machinery) cannot shut it down and every file it has loaded refuses to be
-  replaced. A user who downloads Setup.exe and runs it while the app is in the tray would hit
-  "DeleteFile failed; code 5" halfway through. Killing it here is safe — it keeps no unsaved state
-  and [Run] starts it again — and harmless during a self-update, where it has already exited. }
+{ 应用是托盘程序：关闭按钮只是隐藏窗口，所以 Restart Manager（
+  CloseApplications 那套机制）关不掉它，它加载过的每个文件都拒绝被覆盖。
+  用户下载 Setup.exe 在应用还缩在托盘时运行，会在中途撞上
+  "DeleteFile failed; code 5"。这里直接杀掉它是安全的——它没有未保存的状态，
+  而且 [Run] 会把它重新启动——自我更新时也无害，那时它已经退出了。 }
 procedure CloseRunningApp();
 var
   rc: Integer;
@@ -244,8 +244,8 @@ begin
     Log(Format('taskkill returned %d (128 = no such process)', [rc]));
 end;
 
-{ Uninstalls a 1.0.x MSI. Both packages would otherwise own overlapping files in the same
-  folder, and a later MSI repair deletes what it thinks is its own (the v29 incident). }
+{ 卸载 1.0.x 的 MSI。否则两个包会在同一目录里拥有重叠的文件，
+  之后 MSI 修复会删掉它认为属于自己的那份（v29 事故）。 }
 procedure UninstallLegacyMsi();
 var
   roots: array[0..2] of Integer;
@@ -273,9 +273,9 @@ begin
   end;
 end;
 
-{ --- motion --------------------------------------------------------------------------------- }
-{ Ease towards the new width a quarter of the remaining distance at a time; a plain linear
-  step reads as a stutter on a 20 ms timer. }
+{ --- 动效 --------------------------------------------------------------------------------- }
+{ 每次走剩余距离的四分之一，缓动到新宽度；
+  纯线性步进在 20 ms 定时器上看起来会一顿一顿。 }
 procedure AnimTick(Arg1, Arg2, Arg3, Arg4: LongWord);
 var
   step: Integer;
@@ -301,8 +301,8 @@ begin
   AnimTimer := SetTimer(0, 0, 20, CreateCallback(@AnimTick));
 end;
 
-{ The finished page has no Next button and the installing page is busy, but both still carry the
-  bar, so the step count stays fixed at six for every page the user can see. }
+{ 完成页没有「下一步」按钮，安装中的页面又很忙，但两者仍然带着
+  进度条，所以用户能看到的每个页面都把步数固定为六。 }
 function PageStep(CurPageID: Integer): Integer;
 begin
   if CurPageID = wpWelcome then Result := 1
@@ -334,14 +334,14 @@ begin
   target := (WizardForm.ClientWidth * PageStep(CurPageID)) div PageCount;
   AnimateProgress(target);
 
-  { FinishedLabel carries a caption the wizard only fills in once this page is current, so its
-    box can only be re-fitted here. }
+  { FinishedLabel 的文案要等这一页成为当前页后向导才会填，所以它的
+    框只能在这里重新适配。 }
   if CurPageID = wpFinished then WizardForm.FinishedLabel.AdjustHeight;
 end;
 
-{ The wizard lays these labels out for its own 9pt default. A larger font makes the text taller
-  than the box it was given, so every heading overflows onto the line below it: re-fit each box,
-  then push the following label down by whatever the box gained. }
+{ 向导是按自己默认的 9pt 给这些标签排版的。字号调大后文字比
+  给定的框更高，每个标题都会溢到下一行：逐个重新适配框，
+  再按框增加的高度把后面的标签往下推。 }
 procedure FitStackedLabels();
 begin
   WizardForm.WelcomeLabel1.AdjustHeight;
@@ -358,8 +358,8 @@ begin
     WizardForm.FinishedHeadingLabel.Top + WizardForm.FinishedHeadingLabel.Height + ScaleY(6);
 end;
 
-{ mbSecond | MinVersion 10.0 is enforced above; the hint on the finished page names the two
-  things a first-time user needs to know. }
+{ mbSecond | MinVersion 10.0 在上面已强制；完成页的提示点明
+  首次使用者需要知道的两件事。 }
 procedure InitializeWizard();
 begin
   WizardBack := LightBack;
@@ -380,8 +380,8 @@ begin
     FitStackedLabels();
   end;
 
-  { The polar style paints the button faces itself and offers no colour property, so weight and
-    size are the only levers left on them. }
+  { polar 样式自己绘制按钮外观，也不提供颜色属性，所以只剩下字重和
+    字号两个可调的杠杆。 }
   WizardForm.NextButton.Font.Size := 11;
   WizardForm.NextButton.Font.Style := [fsBold];
   WizardForm.BackButton.Font.Size := 11;
@@ -397,9 +397,9 @@ begin
   KillTimer(0, AnimTimer);
 end;
 
-{ The old MSI must go before the new files land: both packages would claim the same paths.
-  Removing it can take a while (msiexec runs a full uninstall), so an interactive run gets a
-  marquee page instead of a frozen wizard; a silent run must stay silent. }
+{ 旧 MSI 必须在新文件落地之前清掉：两个包会抢占同样的路径。
+  卸载可能要花一阵（msiexec 跑的是完整卸载），所以交互式运行给一个
+  跑马灯页面而不是卡死的向导；静默运行则必须保持安静。 }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   page: TOutputMarqueeProgressWizardPage;

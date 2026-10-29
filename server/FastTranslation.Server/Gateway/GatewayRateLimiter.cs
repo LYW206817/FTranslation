@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 namespace FastTranslation.Server.Gateway;
 
 /// <summary>
-/// Per-account fixed-window limiter for the gateway. Kept in-process and tiny: the auth limiter is
-/// per-IP because that is what protects a login form, but a translation flood comes from one
-/// account wherever it roams, so this keys on the user id instead.
+/// 网关侧按账号的固定窗口限流器。保持进程内、体量极小：认证限流器按
+/// IP 是因为登录表单需要以此防护，而翻译洪水来自同一个
+/// 账号，无论它走到哪个 IP，所以这里改以用户 id 为键。
 /// </summary>
 public sealed class GatewayRateLimiter(TimeProvider? time = null)
 {
@@ -28,7 +28,7 @@ public sealed class GatewayRateLimiter(TimeProvider? time = null)
         return window.Count <= permitPerMinute;
     }
 
-    /// <summary>Drops windows that have already rolled over so the dictionary cannot grow forever.</summary>
+    /// <summary>清除已经滚过的窗口，避免字典无限增长。</summary>
     public void Prune()
     {
         var now = _time.GetUtcNow().ToUnixTimeSeconds();

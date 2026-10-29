@@ -20,7 +20,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         _factory = factory;
     }
 
-    /// <summary>Sends a chat request the way the desktop client does: Bearer token + device header.</summary>
+    /// <summary>按桌面客户端的方式发送聊天请求:Bearer 令牌 + 设备头。</summary>
     private static Task<HttpResponseMessage> ChatAsync(HttpClient client, int chars, string? device = null, string model = "qwen-mt-flash")
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
@@ -99,7 +99,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         response.EnsureSuccessStatusCode();
         var call = _factory.Upstream.Calls[before];
         Assert.Equal("http://upstream.test/v1/chat/completions", call.Url);
-        // The client's own Bearer token must never be forwarded; the developer key replaces it.
+        // 客户端自己的 Bearer 令牌绝不能转发出去;开发者 Key 会替换它。
         Assert.Equal(GatewayFactory.UpstreamKey, call.Authorization);
         Assert.Contains("translation_options", call.Body);
     }
@@ -138,7 +138,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
             _factory.Upstream.Reset();
         }
 
-        // The reported tokens must beat the character-based estimate, otherwise cost tracking is fiction.
+        // 上报的 token 数必须压过基于字符的估算,否则成本统计就是虚的。
         var accounts = _factory.Services.GetRequiredService<AccountStore>();
         var user = accounts.FindUserByEmail(email)!;
         var (tokensIn, tokensOut, costMicros) = LastUsageEvent(user.Id);
@@ -167,7 +167,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     [Fact]
     public async Task Chat_RefusesWhenMonthlyQuotaIsSpent()
     {
-        // Light has no daily cap, so this isolates the monthly gate.
+        // Light 没有每日上限,所以这能单独隔离出月度闸门。
         var client = await SignedInClientAsync(PlanTier.Light);
 
         for (var i = 0; i < 10; i++)
@@ -209,7 +209,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
         Assert.Contains("text_required", await empty.Content.ReadAsStringAsync());
 
-        // Neither request may reach DashScope — a refused request must never cost money.
+        // 两个请求都不能到达 DashScope——被拒绝的请求绝不能花钱。
         Assert.Equal(before, await CallCountAsync());
     }
 
@@ -243,7 +243,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
 
         (await ChatAsync(client, 1_500, device)).EnsureSuccessStatusCode();
 
-        // The daily ledger is keyed by device, so read it through the store the server itself uses.
+        // 每日账本按设备记账,所以要通过服务端自己使用的 store 去读。
         var accounts = _factory.Services.GetRequiredService<AccountStore>();
         var user = accounts.FindUserByEmail(email)!;
         var registered = accounts.FindDeviceByFingerprint(user.Id, device)!;
@@ -262,7 +262,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
 
         (await ChatAsync(client, 1_200, device)).EnsureSuccessStatusCode();
 
-        // The client only knows its fingerprint, never the server-side device id.
+        // 客户端只知道自己的 fingerprint,永远不知道服务端的 device id。
         var response = await client.GetAsync($"/api/v1/account/usage?fingerprint={device}");
         response.EnsureSuccessStatusCode();
         var usage = (await response.Content.ReadFromJsonAsync<UsageDto>())!;
@@ -277,7 +277,7 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     }
 }
 
-/// <summary>Mirrors <c>GatewayEndpoints.DeviceHeaderName</c> for the test side.</summary>
+/// <summary>与 <c>GatewayEndpoints.DeviceHeaderName</c> 一致,供测试侧使用。</summary>
 internal static class GatewayEndpointConstants
 {
     public const string DeviceHeader = "X-FT-Device";

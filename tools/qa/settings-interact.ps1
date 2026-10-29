@@ -1,15 +1,15 @@
-# Click-level verification of the settings window: excluded-apps add/remove and autostart toggle.
-# ASCII only (Chinese via [char]0xXXXX) so a BOM-less .ps1 is not mangled.
+﻿# 设置窗口的点击级验证：排除应用列表的添加/移除，以及开机自启动开关。
+# 仅用 ASCII（中文用 [char]0xXXXX 表示），避免无 BOM 的 .ps1 中文乱码。
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\FastTranslation\FastTranslation.exe'
 if (-not (Test-Path $exe)) { throw "not installed: $exe" }
 
-$wSettings   = [string][char]0x8BBE + [char]0x7F6E                      # she zhi
-$bAdd        = [string][char]0x6DFB + [char]0x52A0                      # tian jia
-$bRemove     = [string][char]0x79FB + [char]0x9664 + [char]0x9009 + [char]0x4E2D   # yi chu xuan zhong
-$bSave       = [string][char]0x4FDD + [char]0x5B58                      # bao cun
+$wSettings   = [string][char]0x8BBE + [char]0x7F6E                      # 设置
+$bAdd        = [string][char]0x6DFB + [char]0x52A0                      # 添加
+$bRemove     = [string][char]0x79FB + [char]0x9664 + [char]0x9009 + [char]0x4E2D   # 移除选中
+$bSave       = [string][char]0x4FDD + [char]0x5B58                      # 保存
 $testName    = 'qa-exclusion-probe'
 
 $AE = [System.Windows.Automation.AutomationElement]
@@ -46,7 +46,7 @@ function Wait-SettingsClosed($app) {
   Start-Sleep -Milliseconds 900
 }
 
-# ---- back up user settings so this probe leaves no trace ----
+# ---- 先备份用户设置，保证这个探针不会留下痕迹 ----
 $dataDir = Join-Path $env:LOCALAPPDATA 'FastTranslation'
 $settingsJson = Join-Path $dataDir 'settings.json'
 $backup = $null
@@ -61,7 +61,7 @@ try {
   $app = Start-Process -FilePath $exe -PassThru
   Start-Sleep -Seconds 5
 
-  # ================= pass 1: add exclusion + enable autostart =================
+  # ================= 第 1 轮：添加排除项 + 打开开机自启 =================
   $sw = Open-Settings $app
   $edit = Find-ById $sw 'ExclusionInput'
   if ($null -eq $edit) { throw 'ExclusionInput not found' }
@@ -88,7 +88,7 @@ try {
   $saved = if (Test-Path $settingsJson) { Get-Content -Raw -LiteralPath $settingsJson } else { '' }
   Write-Host ('settings.json contains probe name = ' + ($saved -match [regex]::Escape($testName)))
 
-  # ================= pass 2: select + remove, disable autostart =================
+  # ================= 第 2 轮：选中并移除，关闭开机自启 =================
   $sw = Open-Settings $app
   $list = Find-ById $sw 'ExcludedList'
   $target = $null

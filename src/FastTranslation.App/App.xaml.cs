@@ -59,7 +59,7 @@ public partial class App : Application, IResultPresenter
         _mutex = new Mutex(true, SingleInstanceMutexName, out var isNew);
         if (!isNew)
         {
-            // second launch: wake the existing instance's window instead of exiting silently
+            // 第二次启动：唤醒已存在实例的窗口，而不是静默退出
             try
             {
                 using var activate = EventWaitHandle.OpenExisting(ActivateEventName);
@@ -88,17 +88,17 @@ public partial class App : Application, IResultPresenter
             {
                 try { System.IO.File.AppendAllText(System.IO.Path.GetTempPath() + "ft-uitest-errors.log", $"{DateTime.Now:HH:mm:ss.fff} {args.Exception}\n"); } catch { }
             }
-            args.Handled = true; // tray app must never die silently on one bad event
+            args.Handled = true; // 托盘应用绝不能因为一个坏事件就静默死掉
         };
 
         _settings = _settingsService.Load();
 
-        // palette before any window exists: the XAML brushes are mutable (po:Freeze="False") and
-        // ThemeBridge recolors them in place, so every style and template picks up the theme (v24)
+        // 调色板要在任何窗口存在之前就位：XAML 画刷是可变的（po:Freeze="False"），
+        // ThemeBridge 就地给它们换色，于是每个样式和模板都能拿到主题（v24）
         ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme));
 
-        // account service: one HttpClient for the process, 20 s so a dead host surfaces as a
-        // network error instead of a button that never comes back
+        // 账号服务：整个进程共用一个 HttpClient，超时 20 秒，这样主机挂了会表现为
+        // 网络错误，而不是一个永远回不来的按钮
         var accountBase = string.IsNullOrWhiteSpace(_settings.AccountBaseUrl)
             ? AccountApiClient.DefaultBaseUrl
             : _settings.AccountBaseUrl;
@@ -125,7 +125,7 @@ public partial class App : Application, IResultPresenter
         _gatewayHttp = CreateApiHttpClient(TimeSpan.FromSeconds(45), GatewayBaseUrl());
         _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider));
 
-        // stage-1 toolbar (复制/翻译) + stage-2 result card (复制/替换/插入/✕)
+        // 第一阶段工具栏（复制/翻译）+ 第二阶段结果卡（复制/替换/插入/✕）
         _toolbar = new SelectionToolbar();
         _toolbar.CopyClicked += OnToolbarCopy;
         _toolbar.TranslateClicked += OnToolbarTranslate;
@@ -152,7 +152,7 @@ public partial class App : Application, IResultPresenter
             _card?.Hide();
             _toolbar?.ShowAt(captured);
         };
-        _capture.RawMouseDown += OnRawMouseDown; // outside-click dismissal for toolbar + card
+        _capture.RawMouseDown += OnRawMouseDown; // 点击外部时收起工具栏与结果卡
         try
         {
             _capture.Start();
@@ -168,8 +168,8 @@ public partial class App : Application, IResultPresenter
         if (!_hotkey.Register(_settings.Hotkey))
         {
             _settings.Hotkey = "Ctrl+Alt+T";
-            // actually register the fallback — previously it only changed the label
-            // while no hotkey worked at all (bugbot P2)
+            // 真正把兜底热键注册上——以前这里只改了标签，
+            // 结果一个热键都没生效（bugbot P2）
             _hotkey.Register(_settings.Hotkey);
         }
 
@@ -244,14 +244,14 @@ public partial class App : Application, IResultPresenter
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
-            args.Cancel = true;      // close button hides to tray; real exit is 托盘 → 退出
+            args.Cancel = true;      // 关闭按钮是收进托盘；真正退出在 托盘 → 退出
             _mainWindow.Hide();
         };
         _mainWindow.Show();
 
         if (!_settings.FirstRunCompleted)
         {
-            // onboarding exists to collect the API key; once a key is present it must never nag again
+            // 引导流程的意义就是收集 API Key；一旦有了 Key，就绝不能再打扰用户
             var hasKey = false;
             try { hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(Providers.QwenMt.QwenMtProvider.ApiKeySecretName)); }
             catch { }
@@ -266,24 +266,24 @@ public partial class App : Application, IResultPresenter
             }
         }
 
-        // restore the stored session in the background: a dead network must not delay startup,
-        // and nothing on screen blocks on it
+        // 在后台恢复已存储的会话：网络不通不能拖慢启动，
+        // 屏幕上也没有任何东西会等它
         _ = RestoreAccountAsync();
         _ = Task.Run(ProbeGatewayAsync);
 
-        // updater last: it only schedules a timer, and a check that runs before the UI exists
-        // would have nowhere to put its dialog
+        // 更新器放最后：它只调度一个定时器，而在 UI 存在之前跑的检查，
+        // 弹窗会无处可放
         _updates = new UpdateCoordinator(
             Dispatcher,
             PresentUpdate,
-            // a manual check must be visible: Win11 notification settings swallow tray balloons.
-            // a themed window rather than MessageBox — the native one ignores the palette (v38)
+            // 手动检查必须看得见：Win11 的通知设置会吞掉托盘气泡。
+            // 用主题化的窗口而不是 MessageBox——原生那个不认调色板（v38）
             ShowNotice,
             ExitApp);
         _updates.Start();
 
-        // startup warmup (user feedback: dead period before the app became usable):
-        // 1) UIA client cold-init on a background thread  2) overlay HWNDs pre-created
+        // 启动预热（用户反馈：应用可用之前有一段呆滞期）：
+        // 1）后台线程做 UIA 客户端冷初始化  2）预先创建浮层 HWND
         System.Threading.Tasks.Task.Run(() =>
         {
             try { UiaSelectionReader.Warmup(); } catch { }
@@ -293,8 +293,8 @@ public partial class App : Application, IResultPresenter
             try { _toolbar?.Prewarm(); _card?.Prewarm(); } catch { }
         });
 
-        // QA hook: FT_UITEST=dropdown -> auto-open the language dropdown after startup
-        // (environment-gated, no input injection needed when the desktop is busy)
+        // QA 钩子：FT_UITEST=dropdown -> 启动后自动展开语言下拉框
+        //（由环境变量控制，桌面繁忙时不需要注入输入事件）
         var uitest = Environment.GetEnvironmentVariable("FT_UITEST");
         if (uitest == "caret")
         {
@@ -324,7 +324,7 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest == "hittest")
         {
-            // deterministic click-path probe: which element would a real mouse hit?
+            // 确定性的点击路径探针：真正的鼠标会命中哪个元素？
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
@@ -386,8 +386,8 @@ public partial class App : Application, IResultPresenter
                 try
                 {
                     _toolbar?.ShowAt(CapturedSelection.Empty(new ScreenPoint(200, 180)));
-                    // through the presenter, not the card directly: the save handler reads
-                    // _lastResult/_lastSelection, which only ShowCard() records
+                    // 走 presenter，而不是直接调卡片：保存处理读的是
+                    // _lastResult/_lastSelection，只有 ShowCard() 才会记录它们
                     ShowCard(new Core.TranslationResult(
                         "the quick brown fox jumps over the lazy dog and keeps running",
                         "那只敏捷的棕色狐狸跳过了那只懒惰的狗,然后继续在草地上奔跑。",
@@ -424,7 +424,7 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "notice-confirm")
         {
-            // the two-button notice shape (Confirm() is no longer reachable from the update flow)
+            // 双按钮通知的形态（更新流程已经无法再走到 Confirm()）
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
@@ -436,8 +436,8 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "notice-settings")
         {
-            // FT_UITEST=notice-settings -> open the settings page, then raise the notice the way a
-            // manual check does: it must land on the page that asked, not on the window underneath
+            // FT_UITEST=notice-settings -> 打开设置页，然后按手动检查的方式
+            // 触发通知：它必须落在发起检查的那个页面上，而不是下面的窗口
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2600) };
             uiTimer.Tick += (_, _) =>
             {
@@ -454,8 +454,8 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "notice" or "notice-link")
         {
-            // FT_UITEST=notice[-link] -> open the update notice so a screenshot can prove the
-            // dialog follows the palette; nobody clicks a real update check on a QA box
+            // FT_UITEST=notice[-link] -> 打开更新通知，好让截图证明对话框跟随
+            // 调色板；在 QA 机器上没人会真的点一次更新检查
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
@@ -518,10 +518,10 @@ public partial class App : Application, IResultPresenter
         }
         else if (uitest is "image-result")
         {
-            // FT_UITEST=image-result -> open the screenshot-translation card with a synthetic
-            // capture. The real path starts with a full-screen region overlay, which is a layered
-            // window: PrintWindow sees nothing but black, so a QA box can never photograph the
-            // card through it. The card itself is what needs evidence (four pills + editable OCR).
+            // FT_UITEST=image-result -> 用一张合成截图打开截屏翻译卡片。
+            // 真实路径从全屏框选浮层开始，那是一个分层窗口：PrintWindow 只能拍到
+            // 一片黑，所以 QA 机器永远没法透过它给卡拍照。真正需要证据的是卡片本身
+            //（四个胶囊 + 可编辑的 OCR 文本）。
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
@@ -541,8 +541,7 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// Draws a stand-in for a captured screen region, so the QA hook can photograph the
-    /// screenshot-translation card without going through the region overlay.
+    /// 画一张截屏区域的替身，好让 QA 钩子不必走框选浮层也能给截屏翻译卡拍照。
     /// </summary>
     private static byte[] BuildSampleCapture()
     {
@@ -563,8 +562,8 @@ public partial class App : Application, IResultPresenter
         };
         var render = new System.Windows.Media.Imaging.RenderTargetBitmap(
             760, 300, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
-        // A visual that was never measured or arranged renders as an empty bitmap: layout has to
-        // run before RenderTargetBitmap can see anything.
+        // 从未测量或排布过的 visual 会渲染成空位图：必须先跑一遍布局，
+        // RenderTargetBitmap 才能看到东西。
         visual.Measure(new System.Windows.Size(760, 300));
         visual.Arrange(new System.Windows.Rect(0, 0, 760, 300));
         render.Render(visual);
@@ -600,8 +599,8 @@ public partial class App : Application, IResultPresenter
 
     private async Task RunToolbarActionAsync(ScreenPoint anchor, bool copy)
     {
-        // fresh capture from mouse-up (highest success); re-read once, then clipboard fallback.
-        // UIA re-read runs on a worker thread (ReadAt can block ~550 ms — bugbot P1 UI freeze)
+        // 抬起鼠标后重新抓取一次（成功率最高）；只重读一次，之后回落到剪贴板。
+        // UIA 重读跑在工作线程上（ReadAt 可能阻塞约 550 ms——bugbot P1 UI 冻结）
         var capture = _capture!.CachedSelection;
         FastTranslation.Platform.Windows.WindowsSelectionCapture.Diag(
             $"click action copy={copy} cachedLen={capture.Text.Length} anchorEq={capture.Anchor == anchor} hwnd=0x{capture.SourceWindowHandle:X} method={capture.Method}");
@@ -615,9 +614,9 @@ public partial class App : Application, IResultPresenter
             && capture.SourceWindowHandle != 0
             && !SelectionCoordinator.IsClipboardRisky(ProcessNameOf(capture.SourceWindowHandle)))
         {
-            // the user may have switched windows between selecting and clicking 复制 —
-            // clicking the button IS the intent to grab that text, so bring the source
-            // window back to the foreground before Ctrl+C (v21: Qwen-page fallback)
+            // 用户在选好文字和点「复制」之间可能切过窗口——
+            // 点这个按钮就代表想抓那段文字，所以先把来源窗口
+            // 带回前台再按 Ctrl+C（v21：Qwen 页面的兜底）
             FastTranslation.Platform.Windows.WindowsSelectionCapture.SwitchSourceToForeground(capture.SourceWindowHandle);
             await Task.Delay(250);
             var fallback = await _capture.ReadViaClipboardAsync(capture.SourceWindowHandle, capture.Anchor, CancellationToken.None);
@@ -632,7 +631,7 @@ public partial class App : Application, IResultPresenter
             }
             return;
         }
-        if (string.IsNullOrEmpty(capture.Text)) return; // nothing selected — stay silent
+        if (string.IsNullOrEmpty(capture.Text)) return; // 没选中任何东西——保持安静
         await _coordinator!.TranslateCapturedAsync(capture);
     }
 
@@ -658,8 +657,8 @@ public partial class App : Application, IResultPresenter
         if (!_captureEnabled) return;
         var fgHandle = Win32Facade.GetForegroundWindowHandle();
         if (fgHandle == 0) return;
-        // resolve the real foreground process: an empty name would bypass the terminal
-        // guard (IsClipboardRisky) and let Ctrl+C kill a running command (bugbot P1)
+        // 解析真正的前台进程：名字为空会绕过终端保护
+        //（IsClipboardRisky），让 Ctrl+C 杀掉正在运行的命令（bugbot P1）
         var fgProcess = ProcessNameOf(fgHandle);
         var point = Win32Facade.PrimaryScreenCenter();
         _ = _coordinator!.HandleTriggerAsync(new TriggerEvent(
@@ -696,8 +695,8 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// 保存 from the result card. Signed out opens the account window instead of an error: the
-    /// notebook lives on the server, so "save" has no local meaning (D8 — the free tier cannot save).
+    /// 从结果卡保存。未登录时会打开账号窗口而不是报错：
+    /// 单词本住在服务端，所以「保存」在这里没有本地含义（D8——免费版不能保存）。
     /// </summary>
     /// <summary>
     /// 走开发者网关的那一次翻译。返回 null 表示"这次别用网关"（没登录 / 没有令牌），
@@ -936,7 +935,7 @@ public partial class App : Application, IResultPresenter
             : await _writeBack!.InsertAsync(_lastSelection, _lastResult.TranslatedText, CancellationToken.None);
         if (outcome is not (WriteBackOutcome.Replaced or WriteBackOutcome.Inserted))
         {
-            // non-modal notice (a MessageBox froze the app once); no clipboard side effects
+            // 非模态通知（曾经用 MessageBox 把应用冻住过一次）；不产生剪贴板副作用
             _card?.ShowNotice(replace ? "当前内容不能替换诶,换一个试试" : "当前内容不能插入诶,换一个试试");
         }
     }
@@ -959,11 +958,10 @@ public partial class App : Application, IResultPresenter
         NoticeWindow.Show(DialogOwner(), notice.Title, notice.Body, notice.LinkUrl);
 
     /// <summary>
-    /// The window an update dialog belongs on: whichever of ours the user is working in. A check
-    /// can start from the settings window, which is modal over the main window — owning the
-    /// dialog by the main window dropped it on the wrong page (user report 2026-10: 设置页点检查更新,
-    /// 弹窗盖在使用页上). No active window means the check came from the tray; the app is usually
-    /// hidden there, so there is no owner and the dialog goes to the screen centre.
+    /// 更新对话框该挂在哪个窗口上：用户正在用的、属于我们的那一个。检查可能从设置窗口
+    /// 发起，而设置窗口是盖在主窗口上的模态窗口——把对话框挂在主窗口上会让它落到错误的
+    /// 页面上（用户反馈 2026-10：设置页点检查更新，弹窗盖在使用页上）。没有活动窗口说明
+    /// 检查来自托盘；那时应用通常缩在托盘里，没有 Owner，对话框就落到屏幕中央。
     /// </summary>
     private Window? DialogOwner()
     {
@@ -975,8 +973,8 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// Everything the account state touches lives here: the footer line and, when it is open,
-    /// the account window re-reading its own copy through the coordinator's event.
+    /// 账号状态会碰到的东西都在这里：底部那一行，以及账号窗口打开时通过协调器的事件
+    /// 重新读取自己的副本。
     /// </summary>
     private void OnAccountChanged()
     {
@@ -1039,7 +1037,7 @@ public partial class App : Application, IResultPresenter
 
     private void ShowSettings() => ShowPage(MainPageId.Settings);
 
-    /// <summary>Every in-app destination is a page of the single window now (design D13).</summary>
+    /// <summary>应用内每个目的地现在都是单窗口的一个页面了（设计 D13）。</summary>
     private void ShowPage(MainPageId page)
     {
         ShowMainWindow();
@@ -1047,9 +1045,8 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// The single entry point for "a newer version exists". Only a confirmed, verified
-    /// download reaches the caller, and only then does the app hand over to the installer and
-    /// quit — the installer starts the new build itself, so coming back here would race it.
+    /// 「存在新版本」的唯一入口。只有确认过、校验过的下载才会到达调用方，也只有到那时
+    /// 应用才交给安装程序并退出——安装程序自己会启动新构建，所以再回到这里会和它抢。
     /// </summary>
     private void PresentUpdate(UpdateManifest manifest, ReleaseVersion currentVersion)
     {
@@ -1060,8 +1057,8 @@ public partial class App : Application, IResultPresenter
         }
         else
         {
-            // an ownerless CenterOwner window lands at an arbitrary spot; the app is usually
-            // hidden in the tray when the timer fires
+            // 没有 Owner 的 CenterOwner 窗口会落在任意位置；定时器触发时
+            // 应用通常正缩在托盘里
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
 
@@ -1074,7 +1071,7 @@ public partial class App : Application, IResultPresenter
             UpdateLog.Write($"apply failed: {error}");
             _tray?.ShowBalloon("更新失败", "无法启动安装程序,请到下载页手动更新。");
         }
-        // a successful ApplyUpdate already exited the app; nothing after this runs
+        // ApplyUpdate 成功就已经退出了应用；这之后不会再执行
     }
 
     private void ExitApp()
@@ -1106,7 +1103,7 @@ public partial class App : Application, IResultPresenter
         base.OnExit(e);
     }
 
-    // ----- IResultPresenter -----
+    // ----- IResultPresenter：结果展示接口 -----
     public void ShowLoading(string previewText, CapturedSelection source)
     {
         _toolbar?.Hide();
@@ -1141,7 +1138,7 @@ public partial class App : Application, IResultPresenter
         }
         catch
         {
-            return null; // tray falls back to its drawn glyph
+            return null; // 托盘回落到自己绘制的图标
         }
     }
 }

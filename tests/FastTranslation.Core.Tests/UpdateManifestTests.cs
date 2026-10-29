@@ -50,7 +50,7 @@ public class UpdateManifestTests
     }
 
     [Theory]
-    // version
+    // 字段 version
     [InlineData("version")]
     [InlineData("url")]
     [InlineData("sha256")]
