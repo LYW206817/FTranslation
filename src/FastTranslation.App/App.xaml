@@ -371,5 +371,66 @@
       </Setter>
     </Style>
 
+    <!-- sidebar (v48 single-window shell) -->
+    <Style x:Key="SidebarItem" TargetType="Button">
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
+              <Grid>
+                <Border x:Name="marker" Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
+                        Background="Transparent" Margin="0,9,0,9"/>
+                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- the active item repeats the whole template on purpose: a control template cannot
+         override one element of an inherited template, and only the left marker changes. -->
+    <Style x:Key="SidebarItemActive" TargetType="Button" BasedOn="{StaticResource SidebarItem}">
+      <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
+              <Grid>
+                <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
+                        Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
+                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- the count bubble on a sidebar item; one digit is a circle, three stretch to a pill -->
+    <Style x:Key="SidebarBadge" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="MinWidth" Value="16"/>
+      <Setter Property="Height" Value="16"/>
+      <Setter Property="Padding" Value="5,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
   </Application.Resources>
 </Application>
