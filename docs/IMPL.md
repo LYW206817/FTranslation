@@ -829,3 +829,53 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - `og:image` 用的是相对路径 `assets/img/og.png`;微信、Twitter 等抓取器普遍要求绝对 URL,拿到域名后要改成 `https://<域名>/assets/img/og.png`。
 - 下载按钮直接指向 GitHub Releases 的 `latest`。国内访问 GitHub 不稳定,真要推广时得换成自己服务器上的文件或对象存储。
 - 页面上的安装包名写死成 `FastTranslation-1.2.2-Setup.exe`,发版时必须跟着改(两处:安装卡与便携卡)。
+
+## v47 部署:一台 ECS 上的 systemd + Caddy + SQLite ✅
+
+**为什么这样改**
+
+阶段 2 的网关和账号服务已经能跑,但它只在 `dotnet run` 里活过。要真上线还缺三件事:进程怎么常驻、HTTPS 证书从哪来、数据库文件放哪。这三件事写成一个可重复执行的 `deploy/` 目录,而不是一份手抄命令清单 —— 因为部署一定会做第二遍(换机器、换域名、升级)。
+
+选型上有几个刻意的决定:
+
+- **不引 Docker**。2G 内存的机器上再养一层容器运行时,runtime 镜像本身就要 200MB+,而且 SQLite 文件挂载出去比直接放 `/var/lib` 更容易出权限问题。systemd 单元 + 一个自包含二进制已经够了。
+- **Kestrel 只监听 `127.0.0.1:5080`**。证书与 80/443 全部交给 Caddy,应用进程不碰端口,也就不需要 `CAP_NET_BIND_SERVICE`。
+- **Caddy 而不是 nginx**。Caddy 自己申请并续期 Let's Encrypt 证书,nginx 还要配 certbot 的 timer 和 reload hook。项目里已经有一个「能少一个组件就少一个」的取向。
+- **占位符没替换就不启用 Caddy**。`__DOMAIN__` 还在的时候强行 `systemctl start caddy` 只会每 30 秒重试一次 ACME 然后失败,日志里全是噪音。所以 `install.sh` 用 `grep` 检查占位符,还在就 `systemctl disable --now caddy` 并打印提示。
+
+**服务端**
+
+没有改服务端代码。部署文件依赖的既有事实:
+
+- `Server:SigningKey` 在非 Development 环境下缺失或不足 32 字节会直接启动失败(`server/FastTranslation.Server/Program.cs:89-100`)。这是好事 —— 一个没配密钥的实例不应该安静地起来。
+- `/health` 返回 `{"status":"ok"}`(`Program.cs:57`),`install.sh` 装完就用它做健康检查。
+- 数据库路径支持绝对路径(`Program.cs:29-31`),所以单元里直接用 `Server__DatabasePath=/var/lib/fasttranslation/fasttranslation.db` 覆盖,不用改 `appsettings.json`。
+
+`deploy/` 七个文件:
+
+| 文件 | 作用 |
+| --- | --- |
+| `build-server.sh` | 本机执行,`dotnet publish -r linux-x64 --self-contained` 到 `publish/server-linux` |
+| `bootstrap.sh` | 服务器上跑一次:2G swap、`ftserver` 系统账号、四个目录、apt 依赖、Caddy 官方源、libicu 检查 |
+| `install.sh` | 幂等主安装:二进制、systemd 单元、静态站点、备份任务、Caddyfile |
+| `fasttranslation.service` | `ProtectSystem=strict` + `ReadWritePaths=/var/lib/fasttranslation`,除数据库目录外整机只读 |
+| `Caddyfile` | 静态站点 + `/api/*`、`/v1/*`、`/health` 反代,两处占位符 |
+| `appsettings.Production.json.example` | 只列必须改的三项(SigningKey / AdminToken / Gateway:ApiKey) |
+| `backup.sh` + `fasttranslation-backup.cron` | 每天 04:17 `sqlite3 .backup` + gzip,保留 14 天 |
+
+备份脚本用 `sqlite3 $"$DB" ".backup ..."` 而不是 `cp`:数据库开着 WAL,直接拷主文件会漏掉 `-wal` 里还没 checkpoint 的事务,恢复出来是旧的。
+
+**验证**
+
+- `bash deploy/build-server.sh` → `publish/server-linux/` 341 个文件,二进制 78192 字节。产物里**没有** `appsettings.Production.json` —— 这是刻意的,生产配置不进发布产物。
+- `bash -n` 四个脚本全部通过;`grep -c '\r'` 为 0,纯 LF(在 Windows 上写 shell 脚本最容易出的问题就是 CRLF,`bash` 会报 `$'\r': command not found`)。
+- `caddy fmt --overwrite` 之后 `caddy adapt` 退出码 0,展开出的 JSON 确认了四件事:`admin` 已禁用、`/assets/*` 拿到一年期 immutable、`/api/*` 与 `/v1/*` 与 `/health` 三条都落到 `127.0.0.1:5080`、兜底是 `file_server` + `try_files {path} /index.html`。
+- 服务器侧尚未实测:公网 IP `YOUR_SERVER_IP` 的 22 端口已通,80/443 仍关闭(安全组未开、Caddy 未装),与「备案通过前不对外」的预期一致。
+
+**残留风险**
+
+- **整套流程没有在真机上跑过一遍**。`bootstrap.sh` 里的 cloudsmith 源、`libicu` 包名、`systemd` 的加固指令都只做过语法检查;第一次跑大概率要修一两处。
+- 3 Mbps 固定带宽意味着单个客户端下载安装包最快约 375 KB/s。安装包 60MB 左右,即 2~3 分钟。真要放安装包得另外接对象存储。
+- 没有配置日志轮转。`journalctl` 会自己滚,但 `/var/log/ft-backup.log` 会一直长(一天一行,可忽略)。
+- 备份只有本机一份。云盘挂了备份跟着挂,真要防灾得 `scp` 到别处。
+- `install.sh` 的静态站点同步是 `rm -rf` 再拷 —— 如果 `WEB_DIR` 被误设成 `/var/www`,会连别的站点一起删。脚本里用了 ${WEB_DIR:?},变量为空时直接退出,但这个保护只在变量未设置时生效。
