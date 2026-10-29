@@ -40,7 +40,8 @@ public partial class AccountWindow : Window
 
         AccountEmail.Text = session.Profile.Email;
         PlanText.Text = session.Profile.PlanDisplay + " · " + session.Profile.QuotaMonthly.ToString("N0") + " 字符/月"
-            + (session.Profile.QuotaDaily is { } daily ? ",每日 " + daily.ToString("N0") : string.Empty);
+            + (session.Profile.QuotaDaily is { } daily ? ",每日 " + daily.ToString("N0") : string.Empty)
+            + (session.Profile.ExpiryLine is { } expiry ? " · " + expiry : string.Empty);
     }
 
     private void Switch_Click(object sender, RoutedEventArgs e)
@@ -127,6 +128,38 @@ public partial class AccountWindow : Window
         _ => error.Display,
     };
 
+    private async void Redeem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        var code = RedeemBox.Text.Trim();
+        if (code.Length == 0)
+        {
+            SetError("先把激活码填进来。");
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            var result = await _account.RedeemAsync(code, CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                RedeemHint.Text = result.Error!.Display;
+                return;
+            }
+
+            // Render runs through the Changed event; the meters need their own refresh because the
+            // reply's usage snapshot is only as fresh as the redemption request.
+            RedeemBox.Text = string.Empty;
+            RedeemHint.Text = "已开通 " + result.Value!.Profile.PlanDisplay + "。";
+            await LoadUsageAsync();
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
 
     private async Task LoadUsageAsync()
@@ -177,6 +210,7 @@ public partial class AccountWindow : Window
         SwitchButton.IsEnabled = !busy;
         SignOutButton.IsEnabled = !busy;
         RefreshButton.IsEnabled = !busy;
+        RedeemButton.IsEnabled = !busy;
         SubmitButton.Content = busy ? "请稍候…" : _registerMode ? "注册并登录" : "登录";
     }
 

@@ -928,3 +928,51 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 - `assets/qa` 里被删的 180 张属于不存在于任何文档的调试截图,不可恢复;但 IMPL.md 引用的 10 张都在,证据链完整。
 - `bin/obj` 会在下次 `dotnet build` 时重新长出来(实测重建 18 个目录 / 97.25 MB),这是正常构建产物,不是垃圾。
 
+
+## v49 商业闭环:激活码兑换(`POST /api/v1/redeem`)✅
+
+**为什么这样改**
+
+阶段 2 把「免费额度 + 开发者网关 + 订阅闸门」做完之后,服务端的付费能力是齐的——但没有任何一条路径能让用户**自己**变成付费用户:只能靠管理员拿 `X-Admin-Token` 调 `POST /api/v1/admin/accounts/{email}/plan` 手动改套餐。官网(阶段 v46)已经写着「付费套餐用激活码开通」,而 `/api/v1/redeem` 在服务端是零实现,这句话是空的。
+
+三个刻意的决定:
+
+- **先发码、后绑定支付,而不是等接支付再开闸**。码本身就是「已付款」的凭证,从哪卖出去(面包多、淘宝、微信收款)是运营问题,不是代码问题。把码的生成、兑换、幂等、降级保护做扎实,支付渠道以后接什么都不会改这一层。
+- **码用 Crockford base32,不是 GUID 或 UUID 的变形**。16 个字符 × 5 bit = 80 bit 熵,猜不出来;字母表去掉 I/L/O/U 且兑换时把 O→0、I/L→1、U→V 折叠,所以用户抄错、看错、手打错的概率被压到很低——`Redeem_AcceptsWhatAHumanRetypes` 测的就是「把横线去掉、前缀截掉、全部小写」还能兑。
+- **降级保护放在 claim 之前**。花 99 元买了标准版的人,手里剩一张轻享码,如果兑换流程先 `UPDATE redeem_codes` 再判套餐,码就废了、用户还降级。现在的顺序是:先判「已经是更贵的有效订阅」→ 直接 400 `redeem_plan_downgrade`,码一个字节都不动,可以送给别人。
+
+**做了什么**
+
+服务端(全部落在 `server/FastTranslation.Server/`):
+
+| 文件 | 内容 |
+| --- | --- |
+| `Domain/RedeemCode.cs`(新) | `Generate()` 用 `RandomNumberGenerator.Fill` 取 16 字节,每字节 `& 31` 索引 32 字符字母表(256 是 32 的整数倍,所以分布均匀);`Format()` 产出 `FT-XXXX-XXXX-XXXX-XXXX`(22 字符);`Normalize()` 折叠歧义字母并校验长度 |
+| `Storage/RedeemStore.cs`(新) | `CreateCodes` 事务批量插入;`Find`;`TryClaim` = `UPDATE … WHERE code=$code AND redeemed_at IS NULL`,靠 WHERE 实现「只能用一次」而不需要显式锁;`ReadStats` |
+| `Storage/ServerDatabase.cs` | Schema 加 `redeem_codes` 表(`code` 主键、`plan`、`days`、`note`、`created_at`、`redeemed_by` 外键 `ON DELETE SET NULL`、`redeemed_at`)与 `ix_redeem_codes_redeemed` |
+| `Api/RedeemEndpoints.cs`(新) | `POST /api/v1/redeem`(需登录,与 auth 共用按 IP 的限流):归一化 → 账号健康 → 码存在 → 未兑换 → 不降级 → `TryClaim` → 算到期 → `SetPlan` → 返回新 `AccountDto`+`UsageDto` |
+| `Api/AccountEndpoints.cs` | 管理端 `POST /api/v1/admin/codes`(plan/days/count 三重校验,一次最多 200 张) |
+| `Api/Contracts.cs` | `RedeemRequest/RedeemResponse/CreateCodesRequest/CreateCodesResponse` |
+
+到期时间的两条规则:`stacks = 同档位 && 现有到期时间还没过`,同档则往后**续**,不同档从**现在**起算。这样「标准版还有 10 天,再买一张标准版码」= 40 天,而「轻享升标准」不会把那 10 天送出去。
+
+客户端:
+
+- `src/FastTranslation.Core/Account/AccountTypes.cs`:三个错误码 `CodeInvalid`/`CodeUsed`/`PlanDowngrade` 与中文文案;`AccountProfile` 增加 `PlanExpiresAtUnix`(末位带默认值,旧调用点无需改)与派生属性 `ExpiryLine`;新增 `AccountRedeem`
+- `src/FastTranslation.Core/Account/AccountApiClient.cs`:`RedeemAsync`;`MapFailure` 认三个 `redeem_*` 错误码。**注意错误码刻意带 `redeem_` 前缀**——`code_invalid` 这个名字已经被邮箱验证码占用了,不加前缀会在用户眼里变成「验证码不对」
+- `src/FastTranslation.App/AccountCoordinator.cs`:`RedeemAsync` 走既有的 `WithSessionAsync`(自带 401 自动刷新),成功后就地替换 `Profile` 并写回 `AccountSessionStore`,不重启窗口也能看到新套餐
+- `src/FastTranslation.App/AccountWindow.xaml(.cs)`:账号窗新增「激活码」卡片(输入框 + 兑换按钮 + 一行提示),套餐行末尾追加 `· 有效期至 2026-11-28`
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release`:**0 警告 0 错误**
+- `dotnet test`:**439 全绿**(Core 143 / QwenMt 58 / Platform.Windows 87 / Server 151),本次 +31:服务端 8 个兑换端点测试 + 13 个码格式测试,客户端 3 个
+- 真实服务器端到端(Development、`http://127.0.0.1:5199`、`Server__AdminToken=dev-admin`):注册免费账号 → 管理端发一张标准版 30 天码 `FT-T8KW-ETEH-G3FP-V5C0` → 应用内兑换 → `GET /api/v1/account/me` 变 `standard`、`quotaDaily` 变 `null`、`planExpiresAt` = 30 天后
+- 界面证据(UI Automation 驱动真实 exe,不是静态稿):`assets/qa/redeem-account-before.png`(770×936,免费版 + 每日 2,000 行 + 激活码卡)与 `assets/qa/redeem-account-after.png`(770×823,标准版 · 有效期至 2026-11-28,「今日用量」整行消失,提示「已开通 标准版。」)。脚本 `tools/qa/shot-redeem.ps1` 可复现
+
+**残留风险**
+
+- **发码只回一次响应,库里没有「未兑换码清单」查询接口**。管理端现在只能「生成 → 自己复制保存」,重跑一次就拿不到了。真要运营,得在 `RedeemStore` 上加按 `redeemed_at IS NULL` 过滤的列表端点。
+- **码没有有效期**。`redeem_codes` 只有 `created_at`,没有 `expires_at`——一张两年前发出去的码今天仍然能兑。这是刻意的(不惩罚用户屯码),但意味着没有「作废过期码」的手段。
+- **码没绑订单,理论可转卖/泄露**。任何拿到 22 字符的人都能兑,赎回形态无法追溯来源。当前靠「一次性 + 80 bit 熵」兜底。
+- **兑换与登录共用按 IP 的限流(默认 20 次/分)**。同一 NAT(学校、公司、网吧)下十几个人同时兑换会撞限流,报的是 `rate_limited` 而不是更具体的提示。

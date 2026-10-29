@@ -124,6 +124,21 @@ public sealed class AccountApiClient
         }
     }
 
+    /// <summary>
+    /// Turns a purchased activation code into days of subscription. The reply carries the new plan
+    /// and the refreshed meters, so the caller never has to re-fetch the profile behind it.
+    /// </summary>
+    public async Task<AccountApiResult<AccountRedeem>> RedeemAsync(
+        string accessToken, string code, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/redeem", accessToken, new RedeemBody(code), cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<RedeemResponse, AccountRedeem>(
+            response,
+            reply => new AccountRedeem(reply.Account.ToProfile(), reply.Usage.ToUsage()),
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<AccountApiResult<AccountSignIn>> SendSignInAsync(
         string path, object body, CancellationToken cancellationToken)
     {
@@ -214,6 +229,9 @@ public sealed class AccountApiClient
                 case "code_attempts_exceeded":
                     return AccountErrorCode.Verification;
                 case "code_recently_sent": return AccountErrorCode.RateLimited;
+                case "redeem_code_invalid": return AccountErrorCode.CodeInvalid;
+                case "redeem_code_used": return AccountErrorCode.CodeUsed;
+                case "redeem_plan_downgrade": return AccountErrorCode.PlanDowngrade;
             }
         }
         return status switch
@@ -263,6 +281,9 @@ public sealed class AccountApiClient
 
     private sealed record RefreshBody(string RefreshToken);
 
+    private sealed record RedeemBody(string Code);
+
+
     private sealed record EmptyBody;
 
     private sealed class AuthResponse
@@ -274,6 +295,12 @@ public sealed class AccountApiClient
         [JsonPropertyName("usage")] public UsageResponse Usage { get; init; } = new();
     }
 
+    private sealed class RedeemResponse
+    {
+        [JsonPropertyName("account")] public AccountResponse Account { get; init; } = new();
+        [JsonPropertyName("usage")] public UsageResponse Usage { get; init; } = new();
+    }
+
     private sealed class AccountResponse
     {
         [JsonPropertyName("id")] public Guid Id { get; init; }
@@ -281,8 +308,9 @@ public sealed class AccountApiClient
         [JsonPropertyName("plan")] public string Plan { get; init; } = "free";
         [JsonPropertyName("quotaMonthly")] public int QuotaMonthly { get; init; }
         [JsonPropertyName("quotaDaily")] public int? QuotaDaily { get; init; }
+        [JsonPropertyName("planExpiresAt")] public long? PlanExpiresAt { get; init; }
 
-        public AccountProfile ToProfile() => new(Id, Email, Plan, QuotaMonthly, QuotaDaily);
+        public AccountProfile ToProfile() => new(Id, Email, Plan, QuotaMonthly, QuotaDaily, PlanExpiresAt);
     }
 
     private sealed class UsageResponse

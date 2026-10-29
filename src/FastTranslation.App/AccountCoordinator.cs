@@ -159,6 +159,24 @@ public sealed class AccountCoordinator
         WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken, _deviceFingerprint), cancellationToken);
 
     /// <summary>
+    /// Redeeming rewrites the plan, so the refreshed profile replaces the stored one in place —
+    /// otherwise the window would keep showing 免费版 until the next sign-in.
+    /// </summary>
+    public async Task<AccountApiResult<AccountRedeem>> RedeemAsync(string code, CancellationToken cancellationToken)
+    {
+        var result = await WithSessionAsync(
+            token => _client.RedeemAsync(token, code, cancellationToken), cancellationToken).ConfigureAwait(true);
+        if (result.Succeeded && _session is { } session)
+        {
+            var updated = session with { Profile = result.Value!.Profile };
+            _store.Save(updated);
+            SetSession(updated);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Saves one pair. The whole notebook rides on the session wrapper so an expired access token
     /// is rotated instead of surfacing as "token expired" in a card the user just clicked.
     /// </summary>

@@ -16,6 +16,9 @@ public enum AccountErrorCode
     Unauthorized,
     AccountDisabled,
     SubscriptionRequired,
+    CodeInvalid,
+    CodeUsed,
+    PlanDowngrade,
     Server,
     NotSignedIn,
 }
@@ -34,12 +37,16 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.Unauthorized => "登录状态已失效,请重新登录。",
         AccountErrorCode.AccountDisabled => "这个账号已被停用,请联系我们。",
         AccountErrorCode.SubscriptionRequired => "这个功能需要付费套餐,升级后即可保存。",
+        AccountErrorCode.CodeInvalid => "激活码不对,检查一下有没有输错。",
+        AccountErrorCode.CodeUsed => "这个激活码已经被用过了。",
+        AccountErrorCode.PlanDowngrade => "你现在的套餐更贵,这张码用不上,先留着吧。",
         AccountErrorCode.NotSignedIn => "还没有登录账号。",
         _ => "账号服务器出错了,请稍后再试。",
     };
 }
 
-public sealed record AccountProfile(Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily)
+public sealed record AccountProfile(
+    Guid Id, string Email, string Plan, int QuotaMonthly, int? QuotaDaily, long? PlanExpiresAtUnix = null)
 {
     public string PlanDisplay => Plan switch
     {
@@ -47,6 +54,11 @@ public sealed record AccountProfile(Guid Id, string Email, string Plan, int Quot
         "standard" => "标准版",
         _ => "免费版",
     };
+
+    /// <summary>Null for the free plan: nothing was bought, so there is no date to show.</summary>
+    public string? ExpiryLine => Plan != "free" && PlanExpiresAtUnix is { } at
+        ? "有效期至 " + DateTimeOffset.FromUnixTimeSeconds(at).ToLocalTime().ToString("yyyy-MM-dd")
+        : null;
 }
 
 /// <summary>One quota window as the server reports it. Fractions are computed here so the
@@ -82,6 +94,9 @@ public sealed record AccountUsage(
 public sealed record AccountSession(string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt, AccountProfile Profile);
 
 public sealed record AccountSignIn(AccountSession Session, AccountUsage Usage);
+
+/// <summary>What a redeemed activation code bought: the new plan and the meters that go with it.</summary>
+public sealed record AccountRedeem(AccountProfile Profile, AccountUsage Usage);
 
 /// <summary>
 /// Whether this server actually mails a code. A server with verification turned off answers

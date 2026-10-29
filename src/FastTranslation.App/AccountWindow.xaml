@@ -141,6 +141,24 @@
         </StackPanel>
       </Border>
 
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="激活码" Style="{StaticResource FieldLabelTight}"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="RedeemBox" AutomationProperties.Name="激活码" MaxLength="24"
+                     TextChanged="Input_Changed"/>
+            <Button x:Name="RedeemButton" Grid.Column="1" Content="兑换" Margin="8,0,0,0"
+                    Style="{StaticResource SmallButton}" Click="Redeem_Click"/>
+          </Grid>
+          <TextBlock x:Name="RedeemHint" Style="{StaticResource Hint}"
+                     Text="买到激活码后填在这里,兑换后套餐立刻生效。"/>
+        </StackPanel>
+      </Border>
+
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button x:Name="RefreshButton" Content="刷新用量" Click="Refresh_Click"/>
         <Button x:Name="SignOutButton" Content="退出登录" Margin="0" Click="SignOut_Click"/>
