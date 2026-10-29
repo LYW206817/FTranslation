@@ -1104,3 +1104,48 @@ v44 做完了「保存」,但那时候的账只结了一半:
 - **复习调度的参数没有真实用户数据支撑**。10 分钟 / 1/3/7/14/28/56 天是照通用间隔重复经验取的,`MaxStage=7` 之后不再延长;真跑一段时间后可能要按留存数据调。
 - **托盘原生菜单没有「复习」入口**。加一项要动 `TrayIconService` 的菜单结构(Platform.Windows),本版入口是侧栏「复习」与单词页右上角「去复习」。
 - **`FT_UITEST=image-result` 是 QA 钩子**,用合成图打开译图窗只为截图;真实截图翻译路径是「热键 → 全屏框选 → OCR → 结果窗」,那段区域选择浮层是分层窗口,`PrintWindow` 拍不到内容,自动化截图必须绕开它。
+
+## v52 部署:整套流程在真机 ECS 上跑通,修掉两个只在真机才暴露的缺陷 ✅
+
+**为什么这样改**
+
+v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流程从没在真机跑过」。今天公钥进了 `/root/.ssh/authorized_keys`,就把这台 2 核 2G 的杭州 ECS(Ubuntu 26.04.1,`resolute`)当成验收环境,从 `bootstrap.sh` 一路跑到网关真翻译。纸面推演漏掉的两件事都在这一次撞出来了。
+
+- **`vm.swappiness` 静默失效**。旧脚本把 sysctl 的写入放在「新建 /swapfile」的分支里,而阿里云的 Ubuntu 镜像**自带** `/swapfile`(4G),分支根本不进 —— 跑完 `sysctl -n vm.swappiness` 还是 20。修法:swappiness 的写入挪到分支之外,两条路径都写(`deploy/bootstrap.sh:11-24`)。
+- **升级路径是坏的**。旧 `install.sh` 上来就 `cp -r server/. /opt/fasttranslation/`,服务在跑的时候拷自己在运行中的 apphost 上会撞 Linux 的 ETXTBSY:`cp: cannot create regular file '/opt/fasttranslation/./FastTranslation.Server': Text file busy`,`set -euo pipefail` 让脚本在第一步就退出。首装看不出来,因为首装时服务还没起过。修法:调整成「先校验生产配置 → 停服务 → 拷二进制 → 装单元/站点/备份/Caddyfile → 起服务并打健康检查」,配置校验放在停服务之前,这样配置缺失而 `exit 1` 的那次不会把已经在跑的服务撂下(`deploy/install.sh:14-49`)。
+- **Caddy 装完就自己 started**。cloudsmith 的 deb 会 enable 并拉起 `caddy.service`,监听 `:80` —— 备案号还没下来,这一层不能对外。`bootstrap.sh` 现在在 `apt-get install caddy` 之后立刻 `systemctl disable --now caddy`,`install.sh` 只在 `Caddyfile` 的占位符被替换掉之后才重新 enable。
+- **加固原来压根没有**。README 承诺的只有 swap/账号/目录/Caddy/libicu,`sshd -T` 实测 `permitrootlogin yes` + `passwordauthentication yes`,主机防火墙 `Status: inactive`(整台机器只靠阿里云安全组挡着)。补了一段 hardening:`/etc/ssh/sshd_config.d/99-ft.conf` 写 `PermitRootLogin prohibit-password` / `PasswordAuthentication no` / `KbdInteractiveAuthentication no` / `MaxAuthTries 4`,`sshd -t` 通过才 reload;ufw 先 `allow OpenSSH/80/443` 再 `--force enable`(顺序反了就把当前这条 SSH 掐了)。两处都是**有前提的**:authorized_keys 为空时刻意跳过 sshd 并打印警告,否则这脚本就是把自己锁在门外的最后一个动作;想全程跳过就 `FT_SKIP_HARDEN=1`。
+
+**真机验收数据(2026-10-29,杭州 / 2 核 2G / Ubuntu 26.04.1)**
+
+| 检查项 | 实测 |
+| --- | --- |
+| `bootstrap.sh` 两次(初装 + 加固后重跑) | 退出 0;`ftserver` uid 999 / gid 983;`vm.swappiness=10` 生效 |
+| Caddy 源在境内 ECS 可达 | `caddy` v2.11.7,18.1MB / 16s;apt 走 `mirrors.cloud.aliyuncs.com` 内网镜像 58MB/s |
+| 上传 49MB 产物 | scp 39 秒(入向不限,只有出向 3Mbps) |
+| `install.sh` 首装 | `enabled + active`,`MemoryCurrent` ≈ 84 MB(可用内存 1288 MB),`/health` = `{"status":"ok"}` |
+| `install.sh` 重复执行(升级) | 停→拷→起,数据不丢(2 用户 / 1 笔记),`NRestarts=0` |
+| 端口暴露 | 只有 `0.0.0.0:22` 与 `127.0.0.1:5080`;Caddy disabled,80/443 无监听 |
+| 网关真翻译 | `POST /v1/chat/completions` → 200 / 535ms,上游 `usage` = 43 / 17 tokens |
+| 按字符记账 | 请求 71 字符 → 月额度与日额度各 +71;`usage_events` 落 `cost_micros` 75–77(≈0.0008 元/次) |
+| 免费日额度闸门 | 1975 字符后的下一次 → `429` + 头 `X-FT-Quota-Reason: daily_quota_exhausted` + 体 `{"error":"daily_quota_exhausted"}`,正是客户端 `QuotaRefusal.Describe` 认的形状 |
+| 跨设备隔离 | 同账号换指纹仍 200(日额度按设备算,月额度按账号算) |
+| 订阅闸门 | 免费账号 `POST /api/v1/notes/` → `403 {"error":"subscription_required"}`;`POST /api/v1/admin/accounts/{email}/plan` 升 light 后 → 200 且 `quotaDaily` 变 null |
+| 只读不受闸门影响 | 免费账号 `GET /api/v1/notes/` → 200(total 0) |
+| 401 / refresh | 无令牌 → 401;`/auth/refresh` 换到新 access(399 字符)并轮换 refresh |
+| 备份 | `ft-backup.sh` 产出 4909 字节 `.db.gz`,`/etc/cron.d/fasttranslation-backup` 04:17 UTC |
+| 磁盘 | 7.1G / 40G(19%) |
+
+**验证**
+
+- `bash -n` 过 bootstrap 与 install;`sshd -T` 读回 `permitrootlogin prohibit-password` / `passwordauthentication no` / `maxauthtries 4`;`ufw status numbered` 四条 ALLOW(22/80/443 + v6);加固后仍能用密钥登录,隧道里的 `/health` 仍返回 ok。
+- 网关/闸门/记账这一批断言全部打在真服务器上,脚本 `publish/e2e-server.mjs`、`publish/e2e-quota.mjs`(publish 不入库,记录数据后删)。上游 Key 用 DPAPI 从本机 `qwenmt-api-key.bin` 取(**熵是 `ft-qwenmt-api-key`**,见 `src/FastTranslation.Platform.Windows/DpapiSecretStore.cs:25-39` —— 传 `$null` 会抛 `InvokeMethodOnNull`),值不落对话、不落仓库,只落 `/opt/fasttranslation/appsettings.Production.json`(root:ftserver 640)。
+- 本轮只改 `deploy/` 三个文件与本文档,没动任何 C#;全量 build/test 由并行会话负责,当前工作区有他们未提交的 `Pages/ReviewPage.xaml` 等改动,提交时按路径挑文件,没有 `git add -A`。
+
+**残留风险**
+
+1. **真 WPF 客户端还没连过这台服务器**。`src/FastTranslation.Core/Account/AccountApiClient.cs:18` 的 `DefaultBaseUrl` 仍是 `http://127.0.0.1:5199`,而服务器只在回环 5080 上;HTTP 契约(头、体、429/403 形状)已用 Node 逐条打过,但界面层的回落提示与账号窗读数要等域名 + Caddy 起来后发首个正式版才算验过。
+2. **签名密钥与管理令牌目前只有两份**:服务器上的配置文件 + 本机 `publish/.server-secrets.json`(gitignore 内)。轮换 SigningKey 会让所有已登录设备的 access token 立刻失效(refresh 仍可用),轮换 AdminToken 会打断管理脚本 —— 真要换记得两处一起改。
+3. **备案没下来之前 80/443 是开着的**(ufw 与安全组都放行),只是 Caddy disabled 无进程监听。备案号到手后要按 README 的 sed 替换域名并 enable caddy,顺带把 `site/index.html` 的 `__ICP_NUMBER__` 填掉。
+4. **`/swapfile` 是镜像自带的 4G**,脚本不校验已存在那份的权限与 fstab 条目;换镜像或换可用区时这条要重看。
+5. **单实例单进程**。SQLite WAL + `ProtectSystem=strict` 决定了这台机器不能横向加副本,升级期间会有一两秒的 502 窗口(`Restart=always` / `RestartSec=3`),对翻译工具可以接受。

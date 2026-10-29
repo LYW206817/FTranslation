@@ -14,12 +14,14 @@ if [ ! -f /swapfile ]; then
 	mkswap /swapfile
 	swapon /swapfile
 	grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-	# Prefer RAM; only fall back to swap under real pressure.
-	echo 'vm.swappiness=10' > /etc/sysctl.d/99-ft.conf
-	/usr/sbin/sysctl -q -p /etc/sysctl.d/99-ft.conf
 else
 	echo "    /swapfile already present"
 fi
+# Prefer RAM over swap. This must run in both branches: the Aliyun Ubuntu image
+# ships a /swapfile already, so the create branch never fires and the tuning used
+# to be skipped without anyone noticing (found on the real box: vm.swappiness=20).
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-ft.conf
+sysctl -q -p /etc/sysctl.d/99-ft.conf
 
 echo "==> service account"
 if ! id ftserver >/dev/null 2>&1; then
@@ -45,6 +47,11 @@ if ! command -v caddy >/dev/null 2>&1; then
 		| tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
 	apt-get update
 	apt-get install -y caddy
+	# The Caddy package enables and starts its own service, which would publish the
+	# default page on :80 before the ICP filing exists. install.sh re-enables it once
+	# the Caddyfile names a real, filed domain.
+	systemctl disable --now caddy >/dev/null 2>&1 || true
+	echo "    Caddy installed but kept disabled (no filing number yet)"
 fi
 
 echo "==> ICU check (the server is built with InvariantGlobalization=false)"
@@ -53,4 +60,49 @@ if ! ldconfig -p | grep -q 'libicu'; then
 	apt-get install -y --no-install-recommends libicu-dev || apt-get install -y --no-install-recommends libicu74
 fi
 
-echo "==> done. Next: copy the published binary, then 'bash bootstrap.sh deploy' steps in deploy/README.md"
+if [ "${FT_SKIP_HARDEN:-0}" = "1" ]; then
+	echo "==> hardening skipped because FT_SKIP_HARDEN=1"
+else
+	echo "==> ssh hardening"
+	# Never touch sshd unless a key is actually installed, or this script would be
+	# the last thing that could still log us out.
+	if [ -s /root/.ssh/authorized_keys ]; then
+		chmod 700 /root/.ssh
+		chmod 600 /root/.ssh/authorized_keys
+		if [ ! -f /etc/ssh/sshd_config.d/99-ft.conf ]; then
+			cat > /etc/ssh/sshd_config.d/99-ft.conf <<'FTSSH'
+# Written by deploy/bootstrap.sh: this box is reached with a key, never a password.
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+MaxAuthTries 4
+FTSSH
+			if sshd -t; then
+				systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd
+				echo "    password logins disabled, root accepts keys only"
+			else
+				echo "    !! sshd config test failed, leaving sshd untouched"
+			fi
+		else
+			echo "    /etc/ssh/sshd_config.d/99-ft.conf already exists"
+		fi
+	else
+		echo "    !! no /root/.ssh/authorized_keys - skipping ssh hardening on purpose."
+		echo "    !! Add your public key first (Alibaba Cloud Workbench works without a password)."
+	fi
+
+	echo "==> firewall"
+	if command -v ufw >/dev/null 2>&1; then
+		# Allow first, enable second: enabling without a rule for 22 would cut this session.
+		ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null
+		ufw allow 80/tcp >/dev/null
+		ufw allow 443/tcp >/dev/null
+		ufw --force enable >/dev/null
+		ufw status | head -1
+	else
+		echo "    ufw not installed - the Alibaba security group is the only firewall;"
+		echo "    make sure it opens 22, 80, 443 and nothing else."
+	fi
+fi
+
+echo "==> done. Next: copy the published binary, then 'bash install.sh' from deploy/README.md"

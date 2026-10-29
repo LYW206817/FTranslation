@@ -15,8 +15,8 @@
 | 文件 | 去向 |
 |---|---|
 | `build-server.sh` | 本机执行,产出 `publish/server-linux` |
-| `bootstrap.sh` | 服务器上执行一次(幂等):swap、系统账号、目录、Caddy、libicu |
-| `install.sh` | 服务器上执行:二进制、systemd 单元、静态站点、备份任务、Caddyfile |
+| `bootstrap.sh` | 服务器上执行一次(幂等):swap 与 `vm.swappiness=10`、系统账号、目录、Caddy(装完即停用)、libicu、SSH 加固、ufw |
+| `install.sh` | 服务器上执行:先校验生产配置,再停服务拷二进制(所以可以原地重复执行做升级),然后 systemd 单元、静态站点、备份任务、Caddyfile,最后启动并打印健康检查 |
 | `fasttranslation.service` | → `/etc/systemd/system/fasttranslation.service` |
 | `Caddyfile` | → `/etc/caddy/Caddyfile`(两处占位符) |
 | `appsettings.Production.json.example` | → `/opt/fasttranslation/appsettings.Production.json` 后填空 |
@@ -50,7 +50,28 @@ ssh root@114.55.166.224 'cp /tmp/ftdeploy/appsettings.Production.json.example /o
 ssh root@114.55.166.224 'bash /tmp/ftdeploy/install.sh'
 ```
 
-第 5 步的 `install.sh` 会做幂等安装,最后打印健康检查结果。Caddy 只有在 `Caddyfile` 的占位符被替换后才会被启用 —— 这是刻意的,见下文。
+第 5 步的 `install.sh` 会做幂等安装,最后打印健康检查结果。Caddy 只有在 `Caddyfile` 的占位符被替换后才会被启用 —— 这是刻意的,见下文。`bootstrap.sh` 里的 SSH 加固只在 `/root/.ssh/authorized_keys` 非空时才动手(否则它会把自己锁在门外);不想动 sshd 和防火墙就加 `FT_SKIP_HARDEN=1`。
+
+## 真机验证记录(2026-10-29,华东1 杭州 / Ubuntu 26.04.1)
+
+整套流程在 2 核 2G 的 ECS 上从零跑通,不是纸面推演:
+
+| 检查项 | 实测 |
+|---|---|
+| `bootstrap.sh` | 退出 0;`ftserver` uid 999;`vm.swappiness=10` 生效 |
+| `install.sh` 首装 | systemd `enabled + active`,`curl /health` = `{"status":"ok"}` |
+| `install.sh` 重复执行(升级) | 停服务→拷二进制→起服务,数据不丢(2 用户 / 1 笔记) |
+| 内存占用 | `MemoryCurrent` ≈ 84 MB(自包含 .NET 10,机器可用 1288 MB) |
+| 端口暴露 | 只有 `0.0.0.0:22` 与 `127.0.0.1:5080`;Caddy disabled,80/443 无监听 |
+| 网关真翻译 | `POST /v1/chat/completions` → 200 / 535ms,上游 usage `43/17` |
+| 按字符记账 | 请求 71 字符 → `usedMonthly/usedDaily` 各 +71;`usage_events` 落 `cost_micros` |
+| 免费日额度闸门 | 1975 字符后的下一次 → `429` + `X-FT-Quota-Reason: daily_quota_exhausted` |
+| 跨设备隔离 | 同账号换指纹仍 200(日额度按设备,月额度按账号) |
+| 订阅闸门 | 免费账号 `POST /api/v1/notes/` → `403 {"error":"subscription_required"}`;升级 light 后 → 200 |
+| 只读不受闸门影响 | 免费账号 `GET /api/v1/notes/` → 200 |
+| 备份 | `ft-backup.sh` 产出 4909 字节 `.db.gz`,cron 04:17 UTC |
+
+撞出来并当场修掉的两个真缺陷:阿里云镜像自带 `/swapfile`,旧脚本只在「新建 swapfile」分支里写 swappiness,导致调优静默失效;旧 `install.sh` 边跑边拷二进制,升级时在 apphost 上撞 `cp: ... Text file busy`(Linux 不允许覆写运行中的可执行文件)。
 
 ## 生产配置
 
@@ -118,11 +139,21 @@ systemctl start fasttranslation
 
 ## 升级
 
+升级就是再跑一遍 `install.sh`:它会自己停服务、拷完再启动(不要手写 stop/cp/start —— 边跑边拷会撞上面那条 Text file busy)。上传目录的铺法与首次部署相同,产物用最新的 `publish/server-linux`:
+
 ```bash
 bash deploy/build-server.sh
-scp -r publish/server-linux root@114.55.166.224:/tmp/ft-server
-ssh root@114.55.166.224 'systemctl stop fasttranslation && cp -r /tmp/ft-server/* /opt/fasttranslation/ && chown -R root:ftserver /opt/fasttranslation && systemctl start fasttranslation && curl -fsS http://127.0.0.1:5080/health'
+rm -rf /tmp/ftup && mkdir -p /tmp/ftup
+cp deploy/bootstrap.sh deploy/install.sh deploy/fasttranslation.service \
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron /tmp/ftup/
+cp -r publish/server-linux /tmp/ftup/server
+cp -r site /tmp/ftup/site
+tar czf /tmp/ftup.tgz -C /tmp/ftup .
+scp /tmp/ftup.tgz root@114.55.166.224:/tmp/
+ssh root@114.55.166.224 'rm -rf /tmp/ftdeploy && mkdir -p /tmp/ftdeploy && tar xzf /tmp/ftup.tgz -C /tmp/ftdeploy && bash /tmp/ftdeploy/install.sh'
 ```
+
+`/opt/fasttranslation/appsettings.Production.json` 不在上传目录里,升级不会覆盖服务器上的生产配置。
 
 数据库结构变更由服务端启动时的 `ServerDatabase.Initialize()` 负责。升级前先跑一次备份 —— SQLite 的 `ALTER TABLE` 一旦写坏没有回退路径。
 
