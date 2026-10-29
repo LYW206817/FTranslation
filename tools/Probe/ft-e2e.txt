@@ -1,3 +1,0 @@
-The quick brown fox jumps over the lazy dog near the river bank today.
-Second line with plain words for the rapid trigger test flow.
-第二行使用通俗易懂的表述，用于快速触发测试流程。
