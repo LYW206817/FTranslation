@@ -233,6 +233,45 @@ public class AccountClientTests
         Assert.False(result.Succeeded);
         Assert.Equal(AccountErrorCode.Network, result.Error!.Code);
     }
+    private const string RedeemJson = """
+    {
+      "account": { "id": "8f1a2c3d-0000-4000-8000-000000000001", "email": "a@b.test", "plan": "standard",
+                   "quotaMonthly": 200000, "quotaDaily": null, "planExpiresAt": 1798761600 },
+      "usage": { "usedMonthlyChars": 0, "usedDailyChars": null, "quotaMonthlyChars": 200000, "quotaDailyChars": null,
+                 "remainingMonthlyChars": 200000, "remainingDailyChars": null, "month": "2026-10", "day": "2026-10-28" }
+    }
+    """;
+
+    [Fact]
+    public async Task Redeem_posts_the_code_and_maps_the_new_plan()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, RedeemJson, baseUrl: "https://api.example.com");
+
+        var result = await client.RedeemAsync("access-1", "FT-4G7M-2XQP-9HKV-3WTA", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/redeem", handler.LastUri!.ToString());
+        Assert.Equal("Bearer", handler.LastAuthorization!.Scheme);
+        Assert.Contains("FT-4G7M-2XQP-9HKV-3WTA", handler.LastBody);
+        Assert.Equal("standard", result.Value!.Profile.Plan);
+        Assert.Equal(1798761600, result.Value.Profile.PlanExpiresAtUnix);
+        Assert.False(result.Value.Usage.HasDaily);
+    }
+
+    [Theory]
+    [InlineData("redeem_code_invalid", AccountErrorCode.CodeInvalid)]
+    [InlineData("redeem_code_used", AccountErrorCode.CodeUsed)]
+    [InlineData("redeem_plan_downgrade", AccountErrorCode.PlanDowngrade)]
+    public async Task Redeem_errors_are_not_confused_with_the_email_verification_codes(
+        string wire, AccountErrorCode expected)
+    {
+        // "code_invalid" already means "wrong email code"; redeem codes must carry their own names.
+        var (client, _) = Build(HttpStatusCode.BadRequest, "{\"error\":\"" + wire + "\"}");
+
+        var result = await client.RedeemAsync("access-1", "FT-4G7M-2XQP-9HKV-3WTA", CancellationToken.None);
+
+        Assert.Equal(expected, result.Error!.Code);
+    }
 }
 
 public class AccountSessionStoreTests
@@ -376,4 +415,14 @@ public class AccountUsageTests
     [Fact]
     public void Error_codes_carry_a_chinese_sentence() =>
         Assert.Contains("网络", new AccountError(AccountErrorCode.Network, "raw").Display);
+
+
+    [Fact]
+    public void Paid_plans_show_an_end_date_and_the_free_plan_does_not()
+    {
+        var paid = new AccountProfile(Guid.Empty, "e", "light", 50000, null, 1798761600);
+        Assert.StartsWith("有效期至 ", paid.ExpiryLine, StringComparison.Ordinal);
+        Assert.Null(new AccountProfile(Guid.Empty, "e", "light", 50000, null).ExpiryLine);
+        Assert.Null(new AccountProfile(Guid.Empty, "e", "free", 10000, 2000, 1798761600).ExpiryLine);
+    }
 }

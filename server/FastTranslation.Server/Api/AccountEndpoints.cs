@@ -88,6 +88,7 @@ public static class AdminEndpoints
         var group = app.MapGroup("/api/v1/admin").WithTags("admin");
         group.MapGet("/metrics", Metrics).AddEndpointFilter(RequireAdminToken);
         group.MapPost("/accounts/{email}/plan", SetPlan).AddEndpointFilter(RequireAdminToken);
+        group.MapPost("/codes", CreateCodes).AddEndpointFilter(RequireAdminToken);
     }
 
     private static IResult Metrics(AccountStore store)
@@ -124,6 +125,43 @@ public static class AdminEndpoints
 
         store.SetPlan(user.Id, plan, expiresAt);
         return Results.Ok(new MessageResponse("plan_updated"));
+    }
+
+/// <summary>
+    /// Mints one batch of activation codes. Kept next to SetPlan because both are the operator
+    /// handing out paid time; unlike SetPlan these codes are bearer instruments, so they are written
+    /// down and the operator has to keep the response.
+    /// </summary>
+    private static IResult CreateCodes(
+        [FromBody] CreateCodesRequest request,
+        RedeemStore codes,
+        ServerDatabase database)
+    {
+        if (!Plans.TryParse(request.Plan, out var plan) || plan == PlanTier.Free)
+        {
+            return Results.BadRequest(new ErrorResponse("plan_invalid"));
+        }
+
+        var days = request.Days ?? 30;
+        if (days is <= 0 or > 3_650)
+        {
+            return Results.BadRequest(new ErrorResponse("days_invalid"));
+        }
+
+        var count = request.Count ?? 1;
+        if (count is <= 0 or > 200)
+        {
+            return Results.BadRequest(new ErrorResponse("count_invalid"));
+        }
+
+        var generated = new List<string>(count);
+        for (var i = 0; i < count; i++)
+        {
+            generated.Add(RedeemCode.Generate());
+        }
+
+        codes.CreateCodes(generated, plan, days, request.Note ?? string.Empty, database.NowUnix);
+        return Results.Ok(new CreateCodesResponse(generated, Plans.ToWire(plan), days));
     }
 
     private static async ValueTask<object?> RequireAdminToken(EndpointFilterInvocationContext context, EndpointFilterDelegate next)

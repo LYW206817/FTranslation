@@ -185,5 +185,17 @@ public sealed class ServerDatabase
 
         CREATE INDEX IF NOT EXISTS ix_notes_user_kind ON notes(user_id, kind, created_at DESC);
         CREATE INDEX IF NOT EXISTS ix_notes_user_live ON notes(user_id, deleted_at);
+
+        CREATE TABLE IF NOT EXISTS redeem_codes (
+            code        TEXT PRIMARY KEY,
+            plan        INTEGER NOT NULL,
+            days        INTEGER NOT NULL,
+            note        TEXT NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL,
+            redeemed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+            redeemed_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_redeem_codes_redeemed ON redeem_codes(redeemed_at);
         """;
 }

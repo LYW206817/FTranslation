@@ -61,6 +61,25 @@ public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSe
 /// </summary>
 public sealed record PlanChangeRequest(string? Plan, int? Days = null);
 
+// ---- redeem (activation codes) ----
+
+/// <summary>Whatever the buyer pasted; the server folds case, dashes and the FT prefix.</summary>
+public sealed record RedeemRequest(string? Code);
+
+/// <summary>
+/// The plan changed, so both blocks travel together: the client refreshes the plan line and the
+/// quota meters in one round trip instead of re-fetching /me and /usage.
+/// </summary>
+public sealed record RedeemResponse(AccountDto Account, UsageDto Usage);
+
+/// <summary>
+/// Batch for the operator. <paramref name="Days"/> is the length every code in the batch grants;
+/// <paramref name="Count"/> is capped in the handler so one request cannot mint thousands.
+/// </summary>
+public sealed record CreateCodesRequest(string? Plan, int? Days, int? Count, string? Note);
+
+public sealed record CreateCodesResponse(IReadOnlyList<string> Codes, string Plan, int Days);
+
 // ---- notes (phase 1 notebook) ----
 
 public sealed record SaveNoteRequest(

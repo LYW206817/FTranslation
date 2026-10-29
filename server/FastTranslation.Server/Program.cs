@@ -37,6 +37,7 @@ builder.Services.AddSingleton<GatewayRateLimiter>();
 builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
 
 builder.Services.AddSingleton<AccountStore>();
+builder.Services.AddSingleton<RedeemStore>();
 builder.Services.AddSingleton<NoteStore>();
 builder.Services.AddSingleton<VerificationCodeService>();
 builder.Services.AddSingleton<IVerificationMailSender, VerificationMailSender>();
@@ -58,6 +59,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapNotesEndpoints();
+app.MapRedeemEndpoints();
 app.MapGatewayEndpoints();
 app.MapAdminEndpoints();
 
