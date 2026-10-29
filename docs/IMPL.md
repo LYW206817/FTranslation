@@ -1008,3 +1008,99 @@ v1.0 的设计(spec:12 / spec:29 / spec:45)刻意把「账号体系、代理后�
 2. **占位符会原样显示**。备案通过前站点本就不该对外(此刻 Caddy 被 `install.sh` 刻意 disable),但若有人手工 `systemctl start caddy`,页脚会露出 `__ICP_NUMBER__`。install.sh 的警告是唯一防线。
 3. **域名实名与工信部同步仍未完成**(注册局审核中 → 通过后还需 2~3 天同步),备案尚未提交。若管局要求「域名证书」,在阿里云域名控制台 → 域名列表 → 管理 → 下载域名证书。
 4. `beian.miit.gov.cn` 在部分网络环境下访问慢,备案号链接点开可能超时;这是工信部站点自身的问题,不影响合规性。
+
+## v51 学习闭环:截图存单词本 + 四档复习 + 单窗口七页 ✅
+
+**为什么这样改**
+
+v44 做完了「保存」,但那时候的账只结了一半:
+
+- **截图翻译和单词本是两件事**。截图翻译走的是 `qwen-mt-image` 直接把图翻成文字,屏幕上出现的译文看得见、抄不走。用户想记下里面某个词,只能自己再敲一遍。OCR 单独抽一路之后,识别到的原文进了结果窗的可编辑框,「保存到单词本」才算真的可用。
+- **存了不复习等于没存**。v44 的生词本只有三个视图(词/短语/句),没有任何调度:存 500 条和存 5 条在界面上没有区别。这次补上四档复习与到期队列,`notes` 表加了 6 列复习状态。
+- **四扇窗各管一段,入口是散的**。此前主窗口、设置窗、账号窗、结果卡各自为政:换一个 API Key 要开设置窗,看套餐要开账号窗,读完一条结果要回主窗口才有列表。现在合成一扇窗 + 左侧栏七页,唯一还独立的是复习窗 —— 它要独占键盘(空格揭示、1–4 打分),被嵌到主窗口里反而会被侧栏抢焦点。
+
+三个阶段刻意这样切:
+
+- **复习状态存在服务端,调度算法在客户端**。多端同步要的是「这张卡现在到哪一台阶」,不是「这张卡什么时候该出现」;算法留在客户端以后调参不用动数据库。服务端只存 `stage`/`due_at`/`last_grade`/`review_count`/`lapses`/`reviewed_at` 六个结果字段。
+- **四档而不是两档**。两档(认识/不认识)会让「模糊」这一档无处安放,用户只能二选一地撒谎;四档(忘记/模糊/熟悉/记住)对应 1/2/3/4 四个键,判断成本低。
+- **单窗口而不是继续加窗**。窗口越多,「这个功能在哪」这个问题就越贵;侧栏一列七项一眼看完。
+
+**算法口径**
+
+四档 → 下一台阶 → 下次到期(`src/FastTranslation.Core/Notes/ReviewSchedule.cs`,服务端 `Domain/ReviewSchedule.cs` 是镜像,改一处必须改另一处):
+
+| 评分 | 下一台阶 | 说明 |
+| --- | --- | --- |
+| 忘记 `forgot` | 1 | 回到 10 分钟后,`lapses` +1 |
+| 模糊 `fuzzy` | 2 | 1 天后 |
+| 熟悉 `familiar` | 3 | 3 天后 |
+| 记住 `known` | 从 stage ≥ 4 起逐级 +1,否则直接 4 | 4 → 7 → 14 → 28 → 56 天,封顶 stage 7 |
+
+台阶间隔表:`0 = 未排期`、`1 = 10 分钟`、`2 = 1 天`、`3 = 3 天`、`4 = 7 天`、`5 = 14 天`、`6 = 28 天`、`7 = 56 天`。**服务端只存结果,不参与调度**;`review_count` 每次评分 +1,`lapses` 只在「忘记」时 +1。
+
+复习队列的组装:到期卡(`due_at <= now AND stage > 0`,按 `due_at` 升序)+ 今日新卡(`stage = 0`,按 `created_at` 倒序),新卡日上限默认 20、队列上限 50;`due` 与 `fresh` 分开返回,前端进度条用的是两者之和。
+
+**做了什么**
+
+服务端(`server/FastTranslation.Server/`):
+
+| 文件 | 内容 |
+| --- | --- |
+| `Storage/ServerDatabase.cs` | `notes` 加 6 列(`stage`/`due_at`/`last_grade`/`review_count`/`lapses`/`reviewed_at`),走 `EnsureColumn` 而非改 `CREATE TABLE`:`CREATE TABLE IF NOT EXISTS` 对老库一行都不执行,新列只能 `ALTER TABLE` 补。`ix_notes_user_due` 也必须在 `EnsureColumn` 之后建,否则老库上建索引会因缺列报错 |
+| `Storage/NoteStore.cs` | 四个新方法:`ListDue`(到期卡)、`ListFresh` + `CountFreshSince`(今日新卡与配额)、`SetReview`(写台阶、到期时间、次数与 lapses);列清单五处同步扩到 18 列 |
+| `Domain/ReviewSchedule.cs`(新) | 上面那张表的镜像;服务端项目不引用 `FastTranslation.Core`,与 `Domain/NoteKind.cs`、`Domain/NoteClassifier.cs` 同理 |
+| `Api/NotesEndpoints.cs` | `GET /api/v1/notes/review`(队列 + `freshQuota`)与 `POST /api/v1/notes/{id}/review`(打分);两个端点都先过「账号可用 → 有单词本权益」两道闸 |
+| `Api/Contracts.cs` | `GradeNoteRequest`、`ReviewQueueResponse` |
+| `Gateway/GatewayEndpoints.cs` | `POST /v1/ocr`:客户端把截图 Base64 上来,网关转 `qwen-vl-ocr`,按张计费并记入 `usage_events` |
+| `Domain/Pricing.cs` | `qwen-vl-ocr` 单价条目 |
+
+客户端:
+
+| 文件 | 内容 |
+| --- | --- |
+| `Core/Notes/ReviewSchedule.cs`(新) | 调度算法、`ReviewGrade` 枚举、`IntervalLabel`、`Display`、`TryParseGrade` |
+| `Core/Notes/NoteTypes.cs` | `Note` 加 6 个尾参数与 `GradeDisplay`/`DueLine` 派生属性;`ReviewQueue` 记录 |
+| `Core/Notes/NotesApiClient.cs` | `ReviewQueueAsync` / `GradeAsync` |
+| `Core/ImageOcrTypes.cs`(新)、`Providers.QwenMt/QwenOcrClient.cs` / `GatewayOcrProvider.cs`(新) | 截图识别的两条路:直连 DashScope 与走自建网关 |
+| `App/ImageTranslationCoordinator.cs`、`Platform.Windows/ImageResultWindow.cs` | 结果窗从「一图一译」变成「图片 + 可编辑识别框 + 复制图片/另存为/保存到单词本/关闭」 |
+| `App/MainWindow.xaml(.cs)`、`App/Pages/*`(新,7 个页面) | 单窗口 + 左侧栏七页:首页、单词、短语、语句、复习、套餐、设置;设置窗与账号窗被删,内容搬进页面 |
+| `App/ReviewWindow.xaml(.cs)`(新) | 今日复习:题目在上、虚线槽在下,空格揭示译文,1–4 评四档,Esc 退出;评完进空态 |
+| `App/AccountCoordinator.cs` | `ReviewQueueAsync` / `GradeNoteAsync`,继续走 `WithSessionAsync`(401 自动刷新) |
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release`:**0 警告 0 错误**
+- `dotnet test`:4 个项目 **541 全绿**(Core 192 / QwenMt 87 / Platform.Windows 87 / Server 175),失败 0 跳过 0。本轮新增:`ReviewScheduleTests` 43 例(8 台阶 × 4 档的转移 + 自定义档测试 + 显式元组表的间隔校验)、`NotesReviewTests` 15 例(队列拆分、配额夹到 0、评分后离开新卡、非法档 400、别人的卡 404、`forgot` 只加 lapses、老库迁移补 6 列)、OCR 相关若干
+- 真实服务端端到端(Development、`http://127.0.0.1:5199`、SQLite `publish/devserver/qa.db`):注册 → 存 4 条笔记 → `GET /notes/review` 返回 `due:[]`、`fresh:4`、`freshQuota:20` → 对两张卡打分 → `stage`/`due_at` 落库正确 → 再查队列,到期卡按 `due_at` 升序排出
+- 界面证据(UI Automation 驱动真实 exe,不是静态稿;脚本 `publish/uia-nav.ps1`、`publish/select-row.ps1`、`publish/review-shot.ps1`、`publish/wheel-test.ps1`):
+
+| # | 文件 | 取样位置 |
+| --- | --- | --- |
+| 1 | `publish/shots-v49/HomeButton.png` | 侧栏「首页」高亮,输入区 + 语言下拉 + 复制译文/存到单词本/翻译 |
+| 2 | `publish/shots-v49/WordSelected.png` | 侧栏「单词」→ 选中第 1 条 `resilient` → 右侧详情「复习」四档 + 「上次记住 · 7 天后」 |
+| 3 | `publish/shots-v49/PhraseButton.png` | 侧栏「短语」高亮,列表为短语 |
+| 4 | `publish/shots-v49/SentenceButton.png` | 侧栏「语句」高亮,列表为整句 |
+| 5 | `assets/qa/page-plan.png` | 侧栏「套餐」→ 账号卡 + 你的套餐 + 本月用量 + 激活码 + 侧栏「标准版」角标 |
+| 6 | `assets/qa/page-settings.png` | 侧栏「设置」→ 五组卡片 + 底部固定动作条 |
+| 7 | `assets/qa/review-mask.png` | 复习窗 1/2 未揭示:虚线槽 + 四档置灰 + 小字 10 分钟/1 天/3 天/7 天 |
+| 8 | `assets/qa/review-revealed.png` | 空格揭示后:译文 + `Code.exe · 10-29` 来源行 + 四档可点 |
+| 9 | `assets/qa/review-empty.png` | 队列评完:「这一轮过完了。」+ 再看看单词本 |
+| 10 | `publish/shots-v49/ImageResult.png` | 译图结果窗:复制图片/另存为/保存到单词本/关闭 四个 pill + 可编辑识别框 |
+| 11 | `publish/shots-v49/HomeDark.png`、`assets/qa/review-mask-dark.png` | 深色:首页与复习窗 |
+| 12 | `assets/qa/main-review-badge.png` | 两张今天到期的卡 → 侧栏「复习」红点 `2`,列表行显示 `今天到期` |
+
+  设置页的滚轮回归单独测过:指针停在 API Key 输入框上滚 5 格,`Body` 的 `VerticalScrollPercent` 从 0 → 43.57% —— 输入框不能把滚轮吃掉(`Body_PreviewMouseWheel` 隧道逻辑从 `SettingsWindow` 搬到 `SettingsPage` 后仍生效)。
+
+**兼容性**
+
+- 老库打开即迁移:`EnsureColumn` 逐列补 6 个复习字段,`notes` 读取位置扩到 `0..17`;迁移测试用 v47 形状的库跑过一遍。
+- v1.2.x 客户端打到新服务端不受影响:`/notes/review`、`/notes/{id}/review`、`/v1/ocr` 都是新增端点;`NoteDto` 只是多出 7 个带默认值的字段,旧客户端反序列化会忽略。
+- 客户端与服务端的 `ReviewSchedule` 是两份镜像代码,靠同一组单测数字(8×4 转移表)对齐;改档位必须同时改两处,两处文件头都写了这句。
+
+**残留风险**
+
+- **套餐页不收款,「订阅」按钮只记录意向**。真正的开通通道是激活码(v49),页面上没有支付流程;用户点「订阅」看到的是「用激活码开通」的引导。
+- **OCR 单价未逐字核对**。`qwen-vl-ocr` 的 `Pricing` 条目按 DashScope 文档的图片计费档抄写,没有拿真实账单对过;计费只影响网关侧的用量记录,不影响用户能不能用。
+- **复习调度的参数没有真实用户数据支撑**。10 分钟 / 1/3/7/14/28/56 天是照通用间隔重复经验取的,`MaxStage=7` 之后不再延长;真跑一段时间后可能要按留存数据调。
+- **托盘原生菜单没有「复习」入口**。加一项要动 `TrayIconService` 的菜单结构(Platform.Windows),本版入口是侧栏「复习」与单词页右上角「去复习」。
+- **`FT_UITEST=image-result` 是 QA 钩子**,用合成图打开译图窗只为截图;真实截图翻译路径是「热键 → 全屏框选 → OCR → 结果窗」,那段区域选择浮层是分层窗口,`PrintWindow` 拍不到内容,自动化截图必须绕开它。
