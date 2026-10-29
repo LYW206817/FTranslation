@@ -117,4 +117,35 @@ public class GatewayTranslationProviderTests
         Assert.Equal(TranslationErrorCode.Authentication, result.Error!.Code);
         Assert.Null(result.Notice);
     }
+
+    [Fact]
+    public async Task GatewayThrowing_FallsBackToTheOwnKey()
+    {
+        // 取令牌、拼地址这些步骤在网关一侧，抛出来的异常与翻译本身无关；整次请求不该只剩
+        //「翻译失败,请重试」这一句
+        var own = new StubProvider(() => Ok("自己的译文"));
+        using var provider = new GatewayTranslationProvider(
+            (_, _) => throw new HttpRequestException("网关炸了"),
+            own);
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal("自己的译文", result.TranslatedText);
+        Assert.Equal(1, own.Calls);
+    }
+
+    [Fact]
+    public async Task CallerCancelled_StillThrows()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var own = new StubProvider(() => Ok("自己的译文"));
+        using var provider = new GatewayTranslationProvider(
+            (_, _) => throw new OperationCanceledException(cts.Token),
+            own);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => provider.TranslateAsync(Request(), cts.Token));
+        Assert.Equal(0, own.Calls);
+    }
 }

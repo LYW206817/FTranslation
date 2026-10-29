@@ -1264,3 +1264,25 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 **兼容性**:只加一列且可空,已有库由 `EnsureColumn` 自动补;新路由全在 `/api/v1/admin/` 下,不改既有 `/api/v1/admin/codes`(发码)与 `/metrics`;`AccountErrorCode` 新增值在枚举尾部;老客户端遇到 410 的 `redeem_code_revoked` 会落到映射的默认分支,显示「账号服务器出错了,请稍后再试。」而不是报错崩溃。
 
 **残留风险**:①码仍然没有有效期,这是故意的(v49 定的「不惩罚屯码」),要按批次过期得再加一列。②作废只能撤未兑换的;已兑出去的期数要收回只能靠 `POST /api/v1/admin/accounts/{email}/plan` 手工降档,没有「退款」这个概念。③发码响应是码的唯一副本(bearer instrument,库里只有码没有批次凭据),运营发一批必须自己存一批,台账接口只能查已发出的,不能替谁找回没保存的那份。④兑换与注册/登录共用按 IP 的 20 次/分限流(`RateLimiting.AuthPolicy`),真有人拿码表来刷会把同 IP 的登录一起挤掉 —— v49 已记,本次仍未动。⑤公平叠加后,升档时买家把 light 的剩余天数并进 standard 的到期,等于「standard 的价格 + 附送几天」,这是刻意选择,定价时要算进去。⑥生产库里还留着我 E2E 造的 5 个测试账号与 5 张已兑码,对外开放前要清。
+
+## v57 侧栏顺序、激活码落位、网关异常回落 ✅
+
+**为什么**:v55 拆完账号页之后,用户拿真机截图回了三条:①划词翻译的结果卡只剩一句红字「翻译失败,请重试」;②套餐页激活码单独挂在右列末尾,左列比右列矮一大截;③侧栏顺序希望是 套餐、账号、设置。
+
+第一条不能靠猜。`SelectionCoordinator.RunSessionAsync` 的 `catch (Exception)` 把异常吞掉只留一句兜底文案,而这个类被 `App` 构造时压根没传 `log`——**线上出现这句话时没有任何线索可查**,这本身就是个缺陷。所以这一轮先把"看不见"变成"看得见",再去修能修的那部分:
+
+- `src/FastTranslation.App/App.xaml.cs`:构造 `SelectionCoordinator` 时补上 `log: Trace`,`%TEMP%\ft-uitest-errors.log` 里会出现 `coordinator error: ...`。`Trace` 本来就存在(FT_UITEST 钩子用它),不需要新机制。
+- 新增 QA 钩子 `FT_UITEST=translate`:启动后 1.8 秒跑一次**真实**的翻译链路(先 `ShowLoading` 再 `TranslateAsync` 再 `ShowCard`,和生产路径同序),把 `ok / err.Code / notice / 译文` 写进同一份日志。不模拟划词,所以桌面忙的时候也能用。用它在用户当前配置(账号服务地址为默认 `http://127.0.0.1:5199`、本机无服务端在跑、已登录一个旧会话)下复现:**`ok=True`,译文正常**,网关连不上时回落用户自己的 Key 这条链路是通的。也就是说那句红字来自一次性与环境相关的异常,不是链路设计问题——日志补上之后才有下次的定性依据。
+- `src/FastTranslation.Providers.QwenMt/GatewayTranslationProvider.cs`:`_gateway` 回调整个包进 try。网关侧抛异常(取令牌、拼地址、意外的运行时错误)现在按"网关这次没结果"处理,继续走用户自己的 Key;只有**调用方自己取消**(`cancellationToken.IsCancellationRequested`)才原样上抛,交给 `SelectionCoordinator` 的取消分支静默处理。此前这类异常会让整次翻译直接落到兜底文案,而它其实与翻译本身无关。
+
+另外两条是纯排版:侧栏 `<Button>` 顺序换成 套餐(带套餐名角标)→ 账号 → 设置,套餐名从账号行挪到套餐行(读作"当前套餐");套餐页把激活码卡片从左列尾搬到"包括什么"下面、右列只留用量与额度说明,两列高度对齐。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release --no-build` → **573 全绿**(Core 204 / Platform.Windows 87 / QwenMt **89** / Server 193),QwenMt 比 v56 多 2 个:新增 `GatewayThrowing_FallsBackToTheOwnKey`(网关抛 `HttpRequestException` → 用自己 Key 的译文,`own.Calls == 1`)与 `CallerCancelled_StillThrows`(调用方取消必须上抛、且不碰自己的 Key)。
+- 截图:`assets/qa/plan-cols.png`(1820×1155,1040×660 逻辑 × 175% DPI;侧栏 套餐/账号/设置 顺序、激活码在左列、两列底部齐平)、`assets/qa/account-after-reorder.png`(账号页在新顺序下仍正常,套餐名角标挂在「套餐」行)。
+- `FT_UITEST=translate` 实测日志:`translate hook: ok=True err=/ notice= out=那只敏捷的棕色狐狸跳过了那只懒狗。`
+
+**兼容性**:无接口与数据结构变化;`GatewayTranslationProvider` 只多一层 catch,原有五条回落规则(网关未登录 → 用自己 Key;网关成功 → 用网关;取消/超长 → 不重试;其余失败 → 用自己 Key 并附说明)全部保持,`Cancelled_DoesNotFallBack` 等旧用例未改仍绿。
+
+**残留风险**:①用户那次「翻译失败,请重试」在本机没能复现,现在只能保证**下次**一定留下 `coordinator error:` 行;真要定位还得等它再出现一次。②账号服务仍未部署到公网(默认 `AccountBaseUrl` 还是 `http://127.0.0.1:5199`),所以没架服务端时用量卡会显示「连不上账号服务器,请检查网络后重试。」——文案归文案,这不是网络问题,是还没有地址可连,v50 的域名槽没落地之前会一直这样。③`FT_UITEST=translate` 用的固定英文样例,中文选区的路径没被它覆盖。

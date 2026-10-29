@@ -1,4 +1,4 @@
-<Window x:Class="FastTranslation.App.MainWindow"
+﻿<Window x:Class="FastTranslation.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:FastTranslation.App"
@@ -85,16 +85,16 @@
 
           <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,8"/>
 
-          <!-- the plan label rides the account entry: 账号 is where the plan lives, 套餐 is the shop -->
-          <Button x:Name="AccountButton" Style="{StaticResource SidebarItem}" Tag="Account" Click="Nav_Click">
+          <!-- 套餐 排在 账号 之前：先看买什么，再看自己是谁；套餐名挂在 套餐 那一行，读作「当前套餐」 -->
+          <Button x:Name="PlanButton" Style="{StaticResource SidebarItem}" Tag="Plan" Click="Nav_Click">
             <DockPanel>
               <TextBlock x:Name="PlanLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
                          Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
-              <TextBlock Text="账号" VerticalAlignment="Center"/>
+              <TextBlock Text="套餐" VerticalAlignment="Center"/>
             </DockPanel>
           </Button>
-          <Button x:Name="PlanButton" Style="{StaticResource SidebarItem}" Tag="Plan" Click="Nav_Click" Margin="0,2,0,0">
-            <TextBlock Text="套餐"/>
+          <Button x:Name="AccountButton" Style="{StaticResource SidebarItem}" Tag="Account" Click="Nav_Click" Margin="0,2,0,0">
+            <TextBlock Text="账号"/>
           </Button>
           <Button x:Name="SettingsButton" Style="{StaticResource SidebarItem}" Tag="Settings" Click="Nav_Click" Margin="0,2,0,0">
             <TextBlock Text="设置"/>
