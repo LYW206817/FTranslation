@@ -6,9 +6,14 @@ using System.Windows.Media;
 using FastTranslation.Core;
 using FastTranslation.Platform.Windows;
 
-namespace FastTranslation.App;
+namespace FastTranslation.App.Pages;
 
-public partial class SettingsWindow : Window
+/// <summary>
+/// Settings as a page of the shell. The controls are the old settings window's, unchanged; what
+/// changed is the lifetime: the page is built once and reused, so "read the model into the controls"
+/// has to be an explicit <see cref="ReloadFromSettings"/> call rather than a constructor side effect.
+/// </summary>
+public partial class SettingsPage : UserControl
 {
     private readonly AppSettings _settings;
     private readonly SettingsService _service;
@@ -16,7 +21,10 @@ public partial class SettingsWindow : Window
     private readonly HotkeyService _hotkey;
     private readonly Action? _checkUpdates;
 
-    public SettingsWindow(
+    /// <summary>Raised after 保存 or 取消 so the shell can go back to where the user came from.</summary>
+    public event Action? Closed;
+
+    public SettingsPage(
         AppSettings settings,
         SettingsService service,
         ISecretStore secrets,
@@ -24,7 +32,6 @@ public partial class SettingsWindow : Window
         Action? checkUpdates = null)
     {
         InitializeComponent();
-        WindowChrome.Apply(this);
         _settings = settings;
         _service = service;
         _secrets = secrets;
@@ -38,8 +45,18 @@ public partial class SettingsWindow : Window
         {
             TargetCombo.Items.Add(new ComboBoxItem { Content = lang.DisplayName, Tag = lang.Code });
         }
-        SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
 
+        AboutText.Text = AboutLine();
+        ReloadFromSettings();
+    }
+
+    /// <summary>
+    /// Called by the host every time the page is shown. 取消 uses it too: the page is cached, so an
+    /// unsaved edit would otherwise still be sitting in the controls the next time you come back.
+    /// </summary>
+    public void ReloadFromSettings()
+    {
+        SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
         ModelCombo.SelectedIndex = _settings.Model.Contains("plus") ? 1 : 0;
         ThemeCombo.SelectedIndex = _settings.Theme?.Trim().ToLowerInvariant() switch
         {
@@ -52,21 +69,17 @@ public partial class SettingsWindow : Window
         WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
         BaseUrlBox.Text = _settings.OverrideBaseUrl;
         AccountUrlBox.Text = _settings.AccountBaseUrl;
-        RefreshExcludedList();
         AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
-        AboutText.Text = AboutLine();
-
-        // SizeToContent="Height" is NOT clamped by MaxHeight (WPF measures the content
-        // unconstrained), so on a 175%-scaled 960px screen the window grew past the screen and
-        // pushed 保存/取消 off the bottom. Size manually against the live work area instead.
-        var work = SystemParameters.WorkArea;
-        Height = Math.Min(720, Math.Max(360, work.Height - 80));
-
+        // the key is DPAPI-sealed on disk and never echoed back: an empty box means "leave it alone"
+        KeyBox.Clear();
+        HotkeyError.Visibility = Visibility.Collapsed;
+        ExclusionHint.Visibility = Visibility.Collapsed;
+        RefreshExcludedList();
     }
 
     private static string AboutLine()
     {
-        var asm = typeof(SettingsWindow).Assembly;
+        var asm = typeof(SettingsPage).Assembly;
         var version = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         if (string.IsNullOrWhiteSpace(version))
@@ -83,7 +96,7 @@ public partial class SettingsWindow : Window
 
     private void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        // the check is asynchronous and may open its own dialog; this one stays usable
+        // the check is asynchronous and may open its own dialog; this page stays usable
         UpdateHint.Text = "正在检查更新…";
         _checkUpdates?.Invoke();
     }
@@ -134,7 +147,7 @@ public partial class SettingsWindow : Window
     private void FillForeground_Click(object sender, RoutedEventArgs e)
     {
         var name = ForegroundInfo.ProcessName();
-        // this window is foreground while the button is clicked — say so instead of
+        // this page is foreground while the button is clicked — say so instead of
         // silently filling our own name (the user must switch windows to pick another app)
         if (string.IsNullOrEmpty(name) || string.Equals(name, "FastTranslation", StringComparison.OrdinalIgnoreCase))
         {
@@ -246,8 +259,12 @@ public partial class SettingsWindow : Window
 
         _settings.FirstRunCompleted = true;
         _service.Save(_settings);
-        Close();
+        Closed?.Invoke();
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        ReloadFromSettings(); // drop unsaved edits: the page, unlike a window, is not rebuilt
+        Closed?.Invoke();
+    }
 }

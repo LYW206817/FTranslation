@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<MainPageId, UserControl> _pages = [];
     private readonly Dictionary<NoteKind, NotesPage> _shelves = [];
     private MainPage? _home;
+    private PlanPage? _plan;
+    private SettingsPage? _settingsPage;
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
@@ -106,6 +108,8 @@ public partial class MainWindow : Window
         MainPageId.Word => Notes(NoteKind.Word),
         MainPageId.Phrase => Notes(NoteKind.Phrase),
         MainPageId.Sentence => Notes(NoteKind.Sentence),
+        MainPageId.Plan => Plan(),
+        MainPageId.Settings => Settings(),
         _ => Placeholder(page),
     };
 
@@ -123,8 +127,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 套餐 and 设置 still land here until Task 8 builds them; they are labelled so the shell can be
-    /// screenshotted page by page without pretending the page exists.
+    /// 复习 opens a window instead of a page, so nothing routes here today; the placeholder keeps an
+    /// unrouted id from throwing.
     /// </summary>
     private UserControl Placeholder(MainPageId page) => new()
     {
@@ -150,6 +154,21 @@ public partial class MainWindow : Window
         return page;
     }
 
+    private PlanPage Plan()
+    {
+        if (_plan is not null) return _plan;
+        _plan = new PlanPage(_account);
+        return _plan;
+    }
+
+    private SettingsPage Settings()
+    {
+        if (_settingsPage is not null) return _settingsPage;
+        _settingsPage = new SettingsPage(_settings(), _settingsService, _secrets, _hotkey, _checkUpdates);
+        _settingsPage.Closed += () => ShowPage(MainPageId.Home);
+        return _settingsPage;
+    }
+
     public void ShowPage(MainPageId page)
     {
         // 复习 is not a page: it needs its own focus and keyboard, so it opens a window (design D15)
@@ -157,6 +176,17 @@ public partial class MainWindow : Window
         {
             ReviewRequested?.Invoke();
             return;
+        }
+
+        // Refresh before the early return: pages are cached, so re-entering one is the only cue it
+        // gets to reload what changed while it was hidden (quota, settings, server-side edits).
+        switch (page)
+        {
+            case MainPageId.Plan: _plan?.Reload(); break;
+            case MainPageId.Settings: _settingsPage?.ReloadFromSettings(); break;
+            case MainPageId.Word: _shelves.GetValueOrDefault(NoteKind.Word)?.Reload(); break;
+            case MainPageId.Phrase: _shelves.GetValueOrDefault(NoteKind.Phrase)?.Reload(); break;
+            case MainPageId.Sentence: _shelves.GetValueOrDefault(NoteKind.Sentence)?.Reload(); break;
         }
 
         // Rebuilding the same page would throw away whatever is typed in it

@@ -1,12 +1,10 @@
-<Window x:Class="FastTranslation.App.SettingsWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:FastTranslation.App"
-        Title="设置" Width="500" Icon="/FastTranslation.ico"
-        WindowStartupLocation="CenterScreen" ResizeMode="CanResize" MinHeight="420" MinWidth="420"
-        Background="{DynamicResource WindowBgBrush}"
-        FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
-  <Window.Resources>
+<UserControl x:Class="FastTranslation.App.Pages.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:FastTranslation.App"
+             Background="{DynamicResource WindowBgBrush}"
+             FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
+  <UserControl.Resources>
     <!-- section heading above a card: small, quiet, and the only thing separating groups -->
     <Style x:Key="GroupLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11"/>
@@ -67,7 +65,7 @@
         </Setter.Value>
       </Setter>
     </Style>
-  </Window.Resources>
+  </UserControl.Resources>
 
   <Grid>
     <Grid.RowDefinitions>
@@ -76,19 +74,16 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- ===== fixed header ===== -->
-    <Border Grid.Row="0" BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,0,0,1"
-            Padding="24,15,24,13">
-      <TextBlock Text="设置" FontSize="17" FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-    </Border>
+    <!-- page title only: the page has no border of its own inside the shell -->
+    <TextBlock Grid.Row="0" Text="设置" FontSize="17" FontWeight="SemiBold"
+               Foreground="{DynamicResource TextPrimaryBrush}" Margin="24,18,24,12"/>
 
     <!-- ===== scrolling body: one card per concern, real padding at both edges so no
          control is ever sliced in half by the viewport ===== -->
     <ScrollViewer x:Name="Body" Grid.Row="1"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   Focusable="False" PreviewMouseWheel="Body_PreviewMouseWheel">
-      <StackPanel x:Name="BodyStack" Margin="24,14,18,6">
+      <StackPanel x:Name="BodyStack" Margin="24,0,18,6" MaxWidth="760" HorizontalAlignment="Left">
 
         <TextBlock Text="翻译与外观" Style="{StaticResource GroupLabel}"/>
         <Border Style="{StaticResource Card}">
@@ -240,9 +235,9 @@
     <Border Grid.Row="2" BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
             Padding="24,11,24,12">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-        <Button Content="取消" Click="Cancel_Click"/>
-        <Button Content="保存" Style="{StaticResource PrimaryButton}" Margin="0" Click="Save_Click"/>
+        <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click"/>
+        <Button x:Name="SaveButton" Content="保存" Style="{StaticResource PrimaryButton}" Margin="0" Click="Save_Click"/>
       </StackPanel>
     </Border>
   </Grid>
-</Window>
+</UserControl>

@@ -381,6 +381,9 @@
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <!-- the default dotted focus rect lands on top of the active highlight and reads as a bug;
+           the highlight itself already says which page you are on -->
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
