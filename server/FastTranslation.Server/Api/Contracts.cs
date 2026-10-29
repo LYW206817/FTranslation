@@ -93,6 +93,8 @@ public sealed record SaveNoteRequest(
 
 public sealed record UpdateNoteRequest(string? Kind, string? Note);
 
+public sealed record GradeNoteRequest(string? Grade);
+
 public sealed record NoteDto(
     Guid Id,
     string Kind,
@@ -104,7 +106,22 @@ public sealed record NoteDto(
     string OriginApp,
     string Note,
     long CreatedAt,
-    long UpdatedAt);
+    long UpdatedAt,
+    int Stage = 0,
+    long DueAt = 0,
+    string LastGrade = "",
+    int ReviewCount = 0,
+    int Lapses = 0,
+    long ReviewedAt = 0);
 
 /// <summary>One page plus the account-wide total, so the client can show "1 / 20" without a second call.</summary>
 public sealed record NotePageResponse(IReadOnlyList<NoteDto> Items, int Total, int Limit, int Offset);
+
+/// <summary>Due = time-triggered, Fresh = today's new cards under quota (design §6.1).</summary>
+public sealed record ReviewQueueResponse(
+    IReadOnlyList<NoteDto> Due,
+    IReadOnlyList<NoteDto> Fresh,
+    int DueTotal,
+    int FreshQuota,
+    int Limit,
+    int NewLimit);

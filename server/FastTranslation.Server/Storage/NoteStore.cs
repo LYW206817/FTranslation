@@ -16,7 +16,13 @@ public sealed record NoteRecord(
     string OriginApp,
     string Note,
     long CreatedAt,
-    long UpdatedAt);
+    long UpdatedAt,
+    int Stage = 0,
+    long DueAt = 0,
+    string LastGrade = "",
+    int ReviewCount = 0,
+    int Lapses = 0,
+    long ReviewedAt = 0);
 
 /// <summary>
 /// Every SQL statement behind /api/v1/notes. Deletion is soft (<c>deleted_at</c>) because the same
@@ -43,9 +49,11 @@ public sealed class NoteStore(ServerDatabase database)
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO notes (id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                               model, origin_app, note, created_at, updated_at, deleted_at)
+                               model, origin_app, note, created_at, updated_at, deleted_at,
+                               stage, due_at, last_grade, review_count, lapses, reviewed_at)
             VALUES ($id, $userId, $kind, $source, $target, $sourceLang, $targetLang,
-                    $model, $originApp, '', $now, $now, NULL)
+                    $model, $originApp, '', $now, $now, NULL,
+                    0, 0, '', 0, 0, 0)
             """;
         command.Parameters.AddWithValue("$id", record.Id.ToString("D"));
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
@@ -71,7 +79,8 @@ public sealed class NoteStore(ServerDatabase database)
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at
+                   model, origin_app, note, created_at, updated_at,
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at
             FROM notes
             WHERE user_id = $userId AND kind = $kind AND source_text = $source AND deleted_at IS NULL
             ORDER BY created_at DESC LIMIT 1
@@ -104,7 +113,8 @@ public sealed class NoteStore(ServerDatabase database)
 
         var sql = new System.Text.StringBuilder("""
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at
+                   model, origin_app, note, created_at, updated_at,
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL
             """);
@@ -136,7 +146,8 @@ public sealed class NoteStore(ServerDatabase database)
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at
+                   model, origin_app, note, created_at, updated_at,
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at
             FROM notes
             WHERE id = $id AND user_id = $userId AND deleted_at IS NULL
             """;
@@ -186,6 +197,109 @@ public sealed class NoteStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
+    /// <summary>Cards whose due time has passed, oldest first. Stage 0 is excluded: a new card is queued by quota, not by time.</summary>
+    public IReadOnlyList<NoteRecord> ListDue(Guid userId, long nowUnix, int limit)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
+                   model, origin_app, note, created_at, updated_at,
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+            FROM notes
+            WHERE user_id = $userId AND deleted_at IS NULL AND stage >= 1 AND due_at <= $now
+            ORDER BY due_at ASC
+            LIMIT $limit
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$now", nowUnix);
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+
+        var items = new List<NoteRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) items.Add(ReadNote(reader));
+        return items;
+    }
+
+    /// <summary>Ungraded cards saved today, oldest first. Stage 0 is exactly "never graded", so no extra queue table is needed.</summary>
+    public (IReadOnlyList<NoteRecord> Items, int Total) ListFresh(Guid userId, long dayStartUnix, int limit)
+    {
+        using var connection = database.Open();
+
+        using var count = connection.CreateCommand();
+        count.CommandText = """
+            SELECT COUNT(*) FROM notes
+            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+            """;
+        count.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        count.Parameters.AddWithValue("$dayStart", dayStartUnix);
+        var total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
+                   model, origin_app, note, created_at, updated_at,
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+            FROM notes
+            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+            ORDER BY created_at ASC
+            LIMIT $limit
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$dayStart", dayStartUnix);
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+
+        var items = new List<NoteRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) items.Add(ReadNote(reader));
+        return (items, total);
+    }
+
+    /// <summary>How many new cards today's quota has already consumed.</summary>
+    public int CountFreshSince(Guid userId, long dayStartUnix)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM notes
+            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$dayStart", dayStartUnix);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Writes one grade. Counters move here rather than in the endpoint so the "forgot increments
+    /// lapses" rule cannot drift away from the stage it belongs to.
+    /// </summary>
+    public NoteRecord? SetReview(
+        Guid userId, Guid id, int stage, long dueAt, string grade, long reviewedAt)
+    {
+        var existing = FindById(userId, id);
+        if (existing is null) return null;
+
+        var lapses = existing.Lapses + (grade == "forgot" ? 1 : 0);
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE notes
+            SET stage = $stage, due_at = $dueAt, last_grade = $grade,
+                review_count = review_count + 1, lapses = $lapses,
+                reviewed_at = $reviewedAt, updated_at = $reviewedAt
+            WHERE id = $id AND user_id = $userId
+            """;
+        command.Parameters.AddWithValue("$stage", stage);
+        command.Parameters.AddWithValue("$dueAt", dueAt);
+        command.Parameters.AddWithValue("$grade", grade);
+        command.Parameters.AddWithValue("$lapses", lapses);
+        command.Parameters.AddWithValue("$reviewedAt", reviewedAt);
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.ExecuteNonQuery();
+        return FindById(userId, id);
+    }
+
     private static string Trim(string? text, int max)
     {
         var value = (text ?? string.Empty).Trim();
@@ -209,5 +323,11 @@ public sealed class NoteStore(ServerDatabase database)
         reader.GetString(8),
         reader.GetString(9),
         reader.GetInt64(10),
-        reader.GetInt64(11));
+        reader.GetInt64(11),
+        reader.GetInt32(12),
+        reader.GetInt64(13),
+        reader.GetString(14),
+        reader.GetInt32(15),
+        reader.GetInt32(16),
+        reader.GetInt64(17));
 }

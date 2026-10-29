@@ -56,6 +56,23 @@ public sealed class ServerDatabase
         // leaves production databases on the old shape and the reads below start throwing.
         EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
         EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
+
+        // Review state (design §4.1). All six columns are NOT NULL DEFAULT so an old database
+        // migrates in place: every existing note becomes an ungraded card at stage 0.
+        EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "notes", "due_at", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "notes", "last_grade", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "notes", "review_count", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "notes", "lapses", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "notes", "reviewed_at", "INTEGER NOT NULL DEFAULT 0");
+
+        // The review queue is the only query that scans by due time; the partial index keeps it
+        // small. It is created here rather than in Schema because on an existing database the
+        // notes table only gains due_at in the EnsureColumn calls above.
+        using var index = connection.CreateCommand();
+        index.CommandText =
+            "CREATE INDEX IF NOT EXISTS ix_notes_user_due ON notes(user_id, due_at) WHERE deleted_at IS NULL";
+        index.ExecuteNonQuery();
     }
 
     /// <summary>Adds a column only when the table exists and does not already carry it.</summary>
@@ -180,7 +197,13 @@ public sealed class ServerDatabase
             note        TEXT NOT NULL DEFAULT '',
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL,
-            deleted_at  INTEGER
+            deleted_at  INTEGER,
+            stage       INTEGER NOT NULL DEFAULT 0,
+            due_at      INTEGER NOT NULL DEFAULT 0,
+            last_grade  TEXT NOT NULL DEFAULT '',
+            review_count INTEGER NOT NULL DEFAULT 0,
+            lapses      INTEGER NOT NULL DEFAULT 0,
+            reviewed_at INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE INDEX IF NOT EXISTS ix_notes_user_kind ON notes(user_id, kind, created_at DESC);
