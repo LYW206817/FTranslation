@@ -54,13 +54,21 @@ internal sealed class ImageTranslationCoordinator : IDisposable
     /// </summary>
     public async Task RunAsync()
     {
-        if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0) return;
+        if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+        {
+            WindowsSelectionCapture.Diag("image: ignored, previous run still busy");
+            return;
+        }
         try
         {
             // origin_app 必须在拖框之前读：拖框 overlay 起来后前台就变成了本程序。
             var originApp = ForegroundInfo.ProcessName();
+            WindowsSelectionCapture.Diag("image: pick starting");
 
             var captured = await ScreenRegionPicker.PickAsync(_lifetime.Token);
+            WindowsSelectionCapture.Diag(captured is null
+                ? "image: pick cancelled or produced no region"
+                : $"image: picked {captured.Width}x{captured.Height} at {captured.Left},{captured.Top}, {captured.PngBytes.Length}B");
             if (captured is null) return;
 
             var settings = _settings();
@@ -75,6 +83,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
 
             var image = imageTask.Result;
             var ocr = ocrTask.Result;
+            WindowsSelectionCapture.Diag(
+                $"image: translate ok={image.Succeeded} err={image.Error?.Code}/{image.Error?.Message}; ocr ok={ocr.Succeeded} err={ocr.Error?.Code}/{ocr.Error?.Message}");
 
             if (!image.Succeeded && !ocr.Succeeded)
             {
@@ -109,6 +119,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         }
         catch (Exception ex)
         {
+            // 异常原来只走托盘气泡，气泡不弹时用户和排查者都看不到任何线索。
+            WindowsSelectionCapture.Diag($"image: failed {ex.GetType().Name}: {ex.Message}");
             _reportError(ex.Message);
         }
         finally

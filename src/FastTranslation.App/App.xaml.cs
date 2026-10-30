@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Windows;
@@ -202,17 +202,20 @@ public partial class App : Application, IResultPresenter
 
         _imageWindow = new ImageResultWindow();
         _imageWindow.SaveRequested += text => SaveScreenshotText(text);
+        // 协调器在 Task.WhenAll(...).ConfigureAwait(false) 之后继续在线程池线程上跑，
+        // 直接 ShowResult 会抛「调用线程无法访问此对象」然后被 catch 吞成托盘气泡，
+        // 用户看到的就是「截图翻译没反应」。WPF 的边界只在这里，所以在这里切回 UI 线程。
         _imageCoordinator = new ImageTranslationCoordinator(
             _imageProvider,
             _ocrProvider,
             _translation,
             () => _settings,
-            result => _imageWindow?.ShowResult(
+            result => OnUiThread(() => _imageWindow?.ShowResult(
                 result.JpegBytes,
                 CaptureCaption(result),
                 result.SourceText.Length > 0 ? result.SourceText : null,
-                showActions: result.JpegBytes is not null),
-            message => _tray?.ShowBalloon("截图翻译失败", message));
+                showActions: result.JpegBytes is not null)),
+            message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
 
         // 第二个热键服务：HotkeyService 每个实例有自己的 message-only 窗口，
@@ -574,6 +577,28 @@ public partial class App : Application, IResultPresenter
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// 把回调切回 UI 线程再执行。后台流程（截图翻译协调器、异步翻译）都不该直接摸 WPF 控件：
+    /// 跨线程访问抛的 InvalidOperationException 会被上层的 catch 吞掉，最后只表现为「界面没反应」。
+    /// </summary>
+    private void OnUiThread(Action action)
+    {
+        try
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            _ = Dispatcher.BeginInvoke(action);
+        }
+        catch (Exception ex)
+        {
+            Trace($"ui dispatch failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     private static void Trace(string message)
     {
         try
@@ -671,6 +696,8 @@ public partial class App : Application, IResultPresenter
         var hasKey = false;
         try { hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName)); }
         catch { }
+        FastTranslation.Platform.Windows.WindowsSelectionCapture.Diag(
+            $"screenshot: requested, hasKey={hasKey}, coordinator={(_imageCoordinator is not null ? "set" : "NULL")}");
         if (!hasKey)
         {
             // 和主窗口「配置 Key」按钮同一条既有路径：打开设置页去填，不另造提示框
@@ -702,82 +729,105 @@ public partial class App : Application, IResultPresenter
     /// 走开发者网关的那一次翻译。返回 null 表示"这次别用网关"（没登录 / 没有令牌），
     /// 组合 provider 会安静地改用用户自己的 Key，用户不需要知道网关存在。
     /// </summary>
-    private async Task<TranslationResult?> GatewayTranslateAsync(
+    private Task<TranslationResult?> GatewayTranslateAsync(
         TranslationRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (_account is not { IsSignedIn: true } account) return null;
-        if (Environment.TickCount64 < _gatewayDownUntil) return null;
-        var token = await account.GetAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+        CancellationToken cancellationToken) => GuardGatewayAsync("translate", async () =>
+        {
+            if (_account is not { IsSignedIn: true } account) return null;
+            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            var token = await account.GetAccessTokenAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
-        // 每次现造一个 provider：令牌会换，而 Authorization 是请求头，只能接着当前令牌拼。
-        // HttpClient 传进去（_ownsHttp = false），Dispose 不会把它一起关掉。
-        using var provider = new QwenMtProvider(
-            () => token,
-            new QwenMtOptions
-            {
-                BaseUrl = GatewayBaseUrl(),
-                TimeoutSeconds = 45,
-                // 设备指纹让服务端把日额度记到真正发请求的这台设备上
-                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
-            },
-            _gatewayHttp);
-        var gatewayResult = await provider.TranslateAsync(request, cancellationToken);
-        NoteGatewayFailure(gatewayResult.Error);
-        return gatewayResult;
-    }
+            // 每次现造一个 provider：令牌会换，而 Authorization 是请求头，只能接着当前令牌拼。
+            // HttpClient 传进去（_ownsHttp = false），Dispose 不会把它一起关掉。
+            using var provider = new QwenMtProvider(
+                () => token,
+                new QwenMtOptions
+                {
+                    BaseUrl = GatewayBaseUrl(),
+                    TimeoutSeconds = 45,
+                    // 设备指纹让服务端把日额度记到真正发请求的这台设备上
+                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                },
+                _gatewayHttp);
+            var gatewayResult = await provider.TranslateAsync(request, cancellationToken);
+            NoteGatewayFailure(gatewayResult.Error);
+            return gatewayResult;
+        });
 
     /// <summary>截图翻译走网关的 /v1/image；返回 null 表示这次别用网关（见文本链路的说明）。</summary>
-    private async Task<ImageTranslationResult?> GatewayTranslateImageAsync(
+    private Task<ImageTranslationResult?> GatewayTranslateImageAsync(
         ImageTranslationRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (_account is not { IsSignedIn: true } account) return null;
-        if (Environment.TickCount64 < _gatewayDownUntil) return null;
-        var token = await account.GetAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+        CancellationToken cancellationToken) => GuardGatewayAsync("image", async () =>
+        {
+            if (_account is not { IsSignedIn: true } account) return null;
+            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            var token = await account.GetAccessTokenAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
-        using var provider = new QwenMtImageTranslator(
-            () => token,
-            new QwenMtImageOptions
-            {
-                // 图片端点是一整条 URL，网关不拼后缀，所以这里直接给到 /v1/image
-                BaseUrl = GatewayBaseUrl() + "/image",
-                TimeoutSeconds = 60,
-                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
-            },
-            _gatewayHttp);
-        var imageResult = await provider.TranslateImageAsync(request, cancellationToken);
-        NoteGatewayFailure(imageResult.Error);
-        return imageResult;
-    }
+            using var provider = new QwenMtImageTranslator(
+                () => token,
+                new QwenMtImageOptions
+                {
+                    // 图片端点是一整条 URL，网关不拼后缀，所以这里直接给到 /v1/image
+                    BaseUrl = GatewayBaseUrl() + "/image",
+                    TimeoutSeconds = 60,
+                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                },
+                _gatewayHttp);
+            var imageResult = await provider.TranslateImageAsync(request, cancellationToken);
+            NoteGatewayFailure(imageResult.Error);
+            return imageResult;
+        });
 
     /// <summary>
     /// OCR 走网关时复用同一套令牌与设备头，只是路径换成 /v1/ocr。
     /// 返回 null（没登录 / 拿不到令牌）让 <see cref="GatewayOcrProvider"/> 回落到用户自己的 Key。
     /// </summary>
-    private async Task<ImageOcrResult?> GatewayRecognizeImageAsync(
+    private Task<ImageOcrResult?> GatewayRecognizeImageAsync(
         ImageOcrRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (_account is not { IsSignedIn: true } account) return null;
-        if (Environment.TickCount64 < _gatewayDownUntil) return null;
-        var token = await account.GetAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
+        CancellationToken cancellationToken) => GuardGatewayAsync("ocr", async () =>
+        {
+            if (_account is not { IsSignedIn: true } account) return null;
+            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            var token = await account.GetAccessTokenAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
-        using var client = new QwenOcrClient(
-            () => token,
-            new QwenOcrOptions
-            {
-                BaseUrl = GatewayBaseUrl() + "/ocr",
-                TimeoutSeconds = 60,
-                ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
-            },
-            _gatewayHttp);
-        var ocrResult = await client.RecognizeAsync(request, cancellationToken);
-        NoteGatewayFailure(ocrResult.Error);
-        return ocrResult;
+            using var client = new QwenOcrClient(
+                () => token,
+                new QwenOcrOptions
+                {
+                    BaseUrl = GatewayBaseUrl() + "/ocr",
+                    TimeoutSeconds = 60,
+                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                },
+                _gatewayHttp);
+            var ocrResult = await client.RecognizeAsync(request, cancellationToken);
+            NoteGatewayFailure(ocrResult.Error);
+            return ocrResult;
+        });
+
+    /// <summary>
+    /// 三条网关链路的兜底。任何没预料到的异常都不该让整次翻译 / 截图翻译失败：
+    /// 记一行诊断，返回 null，让组合 provider 安静地回落到用户自己的 Key。
+    /// 取消要照原样抛上去——那是调用方主动结束，不是网关的错。
+    /// </summary>
+    private async Task<T?> GuardGatewayAsync<T>(string stage, Func<Task<T?>> body) where T : class
+    {
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            WindowsSelectionCapture.Diag($"gateway {stage} threw {ex.GetType().Name}: {ex.Message}");
+            Trace($"gateway {stage} threw {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>译图窗标题栏：来源进程 + 文本链路的异常（有才拼）。</summary>

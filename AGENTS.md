@@ -103,6 +103,8 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 
 ### C# 代码规范
 
+首先就是代码实现一定要简洁,比如一个逻辑写了200行，但是能写50行就有同样的效果，那就重写，务必保证代码精简。
+
 - 语言与工程:`LangVersion preview` / `Nullable` / `TreatWarningsAsErrors` 已开。依赖约束见下节「代码约定」,新能力先写最小实现 + 单测。
 - 类型:类默认 `sealed`(仓库 82 处),只有明确要继承的才不封;不可变数据、API 契约、事件载荷用 `record` / `record struct`;小工具类型用 `internal static`。
 - 命名:类型 / 方法 / 属性 PascalCase;私有实例字段 `_camelCase`;`static readonly` 与常量 PascalCase;局部变量与参数 camelCase;异步方法以 `Async` 结尾;布尔属性用 `Is` / `Has` / `Can` 开头;界面事件处理器 `Xxx_Click`;XAML `x:Name` 用 PascalCase。

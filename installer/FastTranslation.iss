@@ -4,7 +4,7 @@
 ; 按用户安装（不弹 UAC），这样自动更新永远不会弹同意框。
 
 #define AppName "Fast Translation"
-#define AppVersion "1.3.6"
+#define AppVersion "1.3.7"
 #define AppPublisher "FastTranslation Project"
 #define AppExeName "FastTranslation.exe"
 

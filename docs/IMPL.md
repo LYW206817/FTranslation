@@ -1411,3 +1411,42 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 **风险**
 - 选中实色只在评分请求期间显示，本地服务端响应极快时可能只是一瞬；这是请求状态反馈，不是持久标记。
 - 深色主题的四档实色对比度依赖 `ThemePalette` 现有颜色，本轮未额外引入高饱和色；低亮度显示器上建议以文字为辅，不只靠颜色判断。
+
+## v62 修复:截图翻译恢复可用，OCR 认对响应形态 ✅
+
+**背景**
+- v61 之后用户报「截图翻译失效」：热键和托盘菜单都点了，但不弹译图窗。排查发现不是「点了没反应」，而是图片翻译已经成功、窗口却在最后一步抛异常被吞掉；同时 OCR 一直拿不到原文，译图窗底部的「识别到的原文」是空的，导致「保存到单词本」拿不到可编辑的文本。
+
+**两个真 bug**
+
+1. **跨线程访问 WPF 对象**（这是「失效」的直接原因）
+   - `ImageTranslationCoordinator.RunAsync` 在 `await Task.WhenAll(imageTask, ocrTask).ConfigureAwait(false)` 之后继续在线程池线程上执行，末尾 `_present(...)` 直接调用 `ImageResultWindow.ShowResult`，抛 `InvalidOperationException: 调用线程无法访问此对象，因为另一个线程拥有该对象`。
+   - 该异常被 `catch (Exception ex)` 接住，只变成一句托盘气泡，气泡在别的窗口下又容易被忽略，所以用户体感是「完全没反应」。
+   - 修法：在 `App` 里给 `present` / `reportError` 两个回调用新加的 `OnUiThread` 包一层（`Dispatcher.CheckAccess()` 为真直接执行，否则 `BeginInvoke`）。协调器本身继续保持不碰 WPF——它的注释和单测都依赖这个边界，所以没有采用「去掉 `ConfigureAwait(false)`」这种把线程模型退回去的做法。
+
+2. **OCR 请求体字段名错，且成功响应形态没认对**
+   - 请求体把图片放在 `content[0].image_url`，那是 OpenAI 兼容格式。DashScope 的多模态端点要的是 `content[0].image`，用 `image_url` 会被直接拒：
+     `400 InternalError.Algo.InvalidParameter: The item of \`content\` should be a message of a certain modal`。
+   - 修好请求之后又暴露第二层：`qwen-vl-ocr` 的成功响应里，文本在 `content[0].ocr_result.processed_text`，不是当初按普通 VL 模型假设的 `content[0].text`。只认 `text` 会让每次 OCR 都判成「图里没有识别到文字」。
+   - 修法：`QwenOcrClient.BuildPayload` 改用 `image`；`TryReadText` 先读 `ocr_result.processed_text`，空白则回落 `text`，纯字符串 `content` 仍兼容。
+
+**改动文件**
+- `src/FastTranslation.App/App.xaml.cs`：新增 `OnUiThread(Action)`；截图翻译协调器的 `present` / `reportError` 回调改为经它调度；三条网关链路（`GatewayTranslateAsync` / `GatewayTranslateImageAsync` / `GatewayRecognizeImageAsync`）统一走新增的 `GuardGatewayAsync`，未预料的异常记诊断后返回 null 回落到用户自己的 Key，取消照原样抛。
+- `src/FastTranslation.App/ImageTranslationCoordinator.cs`：流程各节点补 `WindowsSelectionCapture.Diag` 诊断行（busy 冲突、选图前后、翻译/OCR 结果、异常类型）。
+- `src/FastTranslation.Providers.QwenMt/QwenOcrClient.cs`：请求字段改 `image`；解析兼容 `ocr_result.processed_text`。
+- `src/FastTranslation.Providers.QwenMt/QwenMtImageTranslator.cs`、`QwenOcrClient.cs` 构造：复用外部传入的 `HttpClient` 时不再设 `Timeout`（设了会抛 `InvalidOperationException`，让整条链路静默失败），超时只给自建 client。
+- `tests/FastTranslation.Providers.QwenMt.Tests/QwenOcrClientTests.cs`：新增/加强三个断言——`image` 必须是字段名且不得出现 `image_url`、`ocr_result.processed_text` 必须能读出、空白 `ocr_result` 要跳过并回落 `text`。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release`：0 警告 0 错误。
+- `dotnet test`：**578 全绿**（Core 204 / Platform.Windows 87 / Providers.QwenMt 94 / Server 193）。
+- 真实链路实测（`FT_DEBUG=1` 启动 + UIA 点火 + SendInput 拖框 700,450→1600,950）：
+  - 修复前日志：`image: translate ok=True err=/; ocr ok=False err=InvalidResponse/...(400)...` 紧跟 `image: failed InvalidOperationException: 调用线程无法访问此对象`，窗口不出现。
+  - 修复后日志：`image: translate ok=True err=/; ocr ok=True err=/`，译图窗正常弹出且底部带识别原文。
+  - 截图：`assets/qa/v62-image-result.png`（1628×1125，译图 + 「复制图片 / 另存为… / 保存到单词本 / 关闭」+ 底部「识别到的原文（可修改后保存）」里是 `自动(中英互译) / qwen-mt-flash / 输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。`）。
+- 取样位置：有没有恢复看窗口是否出现（`hwnd` 变化 + 截图里的译图区）；OCR 是否修好只看底部「识别到的原文」输入框是否有字。
+
+**风险**
+- 「保存到单词本」按钮本身未在本机跑通：它走服务端 `SaveNoteAsync`，而本机 `AccountBaseUrl=http://127.0.0.1:5199` 的网关当前没有启动，点击只会得到回落提示。该链路属既有功能，本轮没有改它的逻辑，只保证它能拿到要保存的文本。
+- 诊断日志只有 `FT_DEBUG=1` 时写 `%TEMP%\ft-debug.log`，正式包里不会产生任何日志文件。
+- `OnUiThread` 用 `BeginInvoke` 不等待，所以「窗口已显示」与协调器 `finally` 置 `_busy=0` 之间存在极短的时间窗；这两件事互不依赖，没有做额外同步。
