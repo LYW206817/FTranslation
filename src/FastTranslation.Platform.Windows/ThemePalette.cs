@@ -27,7 +27,28 @@ public sealed record ThemeColors(
     string TextSecondary,
     string TextMuted,
     string Danger,
-    string Notice);
+    string Notice,
+    // v60：四档自评各有一套颜色，靠色相区分「记住 / 熟悉 / 模糊 / 忘记」，
+    // 而不是只靠深浅。Fill 是按钮底色，Border 是描边，Fg 是文字。
+    string GradeKnown,
+    string GradeKnownFill,
+    string GradeKnownBorder,
+    string GradeFamiliar,
+    string GradeFamiliarFill,
+    string GradeFamiliarBorder,
+    string GradeFuzzy,
+    string GradeFuzzyFill,
+    string GradeFuzzyBorder,
+    string GradeForgot,
+    string GradeForgotFill,
+    string GradeForgotBorder,
+    // 页面底色：左上「珠光白」到右下「雾蓝」。两个端点分别给出，渐变由 ThemeBridge 组装。
+    string PageFrom,
+    string PageTo,
+    string SidebarFrom,
+    string SidebarTo,
+    // 悬停抬起时那层很淡的投影（#AARRGGBB）
+    string Shadow);
 
 /// <summary>
 /// 浅色/深色调色板，以及启动时决定用哪一套。
@@ -57,7 +78,24 @@ public static class ThemePalette
         TextSecondary: "#5C6B82",
         TextMuted: "#8B97A9",
         Danger: "#DC2626",
-        Notice: "#C2410C");
+        Notice: "#C2410C",
+        GradeKnown: "#0E7C66",
+        GradeKnownFill: "#E7F5F0",
+        GradeKnownBorder: "#B9E2D6",
+        GradeFamiliar: "#35648F",
+        GradeFamiliarFill: "#E9F0F8",
+        GradeFamiliarBorder: "#C3D7EA",
+        GradeFuzzy: "#A9611A",
+        GradeFuzzyFill: "#FBF0E0",
+        GradeFuzzyBorder: "#EFD8B4",
+        GradeForgot: "#A9453B",
+        GradeForgotFill: "#FAEAE7",
+        GradeForgotBorder: "#EDCBC4",
+        PageFrom: "#FDFEFF",
+        PageTo: "#E7EEF9",
+        SidebarFrom: "#FAFCFF",
+        SidebarTo: "#F0F5FC",
+        Shadow: "#1F1B2536");
 
     public static ThemeColors Dark { get; } = new(
         Brand: "#4A82FF",
@@ -76,7 +114,24 @@ public static class ThemePalette
         TextSecondary: "#A3AEBF",
         TextMuted: "#7C8798",
         Danger: "#FF6B6B",
-        Notice: "#FF9A5C");
+        Notice: "#FF9A5C",
+        GradeKnown: "#56CFAF",
+        GradeKnownFill: "#123029",
+        GradeKnownBorder: "#23564A",
+        GradeFamiliar: "#7FB2DC",
+        GradeFamiliarFill: "#172837",
+        GradeFamiliarBorder: "#27445E",
+        GradeFuzzy: "#E8B26A",
+        GradeFuzzyFill: "#2E2417",
+        GradeFuzzyBorder: "#4E3D22",
+        GradeForgot: "#E38F84",
+        GradeForgotFill: "#2F1F1D",
+        GradeForgotBorder: "#54332E",
+        PageFrom: "#121620",
+        PageTo: "#1B2431",
+        SidebarFrom: "#171C25",
+        SidebarTo: "#1B212B",
+        Shadow: "#99000000");
 
     /// <summary>从此刻起创建的界面所使用的调色板。</summary>
     public static AppTheme Current { get; private set; } = AppTheme.Light;
