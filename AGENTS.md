@@ -128,27 +128,29 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 - [ ] 核心逻辑与本次修 bug 的位置都有「为什么」注释
 - [ ] `dotnet build` 0 警告 0 错误,`dotnet test` 全绿
 
-### 功能完成后自测启动
+### 改完代码就重启应用交付
 
-用户要求:每完成一个功能,直接启动应用自己走一遍,不要只跑测试就说「完成」。纯注释 / 纯文档 / 只改发版脚本的改动可以跳过。
+用户要求:每次改完代码、验证通过后,**把应用重新启动起来留在那里给用户直接用**,方便他自己点、自己调试、自己发现问题。交付结束时不能留下「代码改了但还在跑旧版本」的状态。
 
 ```powershell
-# 1) 先构建(测试通过后再启动,免得拉起旧二进制)
+# 1) 先构建并跑测试(免得拉起跑不起来的版本)
 dotnet build FastTranslation.slnx -c Release
+dotnet test
 
-# 2) 单实例互斥锁叫 FastTranslation.SingleInstance:不关掉旧进程,新实例会直接退出,你验证的还是旧版本
+# 2) 单实例互斥锁叫 FastTranslation.SingleInstance:不关掉旧进程,新实例会直接退出,用户看到的仍是旧版本
 Get-Process FastTranslation -ErrorAction SilentlyContinue | Stop-Process -Force
 
-# 3) 启动刚构建的桌面端(托盘程序:窗口默认收在托盘,从托盘菜单打开主界面)
+# 3) 启动刚构建的桌面端,并**留着不关**(托盘程序:窗口默认收在托盘,从托盘菜单打开主界面)
 Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslation.exe'
 
-# 服务端改动则后台起服务;Development 下缺 SigningKey 会用随机 key
-# dotnet run --project server/FastTranslation.Server
+# 服务端改动则后台起服务并留着;Development 下缺 SigningKey 会用随机 key
+# Start-Process -FilePath 'dotnet' -ArgumentList 'run','--project','server/FastTranslation.Server'
 ```
 
-- 启动后至少确认:进程 5 秒后仍存活、主窗口能打开、与本次改动相关的路径能走通;把启动命令和结果(截图或日志)写进验证记录。
-- 验证用 Release 构建产物,不要用安装目录里上一版的 exe;只有验证安装包/升级链路时才用安装目录的。
-- 验证完把进程关掉再跑打包或安装,避免文件占用导致构建/安装失败。
+- 收尾前确认进程确实活着(启动 5 秒后仍存活、主窗口能打开),再在回复里告诉用户「已重启,当前运行的是这次构建」。
+- 启动的是 Release 构建产物;只有验证安装包 / 升级链路时才用安装目录里的 exe。
+- 例外:正在跑打包 / 安装 / 更新验证时不要留着应用(文件占用会让构建或安装失败);这类操作做完后再把它启动回来。
+- 纯注释 / 纯文档 / 只改发版脚本的改动可以跳过这一步。
 
 ### 给我的注释回报
 
@@ -193,7 +195,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 6. 变更已提交并 `git push origin master:main`;需要发布时按 `docs/playbooks/release-and-installer.md` 走完,并核对 `state: uploaded` 与 digest。
 7. 临时文件(令牌、探针产物、生成的 json)清理干净,`git status --short` 里没有意外文件。
 8. 回复末尾按「给我的注释回报」附一段:本次新增的核心逻辑/踩坑注释,以及没做到规范的地方(明说原因)。
-9. 完成一个功能后按「功能完成后自测启动」把应用真正拉起来走一遍(先杀掉旧进程,避免单实例互斥锁让新实例直接退出),启动结果写进验证记录;纯注释 / 纯文档 / 只改发版脚本的改动可跳过。
+9. 改完代码后按「改完代码就重启应用交付」重建并重启应用,让它保持运行交给用户调试;启动结果(进程存活 / 窗口标题)写进验证记录。纯注释 / 纯文档 / 只改发版脚本的改动可跳过。
 
 ## 文档输出规范
 
