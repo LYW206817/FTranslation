@@ -215,7 +215,9 @@ public partial class App : Application, IResultPresenter
                 CaptureCaption(result),
                 result.SourceText.Length > 0 ? result.SourceText : null,
                 showActions: result.JpegBytes is not null)),
-            message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)));
+            message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)),
+            // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
+            () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
 
         // 第二个热键服务：HotkeyService 每个实例有自己的 message-only 窗口，
@@ -538,6 +540,18 @@ public partial class App : Application, IResultPresenter
                         true);
                 }
                 catch (Exception ex) { Trace($"image-result: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "image-loading")
+        {
+            // FT_UITEST=image-loading -> 只开等待态，用来核对「转圈 + 正在快马加鞭翻译~」
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try { _imageWindow?.ShowLoading("截图翻译 · 正在翻译"); }
+                catch (Exception ex) { Trace($"image-loading: {ex}"); }
             };
             uiTimer.Start();
         }

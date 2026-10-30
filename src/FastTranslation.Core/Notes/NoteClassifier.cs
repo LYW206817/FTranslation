@@ -11,6 +11,13 @@ public static class NoteClassifier
     public const int MaxPhraseWords = 6;
     public const int MaxPhraseLength = 80;
 
+    // 中文没有空格，上面那条「不含空白且不超长就是单词」的规则会把整句话判成单词
+    //（v63：用户保存「她安静地离开了房间」被放进单词本）。改成按汉字字数分档：
+    // 1–3 字是词（苹果、图书馆），4–8 字是短语/成语（画蛇添足、无风不起浪），
+    // 再长的一律当句子——中文句子常常十来个字且不带标点（「她安静地离开了房间」）。
+    public const int MaxCjkWordChars = 3;
+    public const int MaxCjkPhraseChars = 8;
+
     public static NoteKind Classify(string? source)
     {
         var text = (source ?? string.Empty).Trim();
@@ -26,7 +33,13 @@ public static class NoteClassifier
             return NoteKind.Sentence;
         }
 
-        if (IsSingleCjkCharacter(text) || (!text.Any(char.IsWhiteSpace) && text.Length <= MaxWordLength))
+        var cjkCount = CountCjk(text);
+        if (cjkCount > 0)
+        {
+            return ClassifyCjk(text, cjkCount);
+        }
+
+        if (!text.Any(char.IsWhiteSpace) && text.Length <= MaxWordLength)
         {
             return NoteKind.Word;
         }
@@ -34,8 +47,35 @@ public static class NoteClassifier
         return CountWords(text) <= MaxPhraseWords ? NoteKind.Phrase : NoteKind.Sentence;
     }
 
-    private static bool IsSingleCjkCharacter(string text) =>
-        text.Length == 1 && text[0] >= 0x4E00 && text[0] <= 0x9FFF;
+    private static NoteKind ClassifyCjk(string text, int cjkCount)
+    {
+        // 带逗号/分号的是一串小句，不论长短都不是一个词条
+        if (ContainsClauseSeparator(text))
+        {
+            return NoteKind.Sentence;
+        }
+
+        if (cjkCount <= MaxCjkWordChars)
+        {
+            // 「API 失败」这种中英混排虽然只有两个汉字，但它是两段并列的东西，不是单个词
+            return text.Any(char.IsWhiteSpace) ? NoteKind.Phrase : NoteKind.Word;
+        }
+
+        return cjkCount <= MaxCjkPhraseChars ? NoteKind.Phrase : NoteKind.Sentence;
+    }
+
+    private static int CountCjk(string text)
+    {
+        var count = 0;
+        foreach (var c in text)
+        {
+            if (c >= '\u4E00' && c <= '\u9FFF') count++;
+        }
+        return count;
+    }
+
+    private static bool ContainsClauseSeparator(string text) =>
+        text.Any(c => c is '\uFF0C' or ',' or '\u3001' or '\uFF1B' or ';' or '\uFF1A' or ':');
 
     private static bool EndsWithTerminalPunctuation(string text) =>
         text[^1] is '.' or '!' or '?' or '\u3002' or '\uFF01' or '\uFF1F' or '\u2026';

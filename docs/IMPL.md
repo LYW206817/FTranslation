@@ -1458,3 +1458,37 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - `version.json` 已更新（blob `17f064c25dd39df6c3c58ac2abb5c52549a65ea4` 上 PUT）：version 1.3.7 / url 指向通道资产 / sha256 小写 / size 46980711 / releasePage 指主仓库 tag。
 - 清单四源轮询：Pages 在 13:36:07 已刷新为 1.3.7（GitHub Pages 有约 600 秒缓存，第一次 13:35:18 还是 1.2.2），gh-proxy raw 与 ghfast.top raw 立即就是 1.3.7。
 - 外力事实：`github.com` 直连本次仍不可用（`Connection was reset`），`gh-proxy.com` 前缀 200 可取；下载候选顺位里的代理优先策略照常生效。
+
+## v63 分类判据按字数分档、截图翻译等待态、译图窗固定尺寸可拉伸
+
+用户三条诉求：分类「统一当成单词」；截图翻译等待期间没有任何提示；译图窗跟着图片大小变，不能拉伸。
+
+### 1. 中文句子被判成单词（`NoteClassifier`）
+
+- 根因：`src/FastTranslation.Core/Notes/NoteClassifier.cs:29` 原来的单词判据是 `IsSingleCjkCharacter(text) || (!text.Any(char.IsWhiteSpace) && text.Length <= MaxWordLength)`。中文句子没有空格、又经常不带句末标点，「她安静地离开了房间」9 个字符直接命中 `Word`。英文侧因为按空白切词，一直是对的——所以问题只出现在中文，且不是三条保存路径传错值（`App.xaml.cs` 两处与 `Pages/MainPage.xaml.cs:157` 都正常）。
+- 改法：新增 `MaxCjkWordChars = 3` / `MaxCjkPhraseChars = 8`，先 `CountCjk`（逐 char 判 `0x4E00–0x9FFF`）；有汉字就走 `ClassifyCjk`：含分句标点 `，,、；;：:` → 语句；汉字 ≤3 → 单词，但带空白的中英混排（「API 失败」）判短语；4–8 → 短语；>8 → 语句。纯 ASCII 分支保持原样。
+- 为什么是 8：初版定 12，「她安静地离开了房间」（9 字）落进短语，与「一句话」的直觉不符，收紧到 8。分句标点单独先判，是因为中文长句常靠逗号断开，字数不够但结构上已经是句子。
+- 服务端 `server/FastTranslation.Server/Domain/NoteClassifier.cs` 是逐字镜像（`NotesEndpoints.cs:57` 优先采信客户端传入的 kind），两边必须同改，否则多端保存会出现不同归类。
+- 测试：`tests/FastTranslation.Core.Tests/NoteClassifierTests.cs` 新增 `Chinese_text_is_judged_by_character_count`、`A_chinese_sentence_without_punctuation_is_not_a_word`、`A_mixed_sentence_still_uses_the_chinese_buckets`，分类器用例 24 条全绿。
+
+### 2. 截图翻译等待态（转圈 + 「正在快马加鞭翻译~」）
+
+- 框选结束后要等三段网络往返（译图 + OCR 并行，再做一次文本翻译），此前这段时间界面上什么都没有。`ImageTranslationCoordinator` 构造新增 `Action waiting`，在 `PickAsync` 返回、确认没被取消之后立刻回调；`App.xaml.cs` 把它接到 `_imageWindow.ShowLoading(...)`。
+- 结果窗新增 `ShowLoading(string caption)`：中间是 18×18 的品牌蓝圆环 + 「正在快马加鞭翻译~」，按钮与文本区全部隐藏。图片行与等待面板叠在同一个 `Grid` 里互换，出图时窗口不再先缩后张。
+- 踩坑：圆环原来抄的是取词浮层的 `StrokeDashArray = {34, 10}`，但 WPF 的虚线单位是线宽的倍数（`StrokeThickness = 2`），即 68 虚线 + 20 空隙，而 18px 圆的周长只有 56——整圈被画满，旋转起来像素几乎不变（连拍四帧只差 4 个像素）。改成 `{6, 2.5}` 后四帧差约 9984 个像素，动画才真的看得见。
+- `Hide()` 里先 `StopSpinner()`：`RepeatBehavior.Forever` 的动画在窗口隐藏后仍占渲染线程。
+
+### 3. 译图窗固定尺寸 + 可拉伸（`ImageResultWindow`）
+
+- 原来是 `SizeToContent.WidthAndHeight` + 按工作区 70% 算缩放，图片一大窗口就跟着大。改为 `SizeToContent.Manual`，默认 **780×620 DIP**（工作区 9 折以内收窄），图片在 `Stretch = Uniform` 的格子里自适应，窗口尺寸不再随图片变化。
+- 拉伸：`AddResizeGrips` 在右边、下边、右下角各放一个透明 `Thumb`（`SizeWE` / `SizeNS` / `SizeNWSE`），右下角另画两道斜杠当把手。`DragDelta` 走 `ResizeBy`，下限取 `MinWidth = 520` / `MinHeight = 360`。
+- 抓手势：根 Border 的 `MouseLeftButtonDown` 原本直接 `DragMove()`，加了 `Thumb` 之后拖手柄会变成移动窗口。现在先 `FindAncestor<Thumb>` 判断，命中手柄就 return。
+- `using ShapesPath = System.Windows.Shapes.Path` 别名：这个文件里 `Path` 已经被 `System.IO.Path` 占用（`Path.GetFileName` 等），不别名会编译不过。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误；`dotnet test` Core 214 + Platform.Windows 87 + Providers.QwenMt 94 + Server 193 全绿。
+- 界面证据（175% 缩放，截图含 24px 桌面边）：`assets/qa/ui-v63/image-loading.png` 与 `image-result.png` 都是 1389×1109，折算 (1389-24)/1.75 = **780.0**、(1109-24)/1.75 = **620.0** DIP，与图片尺寸无关；等待态品牌蓝像素 230 个（bbox 679,545–709,575），UIA 读到「正在快马加鞭翻译~」；结果态右下角 `TextMuted` 像素 98 个，相对窗口右下角偏移 (1,1)。
+- 转圈动效：`assets/qa/ui-v63/spinlong/spin-0..3.png` 连拍四帧，差分 9984 / 9989 / 9990 像素。
+- 复现脚本：`tools/qa/shot-image-window.ps1`（UIA 找窗 + `CopyFromScreen`，跑 `FT_UITEST=image-loading` / `image-result` 两态）；`publish/` 下的 `spin-two.ps1` 与 `px-v63*.py` 是本次的临时探针，不进仓库。
+- 残留风险：中文分档（3 / 8 字）是经验阈值，成语与短句边界（如 8 字的完整句子）仍会判成短语；用户要求「不要自作主张发版」，版本号本次未动。

@@ -28,6 +28,7 @@ internal sealed class ImageTranslationCoordinator : IDisposable
     private readonly Func<AppSettings> _settings;
     private readonly Action<ImageCaptureResult> _present;
     private readonly Action<string> _reportError;
+    private readonly Action _waiting;
     private readonly CancellationTokenSource _lifetime = new();
 
     private int _busy;
@@ -38,7 +39,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         TranslationService translation,
         Func<AppSettings> settings,
         Action<ImageCaptureResult> present,
-        Action<string> reportError)
+        Action<string> reportError,
+        Action waiting)
     {
         _provider = provider;
         _ocr = ocr;
@@ -46,6 +48,7 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         _settings = settings;
         _present = present;
         _reportError = reportError;
+        _waiting = waiting;
     }
 
     /// <summary>
@@ -70,6 +73,10 @@ internal sealed class ImageTranslationCoordinator : IDisposable
                 ? "image: pick cancelled or produced no region"
                 : $"image: picked {captured.Width}x{captured.Height} at {captured.Left},{captured.Top}, {captured.PngBytes.Length}B");
             if (captured is null) return;
+
+            // 框选结束后立刻给个等待态：图片翻译 + OCR + 文字翻译三段串起来要好几秒，
+            // 期间原来屏幕上什么都没有，用户会以为程序卡死。
+            _waiting();
 
             var settings = _settings();
             var (source, target) = ImageTranslationPolicy.Resolve(settings.SourceLanguage, settings.TargetLanguage);
