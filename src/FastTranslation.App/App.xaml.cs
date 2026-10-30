@@ -43,11 +43,13 @@ public partial class App : Application, IResultPresenter
     private NotesApiClient? _notesClient;
     private HttpClient? _gatewayHttp;
 
-    // 网关连不上时先记一段时间，别再让每次翻译都白等一次连接（在带过滤驱动/代理的机器上，
-    // 连一个没人监听的本地端口要 2 秒才拿到 RST，这两个 2 秒全算在用户第一次翻译的等待里）
-    private long _gatewayDownUntil;
+    // v67: 网关能不能用只由后台探测决定（见 GatewayHealth）。原来的做法是「60 秒内别碰网关」，
+    // 窗口一过，下一次翻译就当场去连一个没人监听的端口——在带过滤驱动/代理的机器上这类连接要
+    // 两秒才拿到 RST，而它发生在 provider 计时之外，用户看到「100 多毫秒」却实际等了三秒。
+    private readonly GatewayHealth _gatewayHealth = new();
 
-    private const long GatewayDownWindowMs = 60_000;
+    /// <summary>后台探测循环的取消源；退出时取消，别让探测把进程拖住。</summary>
+    private readonly CancellationTokenSource _gatewayProbeCts = new();
 
     private CapturedSelection _lastSelection = CapturedSelection.Empty(default);
     private TranslationResult? _lastResult;
@@ -280,7 +282,7 @@ public partial class App : Application, IResultPresenter
         // 在后台恢复已存储的会话：网络不通不能拖慢启动，
         // 屏幕上也没有任何东西会等它
         _ = RestoreAccountAsync();
-        _ = Task.Run(ProbeGatewayAsync);
+        _ = Task.Run(RunGatewayProbeLoopAsync);
 
         // 更新器放最后：它只调度一个定时器，而在 UI 存在之前跑的检查，
         // 弹窗会无处可放
@@ -491,7 +493,12 @@ public partial class App : Application, IResultPresenter
             // FT_UITEST=translate -> 连续跑三次真实链路（先 ShowLoading 再 TranslateAsync 再
             // ShowCard，和生产路径同序），每次用不同文本绕开 LRU 缓存。第一次与后面几次的
             // 差值就是启动代价（TLS 握手、JIT、JSON 首次序列化、DPAPI 解密都算在里面）。
-            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            // FT_UITEST_DELAY 可以把这次测量推迟到任意毫秒之后，用来复现「空闲一段时间后再翻译」
+            // 的场景（网关可用性判断只有在隔了几十秒之后才会走错）。
+            var delayMs = int.TryParse(Environment.GetEnvironmentVariable("FT_UITEST_DELAY"), out var parsedDelay) && parsedDelay > 0
+                ? parsedDelay
+                : 1800;
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
             uiTimer.Tick += async (_, _) =>
             {
                 uiTimer.Stop();
@@ -798,7 +805,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken) => GuardGatewayAsync("translate", async () =>
         {
             if (_account is not { IsSignedIn: true } account) return null;
-            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            if (!_gatewayHealth.IsUsable) return null;
             var token = await account.GetAccessTokenAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -825,7 +832,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken) => GuardGatewayAsync("image", async () =>
         {
             if (_account is not { IsSignedIn: true } account) return null;
-            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            if (!_gatewayHealth.IsUsable) return null;
             var token = await account.GetAccessTokenAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -853,7 +860,7 @@ public partial class App : Application, IResultPresenter
         CancellationToken cancellationToken) => GuardGatewayAsync("ocr", async () =>
         {
             if (_account is not { IsSignedIn: true } account) return null;
-            if (Environment.TickCount64 < _gatewayDownUntil) return null;
+            if (!_gatewayHealth.IsUsable) return null;
             var token = await account.GetAccessTokenAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(token) || _gatewayHttp is null) return null;
 
@@ -1104,27 +1111,42 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// 启动时探一次网关有没有人在听。连不上就先标记不可用 60 秒，让启动后的第一次翻译不必把
-    /// 两秒花在一个注定被拒的连接上；连得上就清掉标记。
+    /// 后台探网关有没有人在听，结论写进 <see cref="_gatewayHealth"/>。翻译路径只读结论、从不
+    /// 自己发起探测，所以那两秒永远落在后台线程上。网关被标记不可用后每
+    /// <see cref="GatewayHealth.DownProbeIntervalMs"/> 重探一次，探通即恢复走网关——
+    /// 免费额度链路不能因为一次失败就永久放弃。
     /// </summary>
-    private async Task ProbeGatewayAsync()
+    private async Task RunGatewayProbeLoopAsync()
     {
-        if (!Uri.TryCreate(GatewayBaseUrl(), UriKind.Absolute, out var uri)) return;
-        // 先假定连不上：探测本身就要两秒（连接被拒也要等），不先占位的话，启动后头几秒里
-        // 发生的第一次翻译仍会把这两秒吃进去。探通了立刻放开。
-        _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
+        while (!_gatewayProbeCts.IsCancellationRequested)
+        {
+            if (!_gatewayHealth.IsUsable && _gatewayHealth.TryBeginProbe())
+            {
+                try { _gatewayHealth.MarkProbed(await ProbeGatewayOnceAsync().ConfigureAwait(false)); }
+                finally { _gatewayHealth.EndProbe(); }
+            }
+
+            try { await Task.Delay(GatewayHealth.DownProbeIntervalMs, _gatewayProbeCts.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>连一次网关端口就够判断了：连接被拒和端口无人监听都会在这里失败。</summary>
+    private async Task<bool> ProbeGatewayOnceAsync()
+    {
+        if (!Uri.TryCreate(GatewayBaseUrl(), UriKind.Absolute, out var uri)) return false;
         try
         {
             using var client = new System.Net.Sockets.TcpClient();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             await client.ConnectAsync(uri.Host, uri.Port, timeout.Token).ConfigureAwait(false);
-            _gatewayDownUntil = 0;
             Trace($"gateway probe: {uri.Authority} reachable");
+            return true;
         }
         catch (Exception ex)
         {
-            _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
-            Trace($"gateway probe: {uri.Authority} unreachable ({ex.GetType().Name}), skipping it for {GatewayDownWindowMs / 1000}s");
+            Trace($"gateway probe: {uri.Authority} unreachable ({ex.GetType().Name})");
+            return false;
         }
     }
 
@@ -1136,8 +1158,8 @@ public partial class App : Application, IResultPresenter
     private void NoteGatewayFailure(TranslationError? error)
     {
         if (error?.Code is not (TranslationErrorCode.Network or TranslationErrorCode.ServerError)) return;
-        _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
-        Trace($"gateway down for {GatewayDownWindowMs / 1000}s: {error.Message}");
+        _gatewayHealth.MarkDown();
+        Trace($"gateway marked down: {error.Message}");
     }
 
     private async Task RestoreAccountAsync()
@@ -1213,6 +1235,9 @@ public partial class App : Application, IResultPresenter
         _accountClient = null;
         _gatewayHttp?.Dispose();
         _gatewayHttp = null;
+        // 只取消不 Dispose：探测循环此刻可能正挂在 Task.Delay 上，Dispose 会让它的注册抛
+        // ObjectDisposedException；后台线程随进程退出即可。
+        _gatewayProbeCts.Cancel();
         _tray?.Dispose();
         _mainWindow?.Close();
         try { _mutex?.ReleaseMutex(); } catch { }

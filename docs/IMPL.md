@@ -1606,3 +1606,59 @@ v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成�
 
 - 两次 `ShowResult` 仍然存在（这是「先看到字」的代价）；已用 `_saved` 保住保存态、用 `_recognizedOriginal` 保住用户改动，但用户如果正好在这 1 秒里拖窗口，位置不记忆。
 - 译图失败时窗口会多画一次（`needsSettle`）；这一次是空转，只为把转圈收掉。
+## v67 · 网关可用性改成后台探测：空闲后的第一次翻译不再白等两秒
+
+用户报的是「基本都在 1s 内出答案，但隔一段时间不用再翻，会明显等 3s 左右；可是结果卡只显示 100 多毫秒」。这个矛盾本身就是线索：`ElapsedMs` 只覆盖 provider 自己的 HTTP 往返，而挡住用户的那一段发生在它之前。
+
+### 定位
+
+探针（`publish/loop-probe.ps1`，裸 `TcpClient`，与 .NET、代理、UseProxy 全无关）量了本机几个环回端口：
+
+```
+5199 -> 2792ms ok=False     # 网关默认端口，无人监听
+5198 -> 2031ms ok=False
+1    -> 2042ms ok=False
+53017 -> 1ms    ok=True      # 有人监听（本机 DSH Web GUI）
+```
+
+⇒ 这台机器上**任何没人监听的环回端口都要约 2 秒才拿到 RST**（过滤驱动/代理层行为，`docs/IMPL.md` v58 已记过同一现象）。用真 provider 打网关同样是 2174 / 2024ms；同期 DashScope 冷连接 404–661ms、热连接 110ms —— 阿里云那边确实没问题，用户的判断是对的。
+
+而原来的熄灭逻辑是个 60 秒时间窗：`ProbeGatewayAsync` 启动探一次，失败写 `_gatewayDownUntil = now + 60s`；窗口一过，`GatewayTranslateAsync` 的 `if (Environment.TickCount64 < _gatewayDownUntil) return null;` 不再拦住，**下一次翻译就当场去连那个要两秒才 RST 的端口**，失败后再续 60 秒。用户说的「隔一段时间不用再翻就慢」正好落在窗口过期那一刻。
+
+### 改法
+
+把「冷却到某个时刻」换成「只信最后一次探测结论」：
+
+- 新增 `src/FastTranslation.Core/GatewayHealth.cs`：`IsUsable`（默认 false）、`MarkDown()`、`MarkProbed(bool)`、`TryBeginProbe()/EndProbe()`（同一时刻只允许一次探测）。默认不可用的理由和原来一样：探测本身就要两秒，不能让启动后头几秒的第一次翻译把它吃进去。
+- `App.xaml.cs` 的 `ProbeGatewayAsync` 换成 `RunGatewayProbeLoopAsync` 常驻循环：只在 `!IsUsable` 时探，探通即恢复走网关，间隔 `GatewayHealth.DownProbeIntervalMs = 60_000`。翻译路径**只读结论、从不自己发起探测**，那两秒永远只在后台线程上。
+- 三条网关链路（translate / image / ocr）的守卫统一改成 `if (!_gatewayHealth.IsUsable) return null;`；`NoteGatewayFailure` 改成 `_gatewayHealth.MarkDown()`。
+- 退出时只 `_gatewayProbeCts.Cancel()`、**不 Dispose**：探测循环此刻可能正挂在 `Task.Delay` 上，Dispose 会让它的注册抛 `ObjectDisposedException`。
+- `FT_UITEST=translate` 钩子新增 `FT_UITEST_DELAY`（毫秒），用来把测量推迟到任意时刻，专门复现「空闲一段时间后再翻」。默认仍是 1800ms，旧用法不变。
+
+取舍：网关是免费额度链路，不能因为一次失败就永久放弃，所以是「一直后台重探」而不是「一次失败永久降级」。代价是网关恢复后最多晚 60 秒才被重新用上，而这段时间用户走自己的 Key 照样能翻。
+
+### 验证
+
+同一台机器、同一个 `FT_UITEST_DELAY=70000`（启动 70 秒后才翻译，正好跨过原来那 60 秒窗），改前改后各跑一次：
+
+改前（HEAD `5133602` 的独立 worktree 构建）：
+```
+00:15:46.909 gateway down for 60s: 网络错误:由于目标计算机积极拒绝 (127.0.0.1:5199)
+00:15:47.237 translate hook [0]: loading=40ms call=4396ms provider=328ms ok=True
+```
+改后：
+```
+00:13:30.353 gateway probe: 127.0.0.1:5199 unreachable (SocketException)
+00:13:36.611 translate hook [0]: loading=40ms call=322ms provider=313ms ok=True
+```
+⇒ 用户等待从 4396ms 降到 322ms，`call` 与 `provider` 基本相等（313 vs 322），也就是「面板显示多少，用户就等多少」终于成立。
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误。
+- `dotnet test` = **597 全绿**（Core 218 / Platform.Windows 92 / Providers.QwenMt 94 / Server 193），其中 `GatewayHealthTests` 4 例覆盖：默认不可用、探通后可再用、探通后再失败、同一时刻只允许一次探测。
+- 长时间运行时后台探测按 60 秒节奏打日志（`00:09:30`、`00:10:32` …），证实循环没有把 CPU 或等待压到前台线程。
+
+### 残留风险
+
+- 网关真的在线上（生产 `AccountBaseUrl`）时，后台重探的恢复延迟是 60 秒；这段时间的免费额度用不上，但翻译不受影响。
+- 探测只做 TCP 连接，服务端进程活着但 `Gateway.Enabled=false` 时探通也会被判可用 —— 这种情况由 `NoteGatewayFailure` 按 5xx 兜底（v65 加的那条），只是会多花一次完整往返。
+- 这台机器上「无人监听的环回端口要 2 秒」是系统层行为，没在这次里处理；它现在只影响后台线程。
