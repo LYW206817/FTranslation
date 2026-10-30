@@ -33,12 +33,16 @@ internal static class ThemeBridge
         Set(r, "WindowBgBrush", c.WindowBg);
         Set(r, "SurfaceBrush", c.Surface);
         Set(r, "HairBrush", c.Hair);
+        // v68：PrimaryButton 的禁用态一直引用 HairStrongBrush，但这个键从来没被
+        // 注入过(DynamicResource 找不到就取默认值=透明)，于是禁用按钮仍是蓝底。
+        Set(r, "HairStrongBrush", c.HairStrong);
         Set(r, "BorderStrongBrush", c.BorderStrong);
         Set(r, "HoverBrush", c.Hover);
         Set(r, "TextPrimaryBrush", c.TextPrimary);
         Set(r, "TextSecondaryBrush", c.TextSecondary);
         Set(r, "TextMutedBrush", c.TextMuted);
         Set(r, "DangerBrush", c.Danger);
+        Set(r, "OnBrandTextBrush", c.OnBrandText);
 
         // 四档自评：文字 / 底色 / 描边各一条，XAML 只引用键名
         SetGrade(r, "Known", c.GradeKnown, c.GradeKnownFill, c.GradeKnownBorder);

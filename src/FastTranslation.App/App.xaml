@@ -21,6 +21,8 @@
     <SolidColorBrush x:Key="WindowBgBrush" po:Freeze="False" Color="#F7F9FC"/>
     <SolidColorBrush x:Key="SurfaceBrush" po:Freeze="False" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="HairBrush" po:Freeze="False" Color="#E4EAF3"/>
+    <SolidColorBrush x:Key="HairStrongBrush" po:Freeze="False" Color="#D9E3F1"/>
+    <SolidColorBrush x:Key="OnBrandTextBrush" po:Freeze="False" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="BorderStrongBrush" po:Freeze="False" Color="#CFD9EA"/>
     <SolidColorBrush x:Key="HoverBrush" po:Freeze="False" Color="#F0F4FA"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" po:Freeze="False" Color="#1B2536"/>
@@ -87,7 +89,7 @@
     <!-- 主操作：底色是一支极淡的上亮下暗渐变，比纯色更有"实体按钮"的厚度 -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background" Value="{DynamicResource BrandBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
       <Setter Property="FontWeight" Value="Medium"/>
       <Setter Property="Template">
@@ -127,7 +129,9 @@
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairStrongBrush}"/>
                 <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="gloss" Property="Visibility" Value="Collapsed"/>
-                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                <!-- v68：禁用态底色是 HairStrong，比 TextMuted 深一档的浅色，
+                     用 TextMuted 只有 2.28:1，改用 TextSecondary 是 4.18:1 -->
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

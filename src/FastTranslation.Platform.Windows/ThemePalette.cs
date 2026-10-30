@@ -16,6 +16,9 @@ public sealed record ThemeColors(
     string BrandPressed,
     string BrandFill,
     string BrandFillHover,
+    // v68：压在品牌色实底上的字色。深色主题的品牌蓝偏亮(#4A82FF)，白字只有
+    // 3.54:1；换成近黑墨色才是 5.05:1。浅色主题仍是白字(4.92:1)。
+    string OnBrandText,
     string Accent,
     string WindowBg,
     string Surface,
@@ -67,6 +70,7 @@ public static class ThemePalette
         BrandPressed: "#1A45C4",
         BrandFill: "#EDF2FF",
         BrandFillHover: "#E0EAFF",
+        OnBrandText: "#FFFFFF",
         Accent: "#40A9FF",
         WindowBg: "#F7F9FC",
         Surface: "#FFFFFF",
@@ -76,7 +80,9 @@ public static class ThemePalette
         Hover: "#F0F4FA",
         TextPrimary: "#1B2536",
         TextSecondary: "#5C6B82",
-        TextMuted: "#8B97A9",
+        // v68：#8B97A9 对 WindowBg 只有 2.81:1、对 Surface 2.96:1，全仓 38 处引用
+        // 都是发虚的提示文字；#667287 是 4.61 / 4.86。
+        TextMuted: "#667287",
         Danger: "#DC2626",
         Notice: "#C2410C",
         GradeKnown: "#0E7C66",
@@ -103,6 +109,7 @@ public static class ThemePalette
         BrandPressed: "#3A6FE0",
         BrandFill: "#22304D",
         BrandFillHover: "#2B3C60",
+        OnBrandText: "#101820",
         Accent: "#5BB4FF",
         WindowBg: "#16191F",
         Surface: "#1F242C",
@@ -112,7 +119,8 @@ public static class ThemePalette
         Hover: "#262C35",
         TextPrimary: "#E8ECF3",
         TextSecondary: "#A3AEBF",
-        TextMuted: "#7C8798",
+        // v68：#7C8798 对 Surface #1F242C 是 4.29:1，差一点点；#8C97A8 是 5.28。
+        TextMuted: "#8C97A8",
         Danger: "#FF6B6B",
         Notice: "#FF9A5C",
         GradeKnown: "#56CFAF",

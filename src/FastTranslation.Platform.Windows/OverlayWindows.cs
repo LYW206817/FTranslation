@@ -24,6 +24,7 @@ internal static class FtTheme
     internal static SolidColorBrush BrandHover => Freeze(ThemePalette.Active.BrandHover);
     internal static SolidColorBrush BrandPressed => Freeze(ThemePalette.Active.BrandPressed);
     internal static SolidColorBrush BrandFill => Freeze(ThemePalette.Active.BrandFill);
+    internal static SolidColorBrush OnBrandText => Freeze(ThemePalette.Active.OnBrandText);
     internal static SolidColorBrush Accent => Freeze(ThemePalette.Active.Accent);
     internal static SolidColorBrush Bg => Freeze(ThemePalette.Active.WindowBg);
     internal static SolidColorBrush Surface => Freeze(ThemePalette.Active.Surface);
@@ -77,9 +78,11 @@ internal static class FtTheme
 
     /// <summary>品牌主按钮。</summary>
     internal static Style Primary() => TemplateStyle(
-        bg: Brand, fg: Brushes.White, border: Brand, corner: new CornerRadius(6),
+        bg: Brand, fg: OnBrandText, border: Brand, corner: new CornerRadius(6),
         hoverBg: BrandHover, hoverBorder: null, pressedBg: BrandPressed,
-        disabledBg: Freeze("#A9C0F2"), disabledFg: Freeze("#E9EEFB"));
+        // v68：禁用态跟 XAML 主按钮对齐(HairStrong 底 + TextSecondary 字)，
+        // 旧的 #A9C0F2/#E9EEFB 在深色主题下是一块突兀的浅蓝。
+        disabledBg: HairStrong, disabledFg: TextSecondary);
 
     /// <summary>圆形安静按钮(卡片的 ✕)。</summary>
     internal static Style RoundGhost() => TemplateStyle(

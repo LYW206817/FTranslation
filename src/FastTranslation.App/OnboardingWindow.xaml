@@ -19,7 +19,7 @@
 
     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
       <Border Width="18" Height="18" CornerRadius="9" Background="{DynamicResource BrandBrush}">
-        <TextBlock Text="1" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <TextBlock Text="1" FontSize="11" Foreground="{DynamicResource OnBrandTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
       <TextBlock Text="输入 Qwen-MT API Key" FontSize="13"
                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="9,0,0,0" VerticalAlignment="Center"/>
@@ -28,7 +28,7 @@
 
     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
       <Border Width="18" Height="18" CornerRadius="9" Background="{DynamicResource BrandBrush}">
-        <TextBlock Text="2" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <TextBlock Text="2" FontSize="11" Foreground="{DynamicResource OnBrandTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
       <TextBlock Text="测试连接(可选)" FontSize="13"
                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="9,0,0,0" VerticalAlignment="Center"/>
@@ -46,7 +46,7 @@
 
     <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
       <Border Width="18" Height="18" CornerRadius="9" Background="{DynamicResource BrandBrush}">
-        <TextBlock Text="3" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <TextBlock Text="3" FontSize="11" Foreground="{DynamicResource OnBrandTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
       <TextBlock Text="开始使用" FontSize="13"
                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="9,0,0,0" VerticalAlignment="Center"/>
