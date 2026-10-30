@@ -1450,3 +1450,11 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - 「保存到单词本」按钮本身未在本机跑通：它走服务端 `SaveNoteAsync`，而本机 `AccountBaseUrl=http://127.0.0.1:5199` 的网关当前没有启动，点击只会得到回落提示。该链路属既有功能，本轮没有改它的逻辑，只保证它能拿到要保存的文本。
 - 诊断日志只有 `FT_DEBUG=1` 时写 `%TEMP%\ft-debug.log`，正式包里不会产生任何日志文件。
 - `OnUiThread` 用 `BeginInvoke` 不等待，所以「窗口已显示」与协调器 `finally` 置 `_busy=0` 之间存在极短的时间窗；这两件事互不依赖，没有做额外同步。
+
+**发布记录 v1.3.7(2026-10-30)**
+- 提交 `459ae7867a3be351d2f82c8ade8caaef545f66d9`；版本号三处同步改为 1.3.7（`Directory.Build.props`、`installer/FastTranslation.iss`、`docs/portable-readme.txt`）。
+- 主仓库 Release `v1.3.7`（id 428680610）：`FastTranslation-1.3.7-Setup.exe` 46980711B / sha256 `8c2cde0892a3291f282302918ee58cbbf43cd045bce53139f9ddf947335eb582`；`FastTranslation-1.3.7-portable.zip` 62048723B / sha256 `68b171685a92b5bb807f4d309c7c309d49ca64f434399932064a3578f7a55955`。两个资产均 `state: uploaded`，digest 与本地一致。
+- 更新通道仓库 Release `v1.3.7`（id 428686459）上传同一份 Setup.exe，`state: uploaded`，digest 一致。
+- `version.json` 已更新（blob `17f064c25dd39df6c3c58ac2abb5c52549a65ea4` 上 PUT）：version 1.3.7 / url 指向通道资产 / sha256 小写 / size 46980711 / releasePage 指主仓库 tag。
+- 清单四源轮询：Pages 在 13:36:07 已刷新为 1.3.7（GitHub Pages 有约 600 秒缓存，第一次 13:35:18 还是 1.2.2），gh-proxy raw 与 ghfast.top raw 立即就是 1.3.7。
+- 外力事实：`github.com` 直连本次仍不可用（`Connection was reset`），`gh-proxy.com` 前缀 200 可取；下载候选顺位里的代理优先策略照常生效。
