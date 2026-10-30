@@ -1662,3 +1662,43 @@ v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成�
 - 网关真的在线上（生产 `AccountBaseUrl`）时，后台重探的恢复延迟是 60 秒；这段时间的免费额度用不上，但翻译不受影响。
 - 探测只做 TCP 连接，服务端进程活着但 `Gateway.Enabled=false` 时探通也会被判可用 —— 这种情况由 `NoteGatewayFailure` 按 5xx 兜底（v65 加的那条），只是会多花一次完整往返。
 - 这台机器上「无人监听的环回端口要 2 秒」是系统层行为，没在这次里处理；它现在只影响后台线程。
+
+## v68 · 主题令牌补两处缺漏：禁用态主按钮、提示文字与品牌底字色
+
+用户拿着全应用双主题截图问「色调样式和主流统一一下」，逐页取证后量出三处不合格。都不是版面问题，全在令牌与样式层。
+
+### 定位
+
+**一、禁用态主按钮是「蓝底灰字」**。复习页「开始复习」在 `IsEnabled=False` 时仍保留品牌蓝底，字却是灰的，深色主题下对比只有 1.03:1。
+
+根因是资源键根本没定义：`App.xaml:126-127` 的禁用触发器引用 `HairStrongBrush`，但 `App.xaml` 只声明了 15 支画刷、`ThemeBridge.Apply` 也只 `Set` 了 15 个键，**`HairStrongBrush` 从头到尾没人定义**。WPF 的 `DynamicResource` 找不到键不报错，`Border.Background` 静默取默认值（null = 透明），于是禁用态只剩「Foreground 变灰」这一半生效。`ThemePalette` 里明明有 HairStrong（浅 `#D9E3F1` / 深 `#343B46`），`ThemePaletteTests` 也断言它非空——所以测试一直全绿，只是没人检查「令牌有值」与「接进 WPF 资源字典」之间那道缝。
+**二、提示文字太淡**。`TextMuted` 全仓 38 处引用（提示语、占位、计数、卡片副标题）：
+- 浅色 `#8B97A9` 对 WindowBg `#F7F9FC` = **2.81:1**、对 Surface `#FFFFFF` = 2.96:1
+- 深色 `#7C8798` 对 Surface `#1F242C` = **4.29:1**
+
+**三、深色主题里压在品牌蓝实底上的白字** = `#FFFFFF` on `#4A82FF` = **3.54:1**。深色的品牌蓝比浅色亮一档，白字压不住；同样的组合还在引导窗三个步骤圆标里（`OnboardingWindow.xaml:22,31,49`）。
+
+### 改法
+
+- 新增令牌 `OnBrandText`（`ThemeColors` 第 6 个字段）：浅色 `#FFFFFF`（on `#2562FF` = 4.92）、深色 `#101820`（on `#4A82FF` = **5.05**）。深色用的是已有的「深墨」——和 `GradeSelectedTextBrush` 深色分支同一个值，不引入新色相。
+- `ThemeBridge.Apply` 补 `Set(r, "HairStrongBrush", c.HairStrong)` 与 `Set(r, "OnBrandTextBrush", c.OnBrandText)`；`App.xaml` 顶部同步声明这两支 `po:Freeze="False"` 画刷。
+- `PrimaryButton` 的 `Foreground="White"` → `{DynamicResource OnBrandTextBrush}`；禁用触发器的字色从 `TextMutedBrush` 改成 `TextSecondaryBrush`——底色既然是 HairStrong，`TextMuted` 只有浅 2.28 / 深 3.11，`TextSecondary` 是 **4.18 / 5.03**（WCAG 1.4.3 对 inactive 控件本就豁免，但没人愿意读一块糊字）。
+- `TextMuted`：浅色 `#8B97A9` → `#667287`（4.61 / 4.86 / Hover 上 4.40），深色 `#7C8798` → `#8C97A8`（5.96 / 5.28 / 4.76）。
+- 浮层（C# 画按钮，用不了 XAML 资源）同步：`FtTheme.OnBrandText` 新增，`Primary()` 的 `fg` 从 `Brushes.White` 换掉；禁用态底色/字色从写死的 `#A9C0F2`/`#E9EEFB` 换成 `HairStrong`/`TextSecondary`，和 XAML 侧对齐（旧那两个值在深色主题里是一块突兀的浅蓝）。
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误。
+- `dotnet test` = **600 全绿**（Core 218 / Platform.Windows 95 / Providers.QwenMt 94 / Server 193）。
+- 新增两条测试：
+  - `ThemePaletteTests.OnBrandTextIsReadableOnTheBrandFill`：两主题分别校验 `OnBrandText` on `Brand` ≥ 4.5，测试里自带 WCAG 相对亮度实现。
+  - `ThemeResourceKeysTests.EveryDynamicResourceKeyInAppXamlIsDeclaredOrInjected`：扫 `src/FastTranslation.App/**/*.xaml` 里每一个 `{DynamicResource X}`，与「x:Key 声明的 ∪ ThemeBridge 注入的 ∪ SetGrade 循环生成的四档键」比对，缺一个就红。**反向验证过**：把 `Set(r, "HairStrongBrush", …)` 删掉，测试立刻报 `Collection: ["HairStrongBrush"]`——正是 v68 之前那份代码的状态(那时最新改动是 v67 的网关探测)。
+- 截图（`tools/qa/shot-audit.ps1`，PrintWindow，1820×1155 @175%）：改前 `publish/ui-audit/`、改后 `publish/ui-after/`，双主题各 8 页。
+  - 复习页「开始复习」（禁用）：深色底 `#343B46`（HairStrong）+ 字 `#A3AEBF`（TextSecondary）= 5.03:1，不再是蓝底；浅色底 `#D9E3F1` + 字 `#5C6B82` = 4.18:1。取样区 (1595,160)-(1755,195)。
+  - 设置页底部说明文字：同一区域取样，改前主色 `#8B97A9`、改后 `#667287`。取样区 (350,1085)-(780,1115)。
+  - 设置页「保存」按钮（可用态）：深色 `#4A82FF` 底 + `#101820` 字 = 5.05:1。取样区 (1655,1075)-(1770,1120)。
+
+### 残留风险（本次没动，留作下一档）
+
+- 侧栏角标白字压在 `Danger` 上：深色 `#FF6B6B` 底白字 = **2.78:1**（`MainWindow.xaml:49/59/69/79`）。
+- 用 `BrandBrush` 作文字色的 7 处（`AccountPage.xaml:150,161`、`MainPage.xaml:44`、`PlanPage.xaml:99`、`ReviewPage.xaml:119`、`SettingsPage.xaml:230`、`UpdateWindow.xaml:33`）：深色下对 Surface 是 4.40:1；侧栏活动项 `#4A82FF` on `BrandFill #22304D` = **3.71:1**。要修得给它们单独一支「品牌作字」色（深色 `#8FB4FF` = 6.35:1）。
+- 三处清空 `FocusVisualStyle` 且模板内没自绘焦点环（`App.xaml:299` FtComboBox / `:415` SidebarItem / `:496` GradeButton），键盘 Tab 看不到焦点。
