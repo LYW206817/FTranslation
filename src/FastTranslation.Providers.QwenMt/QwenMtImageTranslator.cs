@@ -40,8 +40,9 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
         _apiKeyAccessor = apiKeyAccessor ?? (() => null);
         _options = options ?? new QwenMtImageOptions();
         _ownsHttp = http is null;
-        _http = http ?? new HttpClient();
-        _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+        // 与 QwenMtProvider 同一坑：别人给的 client 可能已经发过请求，
+        // 那之后设 Timeout 会抛 InvalidOperationException（当年截图翻译"点了没反应"就是这个）。
+        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds) };
     }
 
     public async Task<ImageTranslationResult> TranslateImageAsync(ImageTranslationRequest request, CancellationToken cancellationToken)

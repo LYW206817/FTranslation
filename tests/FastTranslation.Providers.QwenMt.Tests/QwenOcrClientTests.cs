@@ -14,18 +14,27 @@ public class QwenOcrClientTests
         "{\"output\":{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\","
         + "\"content\":[{\"text\":\"" + text + "\"}]}}]},\"usage\":{\"input_tokens\":1}}";
 
+    /// <summary>qwen-vl-ocr 的真实响应形态：分片里是 ocr_result.processed_text，不是 text。</summary>
+    private static string RealOcrBody(string text) =>
+        "{\"output\":{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\","
+        + "\"content\":[{\"ocr_result\":{\"processed_text\":\"" + text + "\"}}]}}]},"
+        + "\"usage\":{\"input_tokens\":1}}";
+
     [Fact]
     public void BuildPayload_PutsPngBase64DataUriInMessages()
     {
         using var doc = JsonDocument.Parse(QwenOcrClient.BuildPayload(Request(), "qwen-vl-ocr"));
         var root = doc.RootElement;
         var content = root.GetProperty("input").GetProperty("messages")[0].GetProperty("content");
-        var uri = content[0].GetProperty("image_url").GetString()!;
+        // 字段名必须是 image：DashScope 不认 OpenAI 兼容的 image_url，会回
+        // 400 "The item of `content` should be a message of a certain modal"(2026-10-30 实测)。
+        Assert.False(content[0].TryGetProperty("image_url", out _), "image_url 会被 DashScope 拒绝");
+        var uri = content[0].GetProperty("image").GetString()!;
 
         Assert.Equal("qwen-vl-ocr", root.GetProperty("model").GetString());
         Assert.Equal("user", root.GetProperty("input").GetProperty("messages")[0].GetProperty("role").GetString());
         const string prefix = "data:image/png;base64,";
-        Assert.True(uri.StartsWith(prefix, StringComparison.Ordinal), "image_url 必须以 PNG base64 data URI 开头");
+        Assert.True(uri.StartsWith(prefix, StringComparison.Ordinal), "image 必须以 PNG base64 data URI 开头");
         Assert.Equal(PngBytes, Convert.FromBase64String(uri[prefix.Length..]));
     }
 
@@ -45,6 +54,24 @@ public class QwenOcrClientTests
     {
         Assert.True(QwenOcrClient.TryReadText(SuccessBody("Hello world"), out var text), "合法响应应解析出 text");
         Assert.Equal("Hello world", text);
+    }
+
+    [Fact]
+    public void TryReadText_ReadsOcrResultProcessedText()
+    {
+        // qwen-vl-ocr 实际返回的是 ocr_result.processed_text；只认 text 会让每次截图都被判成「没识别到文字」。
+        Assert.True(QwenOcrClient.TryReadText(RealOcrBody("识别到的原文"), out var text), "ocr_result.processed_text 必须认");
+        Assert.Equal("识别到的原文", text);
+    }
+
+    [Fact]
+    public void TryReadText_SkipsBlankOcrResultAndFallsBackToText()
+    {
+        const string body = "{\"output\":{\"choices\":[{\"message\":{\"content\":["
+            + "{\"ocr_result\":{\"processed_text\":\"   \"}},{\"text\":\"fallback\"}]}}]}}";
+
+        Assert.True(QwenOcrClient.TryReadText(body, out var text), "空白 ocr_result 应跳过并继续读 text");
+        Assert.Equal("fallback", text);
     }
 
     [Fact]

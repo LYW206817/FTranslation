@@ -43,8 +43,9 @@ public sealed class QwenOcrClient : IImageOcrProvider
         _apiKeyAccessor = apiKeyAccessor ?? (() => null);
         _options = options ?? new QwenOcrOptions();
         _ownsHttp = http is null;
-        _http = http ?? new HttpClient();
-        _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+        // 同 QwenMtProvider / QwenMtImageTranslator：复用外部 client 时不能再设 Timeout，
+        // 否则 InvalidOperationException 会让整条 OCR 链路静默失败。
+        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds) };
     }
 
     public async Task<ImageOcrResult> RecognizeAsync(ImageOcrRequest request, CancellationToken cancellationToken)
@@ -136,7 +137,11 @@ public sealed class QwenOcrClient : IImageOcrProvider
     private string BuildUri() =>
         string.IsNullOrWhiteSpace(_options.BaseUrl) ? new QwenOcrOptions().BaseUrl : _options.BaseUrl.Trim();
 
-    /// <summary>PNG 以 base64 data URI 放进 input.messages[0].content[0].image_url；不带 prompt 就是纯取字。</summary>
+    /// <summary>
+    /// PNG 以 base64 data URI 放进 input.messages[0].content[0].image；不带 prompt 就是纯取字。
+    /// 字段名是 <c>image</c>，不是 OpenAI 兼容格式的 <c>image_url</c>——后者会被 DashScope 直接拒成
+    /// 400 `The item of content should be a message of a certain modal`(实测 2026-10-30)。
+    /// </summary>
     internal static string BuildPayload(ImageOcrRequest request, string model) => JsonSerializer.Serialize(new
     {
         model,
@@ -149,7 +154,7 @@ public sealed class QwenOcrClient : IImageOcrProvider
                     role = "user",
                     content = new object[]
                     {
-                        new { image_url = "data:image/png;base64," + Convert.ToBase64String(request.PngBytes) },
+                        new { image = "data:image/png;base64," + Convert.ToBase64String(request.PngBytes) },
                     },
                 },
             },
@@ -157,8 +162,9 @@ public sealed class QwenOcrClient : IImageOcrProvider
     });
 
     /// <summary>
-    /// 成功响应 output.choices[0].message.content[0].text。
-    /// content 也兼容纯字符串形态（OpenAI 兼容模式会那样返回），任何一层缺失都返回 false。
+    /// 成功响应是 output.choices[0].message.content[]，每个分片可能是
+    /// <c>{"ocr_result":{"processed_text":"..."}}</c>（qwen-vl-ocr 实测形态）或 <c>{"text":"..."}</c>
+    /// （OpenAI 兼容 / 普通 VL 模型），content 本身也可能是纯字符串。任何一层缺失都返回 false。
     /// </summary>
     internal static bool TryReadText(string json, out string text)
     {
@@ -183,13 +189,8 @@ public sealed class QwenOcrClient : IImageOcrProvider
                 var parts = new List<string>();
                 foreach (var part in content.EnumerateArray())
                 {
-                    if (part.ValueKind == JsonValueKind.Object
-                        && part.TryGetProperty("text", out var node)
-                        && node.ValueKind == JsonValueKind.String)
-                    {
-                        var value = node.GetString();
-                        if (!string.IsNullOrWhiteSpace(value)) parts.Add(value!);
-                    }
+                    if (part.ValueKind != JsonValueKind.Object) continue;
+                    if (ReadOcrText(part) is { } value) parts.Add(value);
                 }
 
                 text = string.Join("\n", parts).Trim();
@@ -208,6 +209,30 @@ public sealed class QwenOcrClient : IImageOcrProvider
         {
             return false;
         }
+    }
+
+    /// <summary>优先 ocr_result.processed_text，其次 text；都空则返回 null 让调用方跳过这个分片。</summary>
+    private static string? ReadOcrText(JsonElement part)
+    {
+        if (part.TryGetProperty("ocr_result", out var ocr)
+            && ocr.ValueKind == JsonValueKind.Object
+            && ocr.TryGetProperty("processed_text", out var processed)
+            && processed.ValueKind == JsonValueKind.String
+            && processed.GetString() is { Length: > 0 } processedText
+            && !string.IsNullOrWhiteSpace(processedText))
+        {
+            return processedText.Trim();
+        }
+
+        if (part.TryGetProperty("text", out var node)
+            && node.ValueKind == JsonValueKind.String
+            && node.GetString() is { Length: > 0 } raw
+            && !string.IsNullOrWhiteSpace(raw))
+        {
+            return raw.Trim();
+        }
+
+        return null;
     }
 
     private static async Task<string> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
