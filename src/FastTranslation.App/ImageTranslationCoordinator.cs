@@ -13,7 +13,10 @@ internal sealed record ImageCaptureResult(
     string SourceText,
     string? TargetText,
     string? TextError,
-    string OriginApp);
+    string OriginApp,
+    string SourceLanguage = "",
+    string TargetLanguage = "",
+    string Model = "");
 
 /// <summary>
 /// 截屏翻译的编排：拖框选区域 → 图片翻译（A）与 OCR（B）并行 → 原文再翻一遍文字（C）→ 交给展示层。
@@ -103,12 +106,25 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             string? textError = ocr.Succeeded ? null : ocr.Error?.Message;
 
             // C：把识别出的原文再过一遍文字翻译。图片翻译给的是「译图」，用户想存单词本还缺一句译文。
+            // 语种与模型跟着译文一起交出去：单词本要按它们显示「译自/译成/模型」，漏了就是一条只有中文的孤儿笔记。
             string? translated = null;
+            var sourceLanguage = string.Empty;
+            var targetLanguage = string.Empty;
+            var model = string.Empty;
             if (recognized.Length > 0)
             {
                 var translatedResult = await _translation.TranslateAsync(recognized, settings, _lifetime.Token).ConfigureAwait(false);
-                if (translatedResult.Succeeded) translated = translatedResult.TranslatedText;
-                else textError = translatedResult.Error?.Message;
+                if (translatedResult.Succeeded)
+                {
+                    translated = translatedResult.TranslatedText;
+                    sourceLanguage = translatedResult.SourceLanguage;
+                    targetLanguage = translatedResult.TargetLanguage;
+                    model = translatedResult.Model;
+                }
+                else
+                {
+                    textError = translatedResult.Error?.Message;
+                }
             }
 
             if (_lifetime.IsCancellationRequested) return;
@@ -118,7 +134,10 @@ internal sealed class ImageTranslationCoordinator : IDisposable
                 recognized,
                 translated,
                 textError,
-                originApp));
+                originApp,
+                sourceLanguage,
+                targetLanguage,
+                model));
         }
         catch (OperationCanceledException)
         {

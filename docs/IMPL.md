@@ -1492,3 +1492,26 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - 转圈动效：`assets/qa/ui-v63/spinlong/spin-0..3.png` 连拍四帧，差分 9984 / 9989 / 9990 像素。
 - 复现脚本：`tools/qa/shot-image-window.ps1`（UIA 找窗 + `CopyFromScreen`，跑 `FT_UITEST=image-loading` / `image-result` 两态）；`publish/` 下的 `spin-two.ps1` 与 `px-v63*.py` 是本次的临时探针，不进仓库。
 - 残留风险：中文分档（3 / 8 字）是经验阈值，成语与短句边界（如 8 字的完整句子）仍会判成短语；用户要求「不要自作主张发版」，版本号本次未动。
+
+## v64 截图翻译保存补上译文与窗内回执
+
+截图翻译的「保存到单词本」一直是**只存原文**的：协调器在 C 段辛苦算出来的那句译文算完就丢了，`SaveScreenshotTextAsync` 把 targetText / sourceLang / targetLang / model 四个参数全填了空串，服务端也不拦（只要求 source 非空）。后果是复习揭示时答案栏空白、单词本详情里的译文行空白——而 `ImageResultWindow` 只显示识别原文，用户根本看不到那句译文丢了。
+
+**改了什么**
+
+- `src/FastTranslation.App/ImageTranslationCoordinator.cs`：`ImageCaptureResult` 追加 `SourceLanguage / TargetLanguage / Model` 三个带默认值的字段；C 段翻译成功时把 `translatedResult` 的语种与模型一起填进去（`QwenMtProvider` 回填的是 API 名，如 `English`/`Chinese`）。模型留空不补：设置页里的 Model 是文本模型，图片翻译用的是适配器默认模型，"模型"一栏宁可空着也不要写错。
+- `src/FastTranslation.Platform.Windows/ImageResultWindow.cs`：新增 `ImageNoteContext`（译文 + 语种 + 模型）与 `ImageNoteDraft`（保存载荷）。`ShowResult` 多一个可选 `note` 参数，`SaveRequested` 由 `Action<string>` 改成 `Action<ImageNoteDraft>`。
+- `ImageNoteDraft.Create` 是这次的关键判断：OCR 文本允许用户改（"识别到的原文（可修改后保存）"），一旦改过，之前那句译文就与原文对不上——此时宁可存空译文 + 空模型，也不要存一句对不上的。原文未改（只差首尾空白）才带上译文。
+- 窗内回执：`MarkSaved(kind)` 把按钮改成「已保存」并禁用，标题行右侧显示「已保存到单词本」；失败走 `ShowSaveError(message)`（Danger 色，按钮保持可用以便重试）。每次 `ShowResult` 调 `ResetSaveState()`，否则第二张截图的窗口还挂着上一张的「已保存」。托盘气泡保留，但不再是唯一反馈。
+- `App.xaml.cs`：`SaveScreenshotText(ImageNoteDraft)` / `SaveScreenshotTextAsync(ImageNoteDraft)` 把四个字段透传给 `SaveNoteAsync`；三条失败分支（未登录 / SubscriptionRequired / 其它）都在窗内留一句话。顺手改掉 `:859` 那句与实现不符的注释「译文在复习时按需再要」——按需翻译根本不存在。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误；`dotnet test` = Core 214 + Platform.Windows 92 + Providers.QwenMt 94 + Server 193 全绿（Platform 从 87 涨到 92，新增 `ImageNoteDraftTests` 5 例）。
+- 截图（`tools/qa/shot-image-window.ps1`，新增第三档 `image-saved` 钩子，产物在本机 `assets/qa/ui-v64/`）：三态都是 1389×1109 @175% 缩放 ⇒ 固定尺寸没被这次改动破坏；UIA 读到「已保存到单词本」与按钮「已保存」。
+- 布局核对（UIA 相对窗口坐标，窗口 1365×1085）：标题行右侧状态 `relX=1192 relY=793 w=147`，左侧标签 `relX=26 relY=793 w=1166` —— 两者同一行、左标签右边界 1192 正好接上状态起点，没有重叠；按钮「已保存」`relX=1132`，与「另存为…」`relX=994` 不挤。
+
+**残留风险**
+
+- 用户在识别框里改文本后点保存，单词本会得到一条**只有原文**的笔记（reviewing 时仍是答案空白）。这是刻意的取舍：错位的译文比没有译文更坏。要补的话应该在窗口里加一个「重新翻译」按钮，而不是悄悄存旧译文。
+- 服务端仍然接受空 targetText，历史数据里的空译文本节不回溯。

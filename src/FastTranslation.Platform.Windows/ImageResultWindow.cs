@@ -11,6 +11,34 @@ using ShapesPath = System.Windows.Shapes.Path;
 
 namespace FastTranslation.Platform.Windows;
 
+/// <summary>译图窗保存笔记时要带上的一句译文及其来源信息（原文由窗口自己给，因为用户可以改）。</summary>
+public sealed record ImageNoteContext(string TargetText, string SourceLang, string TargetLang, string Model)
+{
+    public static readonly ImageNoteContext Empty = new(string.Empty, string.Empty, string.Empty, string.Empty);
+}
+
+/// <summary>点「保存到单词本」时带出的载荷：原文取识别框里当前的内容，译文只在原文没被改过时才带。</summary>
+public sealed record ImageNoteDraft(string SourceText, string TargetText, string SourceLang, string TargetLang, string Model)
+{
+    /// <summary>
+    /// 用户改了识别文本后语义可能分叉，此时宁可留空也不要存一句对不上的译文；
+    /// 模型名跟着译文一起丢，否则单词本会显示「这句是 qwen-mt-flash 翻的」而其实没有。
+    /// </summary>
+    public static ImageNoteDraft Create(string? originalText, string? editedText, ImageNoteContext? context)
+    {
+        var source = editedText?.Trim() ?? string.Empty;
+        var note = context ?? ImageNoteContext.Empty;
+        var keepTranslation = note.TargetText.Trim().Length > 0
+            && string.Equals(source, originalText?.Trim(), StringComparison.Ordinal);
+        return new ImageNoteDraft(
+            source,
+            keepTranslation ? note.TargetText.Trim() : string.Empty,
+            note.SourceLang,
+            note.TargetLang,
+            keepTranslation ? note.Model : string.Empty);
+    }
+}
+
 /// <summary>
 /// 译图浮窗。图片翻译不在原位置覆盖译文（用户决策），译后图单独开一个可拖动的窗口展示：
 /// 复制图片 / 另存为 / 关闭。窗口只建一次，换图复用（每次截屏都新建 HWND 会拖慢第二次以后的开窗）。
@@ -40,11 +68,14 @@ public sealed class ImageResultWindow : IDisposable
     private readonly Button _saveNote;
     private readonly RowDefinition _imageRow;
     private readonly RowDefinition _recognizedRow;
+    private readonly TextBlock _noteStatus;
 
     private byte[]? _jpegBytes;
+    private ImageNoteContext _noteContext = ImageNoteContext.Empty;
+    private string _recognizedOriginal = string.Empty;
 
-    /// <summary>点了「保存到单词本」，参数是识别框里当前的文本（用户可能改过）。</summary>
-    public event Action<string>? SaveRequested;
+    /// <summary>点了「保存到单词本」。原文取识别框当前内容，译文是否作数由 <see cref="ImageNoteDraft.Create"/> 判断。</summary>
+    public event Action<ImageNoteDraft>? SaveRequested;
 
     public ImageResultWindow()
     {
@@ -104,7 +135,7 @@ public sealed class ImageResultWindow : IDisposable
             Text = "识别到的原文（可修改后保存）",
             Foreground = FtTheme.TextSecondary,
             FontSize = 12,
-            Margin = new Thickness(0, 10, 0, 4),
+            VerticalAlignment = VerticalAlignment.Bottom,
         };
         _recognized = new TextBox
         {
@@ -132,6 +163,18 @@ public sealed class ImageResultWindow : IDisposable
         header.Children.Add(actions);
         header.Children.Add(_caption);
 
+        // 保存结果只在窗内给一句：托盘气泡会跟着别的通知排队，用户盯着窗口时看不到
+        _noteStatus = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var labelRow = new DockPanel { Margin = new Thickness(0, 10, 0, 4) };
+        DockPanel.SetDock(_noteStatus, Dock.Right);
+        labelRow.Children.Add(_noteStatus);
+        labelRow.Children.Add(_recognizedLabel);
+
         _imageRow = new RowDefinition { Height = new GridLength(1, GridUnitType.Star) };
         _recognizedRow = new RowDefinition { Height = GridLength.Auto };
         var content = new Grid { Margin = new Thickness(14, 12, 14, 14) };
@@ -142,8 +185,8 @@ public sealed class ImageResultWindow : IDisposable
         content.Children.Add(header);
         content.Children.Add(_imageHost);
         Grid.SetRow(_imageHost, 1);
-        content.Children.Add(_recognizedLabel);
-        Grid.SetRow(_recognizedLabel, 2);
+        content.Children.Add(labelRow);
+        Grid.SetRow(labelRow, 2);
         content.Children.Add(_recognized);
         Grid.SetRow(_recognized, 3);
 
@@ -216,6 +259,7 @@ public sealed class ImageResultWindow : IDisposable
         _saveNote.Visibility = Visibility.Collapsed;
         _saveNote.IsEnabled = false;
         _recognizedLabel.Visibility = Visibility.Collapsed;
+        _noteStatus.Visibility = Visibility.Collapsed;
         _recognized.Visibility = Visibility.Collapsed;
         _recognized.Text = string.Empty;
         _imageRow.Height = new GridLength(1, GridUnitType.Star);
@@ -228,8 +272,9 @@ public sealed class ImageResultWindow : IDisposable
     /// 展示一次截图翻译的结果。<paramref name="recognized"/> 为 null 表示 OCR 没成功，
     /// 此时隐藏文本区并禁用「保存到单词本」——存一条只有图没有原文的笔记没有意义。
     /// <paramref name="showActions"/> 为 false 时（图片翻译失败、只有文字）隐藏图片类操作。
+    /// <param name="note">OCR 文本的译文，用户点保存时一起写进单词本；没有译文传 null。
     /// </summary>
-    public void ShowResult(byte[]? imageBytes, string caption, string? recognized, bool showActions)
+    public void ShowResult(byte[]? imageBytes, string caption, string? recognized, bool showActions, ImageNoteContext? note = null)
     {
         _caption.Text = caption;
         StopSpinner();
@@ -237,12 +282,16 @@ public sealed class ImageResultWindow : IDisposable
         _copy.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
         _saveAs.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
         _saveNote.Visibility = Visibility.Visible;
+        _noteContext = note ?? ImageNoteContext.Empty;
+        // 每次都是新的截图：上一张的「已保存」不能留到这一张
+        ResetSaveState();
 
         if (recognized is null)
         {
             _recognizedLabel.Visibility = Visibility.Collapsed;
             _recognized.Visibility = Visibility.Collapsed;
             _recognized.Text = string.Empty;
+            _recognizedOriginal = string.Empty;
             _saveNote.IsEnabled = false;
         }
         else
@@ -250,6 +299,7 @@ public sealed class ImageResultWindow : IDisposable
             _recognizedLabel.Visibility = Visibility.Visible;
             _recognized.Visibility = Visibility.Visible;
             _recognized.Text = recognized;
+            _recognizedOriginal = recognized.Trim();
             _saveNote.IsEnabled = true;
         }
 
@@ -281,10 +331,36 @@ public sealed class ImageResultWindow : IDisposable
         Present();
     }
 
+    /// <summary>保存成功的窗内回执，样式照抄结果卡的 MarkSaved。</summary>
+    public void MarkSaved(string kind)
+    {
+        _saveNote.Content = "已保存";
+        _saveNote.IsEnabled = false;
+        ShowSaveStatus("已保存到" + kind + "本", FtTheme.TextSecondary);
+    }
+
+    /// <summary>保存失败（未登录、额度用尽、网络）时的窗内提示，可重试所以按钮保持可用。</summary>
+    public void ShowSaveError(string message) => ShowSaveStatus(message, FtTheme.Danger);
+
+    private void ShowSaveStatus(string text, Brush brush)
+    {
+        _noteStatus.Text = text;
+        _noteStatus.Foreground = brush;
+        _noteStatus.Visibility = Visibility.Visible;
+    }
+
+    private void ResetSaveState()
+    {
+        _saveNote.Content = "保存到单词本";
+        _saveNote.IsEnabled = true;
+        _noteStatus.Text = string.Empty;
+        _noteStatus.Visibility = Visibility.Collapsed;
+    }
+
     private void RequestSave()
     {
-        var text = _recognized.Text?.Trim() ?? string.Empty;
-        if (text.Length > 0) SaveRequested?.Invoke(text);
+        var draft = ImageNoteDraft.Create(_recognizedOriginal, _recognized.Text, _noteContext);
+        if (draft.SourceText.Length > 0) SaveRequested?.Invoke(draft);
     }
 
     private void Present()

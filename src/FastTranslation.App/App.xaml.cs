@@ -201,7 +201,7 @@ public partial class App : Application, IResultPresenter
         _ocrProvider = new GatewayOcrProvider(GatewayRecognizeImageAsync, ownOcr);
 
         _imageWindow = new ImageResultWindow();
-        _imageWindow.SaveRequested += text => SaveScreenshotText(text);
+        _imageWindow.SaveRequested += draft => SaveScreenshotText(draft);
         // 协调器在 Task.WhenAll(...).ConfigureAwait(false) 之后继续在线程池线程上跑，
         // 直接 ShowResult 会抛「调用线程无法访问此对象」然后被 catch 吞成托盘气泡，
         // 用户看到的就是「截图翻译没反应」。WPF 的边界只在这里，所以在这里切回 UI 线程。
@@ -214,7 +214,12 @@ public partial class App : Application, IResultPresenter
                 result.JpegBytes,
                 CaptureCaption(result),
                 result.SourceText.Length > 0 ? result.SourceText : null,
-                showActions: result.JpegBytes is not null)),
+                showActions: result.JpegBytes is not null,
+                new ImageNoteContext(
+                    result.TargetText ?? string.Empty,
+                    result.SourceLanguage,
+                    result.TargetLanguage,
+                    result.Model))),
             message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)),
             // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
             () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")));
@@ -537,9 +542,31 @@ public partial class App : Application, IResultPresenter
                         BuildSampleCapture(),
                         "截图翻译 · 3 行 · qwen-mt-image",
                         "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
-                        true);
+                        true,
+                        new ImageNoteContext("The quick brown fox jumped over the lazy dog.", "Chinese", "English", "qwen-mt-flash"));
                 }
                 catch (Exception ex) { Trace($"image-result: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "image-saved")
+        {
+            // FT_UITEST=image-saved -> 保存成功后的窗内回执（按钮变「已保存」+ 右侧一行状态）
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    _imageWindow?.ShowResult(
+                        BuildSampleCapture(),
+                        "截图翻译 · 3 行 · qwen-mt-image",
+                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                        true,
+                        new ImageNoteContext("The quick brown fox jumped over the lazy dog.", "Chinese", "English", "qwen-mt-flash"));
+                    _imageWindow?.MarkSaved("单词");
+                }
+                catch (Exception ex) { Trace($"image-saved: {ex}"); }
             };
             uiTimer.Start();
         }
@@ -855,57 +882,63 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// 译图窗里的「保存到单词本」：保存的是识别框里当前的文本（用户可能已经把 OCR 的错字改了），
-    /// 不再重新截图，也不再单独翻译——译文在复习时按需再要。
+    /// 译图窗里的「保存到单词本」：原文取识别框里当前的文本（用户可能已经把 OCR 的错字改了），
+    /// 译文用截图那趟已经算好的那句（<see cref="ImageNoteDraft.Create"/> 保证原文被改过时不会存错译文）。
     /// </summary>
-    private void SaveScreenshotText(string text)
+    private void SaveScreenshotText(ImageNoteDraft draft)
     {
-        var sourceText = text?.Trim() ?? string.Empty;
-        if (sourceText.Length == 0) return;
+        if (draft.SourceText.Length == 0) return;
         if (_account is not { IsSignedIn: true })
         {
+            _imageWindow?.ShowSaveError("先在账号里登录再保存");
             _tray?.ShowBalloon("Fast Translation", "先在账号里登录,保存的单词才能跨设备同步");
             ShowAccount();
             return;
         }
 
-        _ = SaveScreenshotTextAsync(sourceText);
+        _ = SaveScreenshotTextAsync(draft);
     }
 
-    private async Task SaveScreenshotTextAsync(string sourceText)
+    private async Task SaveScreenshotTextAsync(ImageNoteDraft draft)
     {
         if (_account is not { IsSignedIn: true }) return;
         try
         {
             var saved = await _account.SaveNoteAsync(
-                NoteClassifier.Classify(sourceText),
-                sourceText,
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                string.Empty,
+                NoteClassifier.Classify(draft.SourceText),
+                draft.SourceText,
+                draft.TargetText,
+                draft.SourceLang,
+                draft.TargetLang,
+                draft.Model,
                 ForegroundInfo.ProcessName(),
                 CancellationToken.None);
             if (saved.Succeeded)
             {
-                _tray?.ShowBalloon("Fast Translation", "已保存到" + NoteKinds.Display(saved.Value!.Kind) + "本");
+                var kind = NoteKinds.Display(saved.Value!.Kind);
+                _imageWindow?.MarkSaved(kind);
+                _tray?.ShowBalloon("Fast Translation", "已保存到" + kind + "本");
                 return;
             }
 
             if (saved.Error!.Code == AccountErrorCode.SubscriptionRequired)
             {
+                _imageWindow?.ShowSaveError(saved.Error.Display);
                 _tray?.ShowBalloon("Fast Translation", saved.Error.Display);
                 ShowAccount();
                 return;
             }
 
-            _tray?.ShowBalloon("Fast Translation", saved.Error.Code == AccountErrorCode.NotSignedIn
+            var message = saved.Error.Code == AccountErrorCode.NotSignedIn
                 ? "先在账号里登录,保存的单词才能跨设备同步"
-                : saved.Error.Display);
+                : saved.Error.Display;
+            _imageWindow?.ShowSaveError(message);
+            _tray?.ShowBalloon("Fast Translation", message);
         }
         catch (Exception ex)
         {
             Trace($"save screenshot note: {ex}");
+            _imageWindow?.ShowSaveError("保存没成功,稍后再试一次");
             _tray?.ShowBalloon("Fast Translation", "保存没成功,稍后再试一次");
         }
     }

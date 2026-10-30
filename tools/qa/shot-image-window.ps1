@@ -70,5 +70,6 @@ function Shoot([string]$hook, [string]$out) {
 
 Shoot 'image-loading' (Join-Path $OutDir 'image-loading.png')
 Shoot 'image-result'  (Join-Path $OutDir 'image-result.png')
+Shoot 'image-saved'   (Join-Path $OutDir 'image-saved.png')
 Remove-Item Env:\FT_UITEST -ErrorAction SilentlyContinue
 Write-Host 'done'
