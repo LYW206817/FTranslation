@@ -36,6 +36,8 @@
     </Style>
 
     <!-- ===== 按钮：默认是安静的次要样式 ===== -->
+    <!-- v60：圆角 8、悬停抬起 1.5px + 一层很淡的投影、按下回沉。动效只做位移与投影，
+         不做颜色以外的渐变，避免在低端机上看成掉帧。 -->
     <Style TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -48,23 +50,34 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="bd" Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <Grid x:Name="root" Background="Transparent">
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="8" Padding="{TemplateBinding Padding}"
+                      Effect="{x:Null}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{DynamicResource LiftShadow}"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
+                <Setter TargetName="root" Property="RenderTransform">
+                  <Setter.Value>
+                    <TranslateTransform Y="1"/>
+                  </Setter.Value>
+                </Setter>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="bd" Property="TextElement.Foreground" Value="{DynamicResource TextMutedBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -73,7 +86,7 @@
       </Setter>
     </Style>
 
-    <!-- 主操作 -->
+    <!-- 主操作：底色是一支极淡的上亮下暗渐变，比纯色更有"实体按钮"的厚度 -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background" Value="{DynamicResource BrandBrush}"/>
       <Setter Property="Foreground" Value="White"/>
@@ -82,23 +95,42 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="bd" Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <Grid x:Name="root" Background="Transparent">
+              <!-- 内边距交给 ContentPresenter：底色要铺满整个按钮，
+                   如果 Padding 留在 Border 上，蓝色底会缩在描边里面一圈 -->
+              <Border x:Name="bd" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="8" Effect="{x:Null}">
+                <Grid>
+                  <Border x:Name="fill" Background="{DynamicResource BrandBrush}" CornerRadius="7"/>
+                  <!-- 顶部高光：一条 20% 白的细边，给纯色按钮一点厚度 -->
+                  <Border x:Name="gloss" Height="1" VerticalAlignment="Top" Margin="1,1,1,0"
+                          CornerRadius="7,7,0,0" Background="#33FFFFFF"/>
+                  <ContentPresenter Margin="{TemplateBinding Padding}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandHoverBrush}"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandHoverBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{DynamicResource LiftShadow}"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandPressedBrush}"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandPressedBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
+                <Setter TargetName="root" Property="RenderTransform">
+                  <Setter.Value>
+                    <TranslateTransform Y="1"/>
+                  </Setter.Value>
+                </Setter>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HairStrongBrush}"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource HairStrongBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairStrongBrush}"/>
-                <Setter TargetName="bd" Property="TextElement.Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
+                <Setter TargetName="gloss" Property="Visibility" Value="Collapsed"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -387,7 +419,9 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
+            <!-- v60：悬停时整行向右挪 2px，读起来像"被手推了一下"；只挪不缩放，
+                 侧栏很窄，缩放会挤到右边的角标 -->
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="8">
               <Grid>
                 <Border x:Name="marker" Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
                         Background="Transparent" Margin="0,9,0,9"/>
@@ -397,6 +431,11 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                <Setter TargetName="fill" Property="RenderTransform">
+                  <Setter.Value>
+                    <TranslateTransform X="2"/>
+                  </Setter.Value>
+                </Setter>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -433,6 +472,102 @@
       <Setter Property="Height" Value="16"/>
       <Setter Property="Padding" Value="5,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+
+    <!-- ===== 卡片（v60 提到这里，三个设置类页面共用一套） ===== -->
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="16,14,16,16"/>
+      <Setter Property="Margin" Value="0,0,0,14"/>
+      <Setter Property="Effect" Value="{DynamicResource CardShadow}"/>
+    </Style>
+
+    <!-- ===== 四档自评（v60） =====
+         一个模板、四种色相：底色是各档的浅色，描边与文字是各档的饱和色。
+         悬停时在底色上叠一层同色 9% 的薄纱并抬起 1px，按下沉回去，
+         这样不需要为每一档再写一套 Hover 色。 -->
+    <Style x:Key="GradeButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid x:Name="root" Background="Transparent">
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="10" Padding="{TemplateBinding Padding}" Effect="{x:Null}">
+                <Grid>
+                  <Border x:Name="veil" CornerRadius="9" Background="{TemplateBinding Foreground}"
+                          Opacity="0"/>
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="veil" Property="Opacity" Value="0.09"/>
+                <Setter TargetName="bd" Property="Effect" Value="{DynamicResource LiftShadow}"/>
+                <Setter TargetName="root" Property="RenderTransform">
+                  <Setter.Value>
+                    <TranslateTransform Y="-1"/>
+                  </Setter.Value>
+                </Setter>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="veil" Property="Opacity" Value="0.16"/>
+                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
+                <Setter TargetName="root" Property="RenderTransform">
+                  <Setter.Value>
+                    <TranslateTransform Y="1"/>
+                  </Setter.Value>
+                </Setter>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="veil" Property="Opacity" Value="0"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="GradeForgotButton" TargetType="Button" BasedOn="{StaticResource GradeButton}">
+      <Setter Property="Background" Value="{DynamicResource GradeForgotFillBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource GradeForgotBorderBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource GradeForgotBrush}"/>
+    </Style>
+
+    <Style x:Key="GradeFuzzyButton" TargetType="Button" BasedOn="{StaticResource GradeButton}">
+      <Setter Property="Background" Value="{DynamicResource GradeFuzzyFillBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource GradeFuzzyBorderBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource GradeFuzzyBrush}"/>
+    </Style>
+
+    <Style x:Key="GradeFamiliarButton" TargetType="Button" BasedOn="{StaticResource GradeButton}">
+      <Setter Property="Background" Value="{DynamicResource GradeFamiliarFillBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource GradeFamiliarBorderBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource GradeFamiliarBrush}"/>
+    </Style>
+
+    <Style x:Key="GradeKnownButton" TargetType="Button" BasedOn="{StaticResource GradeButton}">
+      <Setter Property="Background" Value="{DynamicResource GradeKnownFillBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource GradeKnownBorderBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource GradeKnownBrush}"/>
     </Style>
 
   </Application.Resources>

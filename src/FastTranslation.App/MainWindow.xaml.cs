@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
@@ -244,6 +245,33 @@ public partial class MainWindow : Window
         PageHost.Content = Build(page);
         SyncSidebar();
         RefreshPage(page);
+        PlayPageTransition();
+    }
+
+    /// <summary>
+    /// 换页的衔接（v60）：新页面淡入并从下方 10px 处就位。只动页面宿主，
+    /// 底下的渐变背景保持不动，所以看起来是"内容在纸上出现"而不是整块界面闪一下。
+    /// 系统里关掉动画效果的人走同一路径但不看动画。
+    /// </summary>
+    private void PlayPageTransition()
+    {
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            PageHost.Opacity = 1;
+            PageHost.RenderTransform = null;
+            return;
+        }
+
+        var slide = new TranslateTransform(0, 10);
+        PageHost.RenderTransform = slide;
+        PageHost.BeginAnimation(OpacityProperty, null);
+        PageHost.Opacity = 1;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease };
+        var rise = new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(210)) { EasingFunction = ease };
+        PageHost.BeginAnimation(OpacityProperty, fade);
+        slide.BeginAnimation(TranslateTransform.YProperty, rise);
     }
 
     /// <summary>

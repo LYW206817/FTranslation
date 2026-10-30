@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:FastTranslation.App"
         Title="Fast Translation" Width="1040" Height="660" Icon="/FastTranslation.ico"
         WindowStartupLocation="CenterScreen" MinWidth="900" MinHeight="560"
-        Background="{DynamicResource WindowBgBrush}"
+        Background="{DynamicResource PageGradientBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType">
   <Grid>
@@ -14,7 +14,7 @@
     </Grid.ColumnDefinitions>
 
     <!-- 侧边栏 -->
-    <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+    <Border Grid.Column="0" Background="{DynamicResource SidebarGradientBrush}"
             BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,0,1,0">
       <DockPanel Margin="10,16,10,12">
         <!-- 品牌区 -->
@@ -103,7 +103,8 @@
       </DockPanel>
     </Border>
 
-    <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl -->
-    <ContentControl Grid.Column="1" x:Name="PageHost"/>
+    <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
+         页面自己不带底色（Transparent），底下的渐变由窗口提供——换页时整块渐变不闪。 -->
+    <ContentControl Grid.Column="1" x:Name="PageHost" Background="Transparent"/>
   </Grid>
 </Window>

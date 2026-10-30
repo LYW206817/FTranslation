@@ -1357,3 +1357,32 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - 纯注释改动，无行为变化；构建、测试与安装器编译均证实。
 - `core.autocrlf` 下 `git` 会提示 “LF will be replaced by CRLF”，属仓库既有归一化行为，与本次无关。
 - `deploy/README.md` 等既有中文文档里的半角标点未在本轮统一。
+
+## v60 配色与动效:四档自评色、页面渐变、卡片与悬停 ✅
+
+**背景**
+- 用户用 `/frontend-agent /ui-ux-pro-max` 提了三条：四档按钮要能靠颜色一眼分清（靖绿 / 雾蓝 / 橘黄 / 鹤红）、整页底色要换成从左上到右下的珠光白→雾蓝渐变、按钮与卡片要有悬停浮起与换页衔接。
+- `ui-ux-pro-max` 的本地库没有 WPF 栈的条目（已如实告知用户）；它给的产品色板与仓库既定调色板不一致，按 `AGENTS.md`「配色只走 `ThemePalette`」不采纳，只取两条通用规则：动效必须给「减少动态效果」留退路、进入与离开要用不同缓动。
+
+**改动**
+- `src/FastTranslation.Platform.Windows/ThemePalette.cs`：`ThemeColors` 从 17 个字段扩到 32 个，新增四档自评的「文字 / 底色 / 描边」共 12 条、页面与侧栏渐变端点 4 条、投影色 1 条；浅深两套各自给值（浅色靖绿 `#0E7C66`、雾蓝 `#35648F`、橘黄 `#A9611A`、鹤红 `#A9453B`）。
+- `src/FastTranslation.App/ThemeBridge.cs`：新增 12 个画刷键、`ShadowColor`（`DropShadowEffect` 要的是 `Color` 不是 `Brush`）、`LiftShadow`（悬停抬起，Blur 14 / Depth 2）、`CardShadow`（卡片常驻，Blur 18 / Depth 1 / Opacity 0.55），以及 `SetGradient` 组装的两支渐变（页面 0.15→0.85、侧栏 0→1，侧栏只取同一色相更窄的一段）。
+- `src/FastTranslation.App/App.xaml`：默认按钮与主按钮重写模板——圆角 8、悬停抬起 1.5px 并叠一层淡投影、按下回沉 1px；新增全局 `Card`（圆角 12 + `CardShadow`）；新增四档样式族 `GradeButton` 与四个变体（悬停叠 9% 同色 veil、按下 16% 并下沉、禁用转中性灰）；`SidebarItem` 悬停整行右移 2px。
+- `src/FastTranslation.App/MainWindow.xaml(.cs)`：窗口底色改 `PageGradientBrush`、侧栏改 `SidebarGradientBrush`；`ShowPage` 换页时新页面淡入（170ms）并从下方 10px 就位（210ms），只动页面宿主不动侧栏。
+- 六个页面 `UserControl` 的 `Background` 由 `WindowBgBrush` 改成 `Transparent`，让渐变从窗口透上来；三份重复的本地 `Card` 样式删掉，统一用全局那份。
+- `src/FastTranslation.App/Pages/ReviewPage.xaml`：四档按钮换用新样式族，页内本地样式表减去 40 余行。
+
+**踩到的坑**
+- `Border` 没有 `BorderDashArray` 这类属性可借用（揭开前的虚线槽此前用 `Rectangle` 画的），本轮保持 `Rectangle` 方案。
+- `TranslateTransform` 带 `x:Name` 后不能当 `Setter TargetName`：`Freezable` 不在模板 name scope 里，会报 `MC4111 无法找到 Trigger 目标`。改成对容器设 `RenderTransform` 并内联 `<TranslateTransform Y="1"/>`。
+- `Padding` 必须设在 `ContentPresenter` 上：留在外层 `Border` 时主按钮的蓝底会缩在描边里，截图里成了「小胶囊 + 外边框」。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release`：0 警告 0 错误；`dotnet test`：576 全绿（Core 204 / Platform.Windows 87 / Providers.QwenMt 92 / Server 193）。
+- 截图（1400×1000 逻辑、175% DPI 下 1820×1155）：`v59-home.png`、`v59-home-dark.png`（首页浅/深）、`v59-review-pick.png`（勾选列表）、`v59-review-card.png`（未揭开，四档置灰）、`v59-review-revealed.png` / `-dark.png`（揭开后四档上色）、`v59-hover-grade.png`（悬停抬起）。
+- 四档颜色取色：忘记 `#FAEAE7` 底 / `#A9453B` 字、模糊 `#FBF0E0` / `#A9611A`、熟悉 `#E9F0F8` / `#35648F`、记住 `#E7F5F0` / `#0E7C66`。
+
+**风险**
+- 渐变是静态的，不随窗口尺寸重排；极端窄窗口下侧栏渐变压缩后色差变小，但仍在同一色相内。
+- 换页动效已接 `SystemParameters.ClientAreaAnimation`：系统里关掉动画时直接到位、不做淡入位移；但悬停抬起与按钮下沉走的是样式触发器，没有单独的「不动效」分支。
+- 悬停抬起依赖 `DropShadowEffect`，软件渲染兜底下会有轻微模糊，深色主题里不明显。
