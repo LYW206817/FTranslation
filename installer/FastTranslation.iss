@@ -1,10 +1,10 @@
-﻿; Fast Translation 安装器。
+; Fast Translation 安装器。
 ; 用它替掉 v1.x 的 WiX MSI，原因有两条（都是用户提的）：要一个经典安装向导，让用户
 ; 自选安装目录，还要一条程序自己就能触发的无人值守升级路径。
 ; 按用户安装（不弹 UAC），这样自动更新永远不会弹同意框。
 
 #define AppName "Fast Translation"
-#define AppVersion "1.3.5"
+#define AppVersion "1.3.6"
 #define AppPublisher "FastTranslation Project"
 #define AppExeName "FastTranslation.exe"
 

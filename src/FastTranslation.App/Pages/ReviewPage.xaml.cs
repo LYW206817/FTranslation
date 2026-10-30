@@ -18,6 +18,16 @@ namespace FastTranslation.App.Pages;
 /// </summary>
 public partial class ReviewPage : UserControl
 {
+    /// <summary>当前正在提交的档位；四档按钮据此保持实色，而不是只亮鼠标按下的那一帧。</summary>
+    public static readonly DependencyProperty SelectedGradeProperty = DependencyProperty.Register(
+        nameof(SelectedGrade), typeof(string), typeof(ReviewPage), new PropertyMetadata(string.Empty));
+
+    public string SelectedGrade
+    {
+        get => (string)GetValue(SelectedGradeProperty);
+        private set => SetValue(SelectedGradeProperty, value);
+    }
+
     /// <summary>服务端默认值：每天混入多少张还没见过的卡。</summary>
     private const int NewLimit = 20;
 
@@ -279,7 +289,10 @@ public partial class ReviewPage : UserControl
         if (!ReviewSchedule.TryParseGrade(wire, out var grade)) return;
 
         _grading = true;
-        SetGradeEnabled(false);
+        // v61: 评分期间不能再禁用按钮，否则禁用样式会盖住选中实色。
+        // 按钮保持启用，只关掉整条四档栏的命中测试；键盘则由 _grading 防重入。
+        SelectedGrade = wire;
+        GradeBar.IsHitTestVisible = false;
         try
         {
             var result = await _account.GradeNoteAsync(note.Id, grade, CancellationToken.None);
@@ -298,6 +311,7 @@ public partial class ReviewPage : UserControl
         }
         finally
         {
+            GradeBar.IsHitTestVisible = true;
             _grading = false;
             _revealed = false;
         }
@@ -347,6 +361,8 @@ public partial class ReviewPage : UserControl
 
     private void SetGradeEnabled(bool enabled)
     {
+        // 新卡、揭示译文、评分失败和完成页都会经过这里；选中态绝不能漏到下一张卡。
+        SelectedGrade = string.Empty;
         ForgotButton.IsEnabled = enabled;
         FuzzyButton.IsEnabled = enabled;
         FamiliarButton.IsEnabled = enabled;
