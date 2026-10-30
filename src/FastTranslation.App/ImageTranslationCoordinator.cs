@@ -86,58 +86,51 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             // Model 留空：设置页里的 Model 是文本模型，图片翻译要用适配器自己的默认模型
             var request = new ImageTranslationRequest(captured.PngBytes, source, target, string.Empty);
 
-            // A（图片翻译）与 B（OCR）并行：用户等的是两者较慢的那个，不是两者之和。
+            var started = Environment.TickCount64;
             var imageTask = _provider.TranslateImageAsync(request, _lifetime.Token);
             var ocrTask = _ocr.RecognizeAsync(new ImageOcrRequest(captured.PngBytes), _lifetime.Token);
-            await Task.WhenAll(imageTask, ocrTask).ConfigureAwait(false);
 
-            var image = imageTask.Result;
-            var ocr = ocrTask.Result;
+            // C（把 OCR 出来的原文再翻一遍文字）只依赖 B，所以 B 一回来就启动，不等 A。
+            // 实测同一张图：A≈3.3s、B≈0.9s、C≈0.6s；旧顺序先 WhenAll(A,B) 再跑 C 要 5.2s。
+            var textTask = TranslateRecognizedAsync(ocrTask, settings);
+
+            // 谁先回来谁先上屏：文字通常 1.5s 就有，译图要 3s 以上，等齐再显示等于白等。
+            var shown = await PresentEarlierAsync(imageTask, textTask, originApp).ConfigureAwait(false);
+
+            var image = await imageTask.ConfigureAwait(false);
+            var (ocr, text) = await textTask.ConfigureAwait(false);
+            var recognized = ocr.Succeeded ? ocr.Text : string.Empty;
+            var translated = text is { Succeeded: true } ? text : null;
+            var textError = ocr.Succeeded
+                ? (text is { Succeeded: false } failed ? failed.Error?.Message : null)
+                : ocr.Error?.Message;
+
             WindowsSelectionCapture.Diag(
-                $"image: translate ok={image.Succeeded} err={image.Error?.Code}/{image.Error?.Message}; ocr ok={ocr.Succeeded} err={ocr.Error?.Code}/{ocr.Error?.Message}");
+                $"image: done at {Environment.TickCount64 - started}ms; image ok={image.Succeeded} err={image.Error?.Code}/{image.Error?.Message}; ocr ok={ocr.Succeeded} err={ocr.Error?.Code}/{ocr.Error?.Message}; text={text?.Succeeded}");
 
-            if (!image.Succeeded && !ocr.Succeeded)
+            if (!image.Succeeded && recognized.Length == 0)
             {
                 _reportError(image.Error?.Message ?? ocr.Error?.Message ?? "截图翻译失败");
                 return;
             }
 
-            var recognized = ocr.Succeeded ? ocr.Text : string.Empty;
-            string? textError = ocr.Succeeded ? null : ocr.Error?.Message;
-
-            // C：把识别出的原文再过一遍文字翻译。图片翻译给的是「译图」，用户想存单词本还缺一句译文。
-            // 语种与模型跟着译文一起交出去：单词本要按它们显示「译自/译成/模型」，漏了就是一条只有中文的孤儿笔记。
-            string? translated = null;
-            var sourceLanguage = string.Empty;
-            var targetLanguage = string.Empty;
-            var model = string.Empty;
-            if (recognized.Length > 0)
-            {
-                var translatedResult = await _translation.TranslateAsync(recognized, settings, _lifetime.Token).ConfigureAwait(false);
-                if (translatedResult.Succeeded)
-                {
-                    translated = translatedResult.TranslatedText;
-                    sourceLanguage = translatedResult.SourceLanguage;
-                    targetLanguage = translatedResult.TargetLanguage;
-                    model = translatedResult.Model;
-                }
-                else
-                {
-                    textError = translatedResult.Error?.Message;
-                }
-            }
-
             if (_lifetime.IsCancellationRequested) return;
+
+            // 先上屏的那段可能已经把同样的内容给过了（文字先到、译图又失败；或译图先到、OCR 没认出字），
+            // 再画一遍只会让窗口闪一下，所以只补真正缺的那一半。
+            var needsPicture = image.Succeeded && !shown.Image;
+            var needsText = recognized.Length > 0 && !shown.Text;
+            if (!needsPicture && !needsText) return;
 
             _present(new ImageCaptureResult(
                 image.Succeeded ? image.JpegBytes : null,
                 recognized,
-                translated,
+                translated?.TranslatedText,
                 textError,
                 originApp,
-                sourceLanguage,
-                targetLanguage,
-                model));
+                translated?.SourceLanguage ?? string.Empty,
+                translated?.TargetLanguage ?? string.Empty,
+                translated?.Model ?? string.Empty));
         }
         catch (OperationCanceledException)
         {
@@ -153,6 +146,56 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         {
             Interlocked.Exchange(ref _busy, 0);
         }
+    }
+
+    /// <summary>
+    /// 两段里先回来的那段先上屏。译图和文字各走各的端点，谁快谁慢每次都不一样，
+    /// 等齐再显示就是让用户对着转圈看最慢的那条走完。窗口原地换内容，尺寸不变。
+    /// </summary>
+    /// <returns>已经上屏的是哪一半，调用方据此决定还要不要补一次。</returns>
+    private async Task<(bool Image, bool Text)> PresentEarlierAsync(
+        Task<ImageTranslationResult> imageTask,
+        Task<(ImageOcrResult Ocr, TranslationResult? Text)> textTask,
+        string originApp)
+    {
+        var first = await Task.WhenAny(imageTask, textTask).ConfigureAwait(false);
+        if (first == imageTask)
+        {
+            if (await imageTask.ConfigureAwait(false) is not { Succeeded: true } image) return (false, false);
+            // 原文还没来：先给图，识别框留空、保存按钮等文字回来再启用
+            _present(new ImageCaptureResult(image.JpegBytes, string.Empty, null, null, originApp));
+            return (true, false);
+        }
+
+        var (ocr, text) = await textTask.ConfigureAwait(false);
+        if (!ocr.Succeeded || ocr.Text.Length == 0) return (false, false);
+        var translated = text is { Succeeded: true } ? text : null;
+        _present(new ImageCaptureResult(
+            null,
+            ocr.Text,
+            translated?.TranslatedText,
+            translated is null ? text?.Error?.Message : null,
+            originApp,
+            translated?.SourceLanguage ?? string.Empty,
+            translated?.TargetLanguage ?? string.Empty,
+            translated?.Model ?? string.Empty));
+        return (false, true);
+    }
+
+    /// <summary>
+    /// OCR 回来就把它翻成文字，不等译图。返回 OCR 结果（失败也要返回，调用方靠它判断有没有原文）
+    /// 和文字译文（OCR 没认出字时为 null）。
+    /// 语种与模型跟着译文一起交出去：单词本要按它们显示「译自/译成/模型」，漏了就是一条只有中文的孤儿笔记。
+    /// </summary>
+    private async Task<(ImageOcrResult Ocr, TranslationResult? Text)> TranslateRecognizedAsync(
+        Task<ImageOcrResult> ocrTask,
+        AppSettings settings)
+    {
+        var ocr = await ocrTask.ConfigureAwait(false);
+        if (!ocr.Succeeded || ocr.Text.Length == 0) return (ocr, null);
+
+        var text = await _translation.TranslateAsync(ocr.Text, settings, _lifetime.Token).ConfigureAwait(false);
+        return (ocr, text);
     }
 
     public void Dispose()

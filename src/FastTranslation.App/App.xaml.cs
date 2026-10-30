@@ -1106,11 +1106,13 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// 只有"连不上"才值得歇一会；429、额度用完、401 都是网关活着并且在回答，下次照样要问。
+    /// 5xx 也要歇一会。网关返回 5xx 说明它活着但不肯干活（典型是 Gateway.Enabled=false 时的
+    /// <c>503 gateway_disabled</c>），这时每一条翻译都先白跑一次完整往返再回落到自己的 Key，
+    /// 用户只感觉到「启动后就慢」。429、额度用完、401 是网关在正常回答，下次照样要问。
     /// </summary>
     private void NoteGatewayFailure(TranslationError? error)
     {
-        if (error?.Code != TranslationErrorCode.Network) return;
+        if (error?.Code is not (TranslationErrorCode.Network or TranslationErrorCode.ServerError)) return;
         _gatewayDownUntil = Environment.TickCount64 + GatewayDownWindowMs;
         Trace($"gateway down for {GatewayDownWindowMs / 1000}s: {error.Message}");
     }

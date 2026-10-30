@@ -74,6 +74,10 @@ public sealed class ImageResultWindow : IDisposable
     private ImageNoteContext _noteContext = ImageNoteContext.Empty;
     private string _recognizedOriginal = string.Empty;
 
+    /// <summary>这一张截图是否已经保存过。文字先到、译图后到时 <see cref="ShowResult"/> 会走两遍，
+    /// 已经存过的笔记不能被第二遍刷回「保存到单词本」。</summary>
+    private bool _saved;
+
     /// <summary>点了「保存到单词本」。原文取识别框当前内容，译文是否作数由 <see cref="ImageNoteDraft.Create"/> 判断。</summary>
     public event Action<ImageNoteDraft>? SaveRequested;
 
@@ -262,6 +266,10 @@ public sealed class ImageResultWindow : IDisposable
         _noteStatus.Visibility = Visibility.Collapsed;
         _recognized.Visibility = Visibility.Collapsed;
         _recognized.Text = string.Empty;
+        _recognizedOriginal = string.Empty;
+        // 新的一张截图：保存状态在这里归零，ShowResult 也就不会被二次展示干扰
+        _saved = false;
+        ResetSaveState();
         _imageRow.Height = new GridLength(1, GridUnitType.Star);
         _recognizedRow.Height = GridLength.Auto;
 
@@ -283,8 +291,7 @@ public sealed class ImageResultWindow : IDisposable
         _saveAs.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
         _saveNote.Visibility = Visibility.Visible;
         _noteContext = note ?? ImageNoteContext.Empty;
-        // 每次都是新的截图：上一张的「已保存」不能留到这一张
-        ResetSaveState();
+        if (!_saved) ResetSaveState();
 
         if (recognized is null)
         {
@@ -334,6 +341,7 @@ public sealed class ImageResultWindow : IDisposable
     /// <summary>保存成功的窗内回执，样式照抄结果卡的 MarkSaved。</summary>
     public void MarkSaved(string kind)
     {
+        _saved = true;
         _saveNote.Content = "已保存";
         _saveNote.IsEnabled = false;
         ShowSaveStatus("已保存到" + kind + "本", FtTheme.TextSecondary);

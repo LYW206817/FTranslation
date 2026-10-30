@@ -1515,3 +1515,64 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 
 - 用户在识别框里改文本后点保存，单词本会得到一条**只有原文**的笔记（reviewing 时仍是答案空白）。这是刻意的取舍：错位的译文比没有译文更坏。要补的话应该在窗口里加一个「重新翻译」按钮，而不是悄悄存旧译文。
 - 服务端仍然接受空 targetText，历史数据里的空译文本节不回溯。
+
+## v65 截图翻译提速：谁先回谁先上屏，网关 5xx 也进冷却
+
+用户 m03296：阿里那边响应是毫秒级，为什么客户端有明显等待，尤其截图翻译要好幾秒——"我们的卖点就是实时速度"。
+
+### 实测：慢在哪一跳
+
+探针 `publish/TimingProbe`（net10.0-windows 控制台，ProjectReference Platform.Windows + Providers.QwenMt，在 gitignore 内）用 `DelegatingHandler` 打印每一跳 `hop METHOD host path -> status in Nms`，直接调真实 DashScope：
+
+- 文本 `qwen-mt-flash`：冷启首跳 460ms，预热后稳定 **约 240ms**。文本翻译本身并不慢。
+- 图片 `qwen-mt-image-2.0`：POST 先回 200，再 GET 返回的 OSS 图，**2.6–3.3s**（1389×1109 / 131935B）；大图 2778×2218 / 403203B 到 **4576ms**。
+- OCR `qwen-vl-ocr`：617–1873ms，典型 **约 0.9s**。
+
+⇒ 慢的不是文本模型，而是**图片翻译这一跳本身就按秒计**。既然单跳省不掉，就只能把「串行等待」改成「谁先回谁先上屏」。
+
+顺带否掉了两个看似能省的优化：
+
+- 降采样：缩到 2400 / 2000 / 1920 / 1600 / 1280 分别 4278 / 3970 / 2943 / 2654 / 3058ms，收益不稳且非单调（1280 反而比 1600 慢），不值得为一个不稳定的 0.2–1.6s 引入「大图变糊」。
+- PNG→JPEG 转码：无稳定收益，不做。
+
+### 1. 流水线重排（`ImageTranslationCoordinator`）
+
+原来 `Task.WhenAll(imageTask, ocrTask)` 之后才做 C 段文本翻译，等于「先等最慢的图片，再等文本」，两段时间完全串行。
+
+现在：
+
+- `TranslateRecognizedAsync(ocrTask, settings)`：OCR 一回来立刻发文本翻译，**不等图片**。
+- `PresentEarlierAsync(imageTask, textTask, originApp)`：`await Task.WhenAny(...)`，谁先回谁先 `_present(...)` 上屏；图先到就先只上译图，文字先到就先只上原文 + 译文。
+- 后面补齐缺的那一半：`needsPicture = image.Succeeded && !shown.Image` / `needsText = recognized.Length > 0 && !shown.Text`，两样都不缺就直接返回，绝不重绘。
+- 失败语义收紧成 `if (!image.Succeeded && recognized.Length == 0)` 才报错——只要有一半能出结果就不打扰用户。
+
+**实测对照**（同一张图，两轮）：
+
+| 顺序 | 首屏 | 译图齐全 |
+| --- | --- | --- |
+| 旧：WhenAll(A,B) 再 C | 3098 / 2959ms | 同左 |
+| 新：谁先回谁先上屏 | **1484 / 1667ms** | 2466 / 2447ms |
+
+首屏直接砍半，纯文字路径 1443–1503ms。
+
+### 2. 网关 5xx 也进冷却（`App.xaml.cs`）
+
+`NoteGatewayFailure` 原来只对 `Network` 开 60 秒冷却。但网关 `Gateway.Enabled=false` 时，三条链路（`/v1/chat/completions`、`/v1/image`、OCR）都会立刻返回 `503 gateway_disabled`（`server/FastTranslation.Server/Gateway/GatewayEndpoints.cs:44/:116/:171`），503 被 `QwenMtProvider` 归成 `ServerError`，永远不会冷却——于是每次翻译都先白跑一趟注定失败的网关往返，再回落用户自己的 Key。
+
+改成 `Network` 或 `ServerError` 都进冷却（`GatewayDownWindowMs = 60_000`）。这条直接影响首字延迟，所以和提速放在一起。
+
+### 3. `ImageResultWindow` 的「已保存」不被二次上屏冲掉
+
+流水线变成两次 `ShowResult`（文字先到、译图后到）之后，原来的 `ResetSaveState()` 会把用户刚点出的「已保存」刷回「保存到单词本」。新增 `private bool _saved`：`ShowLoading` 归零、`MarkSaved` 置真、`ShowResult` 里 `if (!_saved) ResetSaveState();`。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误；`dotnet test` = **593 全绿**（Core 214 / Platform.Windows 92 / Providers.QwenMt 94 / Server 193）。
+- 端到端毫秒数即上表的 1484 / 1667 与 2466 / 2447；单跳数据同「实测」小节。
+- 界面侧未再截图：本节的改动在时序与失败冷却，不改版面；等待态与固定尺寸仍是 v63 那两张图。
+
+### 残留风险
+
+- 图片翻译这一跳本身仍是 2.5–4.6s，客户端无法压到毫秒级；用户看到的是「先出译文、再补上译图」，不再是一片空白。
+- 两次 `ShowResult` 意味着窗口会重绘一次；已用 `_saved` 保住保存态，但用户正好在这两次之间拖动窗口，位置不会被记忆（窗口本来也不记位置）。
+- 网关冷却的副作用：服务端真的 5xx 之后，即使立刻恢复，客户端也会最多 60 秒继续用用户自己的 Key。这是刻意选择——宁可多花用户自己的一点额度，也不要每次翻译都白等一趟网关。
