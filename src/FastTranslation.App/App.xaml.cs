@@ -219,7 +219,8 @@ public partial class App : Application, IResultPresenter
                     result.TargetText ?? string.Empty,
                     result.SourceLanguage,
                     result.TargetLanguage,
-                    result.Model))),
+                    result.Model),
+                result.PicturePending)),
             message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)),
             // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
             () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")));
@@ -579,6 +580,28 @@ public partial class App : Application, IResultPresenter
                 uiTimer.Stop();
                 try { _imageWindow?.ShowLoading("截图翻译 · 正在翻译"); }
                 catch (Exception ex) { Trace($"image-loading: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "image-partial")
+        {
+            // FT_UITEST=image-partial -> 文字先到、译图还没回来的中间态：
+            // 图区继续转圈占位，文本区已经能改能存。用来核对「先出文字不抖版面」。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    _imageWindow?.ShowResult(
+                        null,
+                        "截图翻译 · 正在生成译图",
+                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.",
+                        showActions: false,
+                        new ImageNoteContext("The quick brown fox jumped over the lazy dog.", "Chinese", "English", "qwen-mt-flash"),
+                        picturePending: true);
+                }
+                catch (Exception ex) { Trace($"image-partial: {ex}"); }
             };
             uiTimer.Start();
         }

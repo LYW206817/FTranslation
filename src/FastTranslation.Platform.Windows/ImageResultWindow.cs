@@ -54,11 +54,17 @@ public sealed class ImageResultWindow : IDisposable
     /// <summary>识别文本区在窗口里的固定高度：它总是要能改，但不能把图片挤没。</summary>
     private const double RecognizedHeight = 132;
 
+    private const string LoadingText = "正在快马加鞭翻译~";
+
+    /// <summary>文字已经上屏、译图还在路上时的占位文案。</summary>
+    private const string PictureLoadingText = "正在生成译图~";
+
     private readonly Window _window;
     private readonly TextBlock _caption;
     private readonly Image _image;
     private readonly Grid _imageHost;
     private readonly StackPanel _loadingPanel;
+    private readonly TextBlock _loadingText;
     private readonly Ellipse _spinner;
     private readonly RotateTransform _spinnerRotate = new();
     private readonly TextBlock _recognizedLabel;
@@ -107,9 +113,9 @@ public sealed class ImageResultWindow : IDisposable
             RenderTransformOrigin = new Point(0.5, 0.5),
             Visibility = Visibility.Collapsed,
         };
-        var loadingText = new TextBlock
+        _loadingText = new TextBlock
         {
-            Text = "正在快马加鞭翻译~",
+            Text = LoadingText,
             Foreground = FtTheme.TextSecondary,
             FontSize = 13,
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -121,7 +127,7 @@ public sealed class ImageResultWindow : IDisposable
             Visibility = Visibility.Collapsed,
         };
         _loadingPanel.Children.Add(_spinner);
-        _loadingPanel.Children.Add(loadingText);
+        _loadingPanel.Children.Add(_loadingText);
 
         // 转圈和图片同一格：等待时占位、出图时互换，窗口尺寸不变，不会先缩后张
         _imageHost = new Grid();
@@ -254,8 +260,7 @@ public sealed class ImageResultWindow : IDisposable
         _image.Source = null;
         _image.Visibility = Visibility.Collapsed;
         _jpegBytes = null;
-        _loadingPanel.Visibility = Visibility.Visible;
-        StartSpinner();
+        StartSpinner(LoadingText);
 
         // 等待时只留「关闭」：其他按钮都还没有可作用的对象
         _copy.Visibility = Visibility.Collapsed;
@@ -282,10 +287,15 @@ public sealed class ImageResultWindow : IDisposable
     /// <paramref name="showActions"/> 为 false 时（图片翻译失败、只有文字）隐藏图片类操作。
     /// <param name="note">OCR 文本的译文，用户点保存时一起写进单词本；没有译文传 null。
     /// </summary>
-    public void ShowResult(byte[]? imageBytes, string caption, string? recognized, bool showActions, ImageNoteContext? note = null)
+    public void ShowResult(
+        byte[]? imageBytes,
+        string caption,
+        string? recognized,
+        bool showActions,
+        ImageNoteContext? note = null,
+        bool picturePending = false)
     {
         _caption.Text = caption;
-        StopSpinner();
 
         _copy.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
         _saveAs.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
@@ -305,25 +315,43 @@ public sealed class ImageResultWindow : IDisposable
         {
             _recognizedLabel.Visibility = Visibility.Visible;
             _recognized.Visibility = Visibility.Visible;
-            _recognized.Text = recognized;
-            _recognizedOriginal = recognized.Trim();
+            // 同一张截图会被展示两次（文字先到、译图后补）：第二次不能把用户刚改过的原文冲掉
+            if (!string.Equals(_recognizedOriginal, recognized.Trim(), StringComparison.Ordinal))
+            {
+                _recognized.Text = recognized;
+                _recognizedOriginal = recognized.Trim();
+            }
             _saveNote.IsEnabled = true;
         }
 
         if (imageBytes is { Length: > 0 } && Decode(imageBytes) is { PixelWidth: > 0, PixelHeight: > 0 } bitmap)
         {
+            StopSpinner();
             _jpegBytes = imageBytes;
             _image.Source = bitmap;
             _image.Visibility = Visibility.Visible;
-            _loadingPanel.Visibility = Visibility.Collapsed;
             // 图占满剩余空间，文本区保持固定高度；窗口尺寸不再随图片变化
             _imageRow.Height = new GridLength(1, GridUnitType.Star);
             _recognizedRow.Height = recognized is null ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
             _recognized.Height = recognized is null ? double.NaN : RecognizedHeight;
             _recognized.MaxHeight = recognized is null ? double.PositiveInfinity : RecognizedHeight;
         }
+        else if (picturePending)
+        {
+            // 文字先到、译图还在路上：图区留在原位继续转圈，图回来原地填上。
+            // 若这时把图区收成 0 行，译图到达时整块版面会二次跳变，用户看到的就是「先出一半、又抖一下」。
+            StartSpinner(PictureLoadingText);
+            _jpegBytes = null;
+            _image.Source = null;
+            _image.Visibility = Visibility.Collapsed;
+            _imageRow.Height = new GridLength(1, GridUnitType.Star);
+            _recognizedRow.Height = GridLength.Auto;
+            _recognized.Height = RecognizedHeight;
+            _recognized.MaxHeight = RecognizedHeight;
+        }
         else
         {
+            StopSpinner();
             // 图片翻译失败但 OCR 成功：窗口仍要开，只是没有图可看，文本区接管整块空间。
             _jpegBytes = null;
             _image.Source = null;
@@ -398,8 +426,10 @@ public sealed class ImageResultWindow : IDisposable
         _window.Height = Math.Min(DefaultHeight, work.Height * 0.9);
     }
 
-    private void StartSpinner()
+    private void StartSpinner(string text)
     {
+        _loadingText.Text = text;
+        _loadingPanel.Visibility = Visibility.Visible;
         _spinner.Visibility = Visibility.Visible;
         _spinnerRotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation
         {

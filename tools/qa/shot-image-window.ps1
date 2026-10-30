@@ -69,6 +69,8 @@ function Shoot([string]$hook, [string]$out) {
 }
 
 Shoot 'image-loading' (Join-Path $OutDir 'image-loading.png')
+# 文字先到、译图还在路上的中间态：图区继续转圈，文本区已经能改能存
+Shoot 'image-partial' (Join-Path $OutDir 'image-partial.png')
 Shoot 'image-result'  (Join-Path $OutDir 'image-result.png')
 Shoot 'image-saved'   (Join-Path $OutDir 'image-saved.png')
 Remove-Item Env:\FT_UITEST -ErrorAction SilentlyContinue

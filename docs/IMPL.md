@@ -1576,3 +1576,33 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - 图片翻译这一跳本身仍是 2.5–4.6s，客户端无法压到毫秒级；用户看到的是「先出译文、再补上译图」，不再是一片空白。
 - 两次 `ShowResult` 意味着窗口会重绘一次；已用 `_saved` 保住保存态，但用户正好在这两次之间拖动窗口，位置不会被记忆（窗口本来也不记位置）。
 - 网关冷却的副作用：服务端真的 5xx 之后，即使立刻恢复，客户端也会最多 60 秒继续用用户自己的 Key。这是刻意选择——宁可多花用户自己的一点额度，也不要每次翻译都白等一趟网关。
+
+## v66 · 截图翻译：文字先到就先看，译图原地补
+
+v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成了「等齐了再一起出来」。查下来不是时序没生效，而是**分段的时机不对**：v65 里只要文字先到，窗口就把图区收成 0 行、把文本区铺满；译图回来时再撑开图区——中间那 0.35–1.1s 里用户看到的是一张「纯文字卡」，译图到达时版面又跳一次，反而更像卡顿。
+
+真机采样（UIA 每 80ms 采样一次窗口）也证实两种顺序都会出现：
+- 23:02:56 那次：等待态从 ms=384 一直持续到 ms=9370，译图先到，文字 0.75s 后补。
+- 22:59:47 那次：`image: done at 1782ms`，三段几乎同时结束。
+
+### 改法
+
+- `ImageResultWindow.ShowResult` 新增 `bool picturePending`（第 6 个可选参数，旧调用点不用改）。文字先到时走这一支：**图区留在原位、继续转圈**（文案「正在生成译图~」），文本区按固定高度 132 DIP 排在下面，译图回来就地填进图区 —— 版面只画一次，不再收放。
+- `StartSpinner` 从无参改成 `StartSpinner(string text)`，两处文案提成常量 `LoadingText = "正在快马加鞭翻译~"` / `PictureLoadingText = "正在生成译图~"`。`ShowLoading` 仍走前者。
+- `ImageCaptureResult` 末尾加 `bool PicturePending = false`，`PresentEarlierAsync` 里文字赢下 `WhenAny` 时置真。
+- 补齐判据从两项变三项，补上 `needsSettle = shown.Text && !image.Succeeded`：文字已上屏但译图失败时也要再画一次，否则图区那个转圈会一直转下去（v65 漏掉的死循环）。
+- 同一张截图会被 `ShowResult` 调两次，识别文本改为「内容变了才覆盖」：`if (!string.Equals(_recognizedOriginal, recognized.Trim(), StringComparison.Ordinal))`。否则用户在中间那 1 秒里改过的原文会被第二次上屏冲掉。
+
+### 验证
+
+- `dotnet build` 0 警告 0 错误；`dotnet test` = **593 全绿**（Core 214 / Platform.Windows 92 / Providers.QwenMt 94 / Server 193）。
+- 三态截图（`tools/qa/shot-image-window.ps1` + 新增 `FT_UITEST=image-partial` 钩子，产物在 `assets/qa/ui-v66/`，均 1389×1109 px，折算 780×620 DIP）：
+  - `image-loading.png`：只有「关闭」，文案「正在快马加鞭翻译~」，品牌蓝 186 px、bbox (679,533)-(708,563)。
+  - `image-partial.png`：**新增中间态**——按钮只有「关闭」，文案「截图翻译 · 正在生成译图」，图区转圈 188 px、bbox (679,405)-(709,435)，下方已有识别文本区（UIA 读到 edit value 两行）+「保存到单词本」。
+  - `image-result.png`：四个按钮齐、有图、文本区固定高度，无转圈（品牌蓝只剩图片里的蓝色内容）。
+  - 转圈位置随图区上移（533 → 405），正好证明图区没被收掉、只是把转圈挪到了图区中央。
+
+### 残留风险
+
+- 两次 `ShowResult` 仍然存在（这是「先看到字」的代价）；已用 `_saved` 保住保存态、用 `_recognizedOriginal` 保住用户改动，但用户如果正好在这 1 秒里拖窗口，位置不记忆。
+- 译图失败时窗口会多画一次（`needsSettle`）；这一次是空转，只为把转圈收掉。

@@ -16,7 +16,8 @@ internal sealed record ImageCaptureResult(
     string OriginApp,
     string SourceLanguage = "",
     string TargetLanguage = "",
-    string Model = "");
+    string Model = "",
+    bool PicturePending = false);
 
 /// <summary>
 /// 截屏翻译的编排：拖框选区域 → 图片翻译（A）与 OCR（B）并行 → 原文再翻一遍文字（C）→ 交给展示层。
@@ -120,7 +121,9 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             // 再画一遍只会让窗口闪一下，所以只补真正缺的那一半。
             var needsPicture = image.Succeeded && !shown.Image;
             var needsText = recognized.Length > 0 && !shown.Text;
-            if (!needsPicture && !needsText) return;
+            // 文字已上屏、译图却失败了：图区的转圈还在转，得再画一次把它收掉，否则窗口一直转下去
+            var needsSettle = shown.Text && !image.Succeeded;
+            if (!needsPicture && !needsText && !needsSettle) return;
 
             _present(new ImageCaptureResult(
                 image.Succeeded ? image.JpegBytes : null,
@@ -170,6 +173,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         var (ocr, text) = await textTask.ConfigureAwait(false);
         if (!ocr.Succeeded || ocr.Text.Length == 0) return (false, false);
         var translated = text is { Succeeded: true } ? text : null;
+        // 文字赢下 WhenAny 就说明译图还没回：告诉窗口图区继续转圈占位，
+        // 否则图区会先收成 0 行、译图回来再撑开，用户看到版面抖一下。
         _present(new ImageCaptureResult(
             null,
             ocr.Text,
@@ -178,7 +183,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             originApp,
             translated?.SourceLanguage ?? string.Empty,
             translated?.TargetLanguage ?? string.Empty,
-            translated?.Model ?? string.Empty));
+            translated?.Model ?? string.Empty,
+            PicturePending: true));
         return (false, true);
     }
 
