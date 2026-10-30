@@ -41,44 +41,12 @@ internal static class ThemeBridge
         Set(r, "DangerBrush", c.Danger);
 
         // 四档自评：文字 / 底色 / 描边各一条，XAML 只引用键名
-        Set(r, "GradeKnownBrush", c.GradeKnown);
-        Set(r, "GradeKnownFillBrush", c.GradeKnownFill);
-        Set(r, "GradeKnownBorderBrush", c.GradeKnownBorder);
-        Set(r, "GradeFamiliarBrush", c.GradeFamiliar);
-        Set(r, "GradeFamiliarFillBrush", c.GradeFamiliarFill);
-        Set(r, "GradeFamiliarBorderBrush", c.GradeFamiliarBorder);
-        Set(r, "GradeFuzzyBrush", c.GradeFuzzy);
-        Set(r, "GradeFuzzyFillBrush", c.GradeFuzzyFill);
-        Set(r, "GradeFuzzyBorderBrush", c.GradeFuzzyBorder);
-        Set(r, "GradeForgotBrush", c.GradeForgot);
-        Set(r, "GradeForgotFillBrush", c.GradeForgotFill);
-        Set(r, "GradeForgotBorderBrush", c.GradeForgotBorder);
-
-        // 悬停抬起的投影颜色。DropShadowEffect 要的是 Color，不是 Brush。
-        var shadow = (Color)ColorConverter.ConvertFromString(c.Shadow);
-        r["ShadowColor"] = shadow;
-        var shadowEffect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = shadow,
-            BlurRadius = 14,
-            ShadowDepth = 2,
-            Direction = 270,
-            Opacity = 1,
-        };
-        shadowEffect.Freeze();
-        r["LiftShadow"] = shadowEffect;
-
-        // 卡片常驻的那层更淡的投影：卡片不是可交互元素，不该和按钮抢注意力
-        var cardShadow = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = shadow,
-            BlurRadius = 18,
-            ShadowDepth = 1,
-            Direction = 270,
-            Opacity = 0.55,
-        };
-        cardShadow.Freeze();
-        r["CardShadow"] = cardShadow;
+        SetGrade(r, "Known", c.GradeKnown, c.GradeKnownFill, c.GradeKnownBorder);
+        SetGrade(r, "Familiar", c.GradeFamiliar, c.GradeFamiliarFill, c.GradeFamiliarBorder);
+        SetGrade(r, "Fuzzy", c.GradeFuzzy, c.GradeFuzzyFill, c.GradeFuzzyBorder);
+        SetGrade(r, "Forgot", c.GradeForgot, c.GradeForgotFill, c.GradeForgotBorder);
+        // 深色主题的档位色是亮色，选中实底时必须配深字；浅色则相反。
+        Set(r, "GradeSelectedTextBrush", ThemePalette.Current == AppTheme.Dark ? "#101820" : "#FFFFFF");
 
         // 页面底色：左上到右下。侧栏是同一套色相的更窄一段，用来和内容区分开。
         SetGradient(r, "PageGradientBrush", c.PageFrom, c.PageTo, 0.15, 0.85);
@@ -102,6 +70,23 @@ internal static class ThemeBridge
         var brush = new SolidColorBrush(color);
         brush.Freeze();
         resources[key] = brush;
+    }
+
+    /// <summary>一档颜色：默认浅底，悬停时向档位色加深 20%；选中态在样式里用实色。</summary>
+    private static void SetGrade(ResourceDictionary resources, string name, string grade, string fill, string border)
+    {
+        Set(resources, $"Grade{name}Brush", grade);
+        Set(resources, $"Grade{name}FillBrush", fill);
+        Set(resources, $"Grade{name}BorderBrush", border);
+        var from = (Color)ColorConverter.ConvertFromString(fill);
+        var to = (Color)ColorConverter.ConvertFromString(grade);
+        var hover = Color.FromRgb(
+            (byte)(from.R + (to.R - from.R) * 0.20),
+            (byte)(from.G + (to.G - from.G) * 0.20),
+            (byte)(from.B + (to.B - from.B) * 0.20));
+        var brush = new SolidColorBrush(hover);
+        brush.Freeze();
+        resources[$"Grade{name}HoverBrush"] = brush;
     }
 
     /// <summary>

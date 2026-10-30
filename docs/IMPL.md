@@ -1386,3 +1386,28 @@ v47 把 deploy/ 五个脚本写完了,但残留风险第一条就是「整套流
 - 渐变是静态的，不随窗口尺寸重排；极端窄窗口下侧栏渐变压缩后色差变小，但仍在同一色相内。
 - 换页动效已接 `SystemParameters.ClientAreaAnimation`：系统里关掉动画时直接到位、不做淡入位移；但悬停抬起与按钮下沉走的是样式触发器，没有单独的「不动效」分支。
 - 悬停抬起依赖 `DropShadowEffect`，软件渲染兜底下会有轻微模糊，深色主题里不明显。
+
+## v61 交互返工:四档三级色阶，卡片去投影 ✅
+
+**背景**
+- v60 之后用户明确指出两点：四档不能只是悬停浮起，选中时应该明显加深；其他页面的常驻阴影在渐变底上形成灰雾，显得脏。此轮保留配色与页面渐变，撤掉依赖阴影的层级表达。
+- `ui-ux-pro-max` 没有 WPF 专用条目，本轮只采用通用的「状态变化要可感知」与「层级优先用色阶/描边，不用大面积阴影」原则，没有再引入一套与 `ThemePalette` 冲突的色板。
+
+**改动**
+- `src/FastTranslation.App/ThemeBridge.cs`：每档除默认色外新增 `Grade*HoverBrush`，由底色向文字色混合 20%；四档共用 `SetGrade`，避免浅深主题各自维护一组数值。`LiftShadow`、`CardShadow`、`ShadowColor` 全部移除，客户端不再创建卡片 `DropShadowEffect`。
+- `src/FastTranslation.App/App.xaml`：四档样式改为默认浅底、悬停中档色、按下/选中实色白字的三级状态。普通按钮和 `Card` 取消所有投影，普通按钮保留换色与 1px 按下位移，侧栏保留 2px 悬停位移。
+- `src/FastTranslation.App/Pages/ReviewPage.xaml(.cs)`：四档按钮增加 `SelectedGrade` 附加属性；评分请求发出后立即标记所按档位，选中期间仍保持命中测试，靠 `_grading` 防重复提交，避免 `IsEnabled=false` 的灰色样式盖住选中色。进入新卡、请求失败或切页时清除选中态。
+
+**踩到的坑**
+- 只给悬停加 `DropShadowEffect` 不能表达「已选」：WPF 的悬停状态随指针移走立即消失，评分请求期间的选中状态必须由页面显式维护。
+- 不能靠 `IsEnabled=false` 同时做防连点和锁样式：禁用触发器会覆盖选中色。现在禁用触发器只用于「尚未揭示译文」，评分中改用 `_grading` 防重入。
+- 开发会话文件不是任意 JSON：`AccountSessionStore.StoredSession` 只接受 PascalCase 的 `AccessToken/RefreshToken/ExpiresAtUnix/UserId/Email/Plan`；写错架构会静默回到未登录，不是令牌失效。
+
+**验证**
+- `dotnet build FastTranslation.slnx -c Release`：0 警告 0 错误；`dotnet test`：576 全绿（Core 204 / Platform.Windows 87 / Providers.QwenMt 92 / Server 193）。
+- 截图（175% DPI，1820×1155）：`assets/qa/v61-account.png` / `v61-account-dark.png`（账号四张卡片仅细描边，无灰雾）；`v61-review-pick.png` / `v61-review-dark.png`（复习列表无投影）；`v61-review-revealed.png`（四档默认浅底）；`v61-grade-hover.png`（「记住」悬停加深）；`v61-grade-selected.png`（「记住」选中为实色靖绿白字）；`v61-next-card.png`（评分成功后选中色清空，进入第 2/4 条且四档重新置灰）。
+- 取样位置：选中态看四档条最右「记住」按钮，默认态看同一张图其余三档；卡片只看边框外侧与渐变交界处，不再看按钮是否浮起。
+
+**风险**
+- 选中实色只在评分请求期间显示，本地服务端响应极快时可能只是一瞬；这是请求状态反馈，不是持久标记。
+- 深色主题的四档实色对比度依赖 `ThemePalette` 现有颜色，本轮未额外引入高饱和色；低亮度显示器上建议以文字为辅，不只靠颜色判断。
