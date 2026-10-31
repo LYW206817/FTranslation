@@ -459,7 +459,7 @@
           <ControlTemplate TargetType="Button">
             <!-- v60：悬停时整行向右挪 2px，读起来像"被手推了一下"；只挪不缩放，
                  侧栏很窄，缩放会挤到右边的角标 -->
-            <Grid>
+            <Grid x:Name="root">
               <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
                       CornerRadius="9" Margin="-1"/>
               <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="8">
@@ -471,13 +471,15 @@
               </Border>
             </Grid>
             <ControlTemplate.Triggers>
-              <!-- v70：悬停直接借用活动项的蓝底。侧栏只有一列，灰底太安静，鼠标扫过去
-                   常常看不出点在哪儿；文字同步换成 BrandText，压 BrandFill 是 5.77:1（浅）/
-                   6.35:1（深）。和活动项的区别只剩左侧竖条与字重。 -->
+              <!-- v70：悬停给出和点下去同一圈 2px 品牌色环。点侧栏时那圈蓝是焦点环，
+                   一闪就没了（选中后换成活动项样式，那支模板没有环），用户觉得好看，
+                   要求悬停也这样。底色仍是原来的 HoverBrush，不动。
+                   v70 返工：右移动画原先只加在 fill 上，fill 被推走后把环的右边整个盖住，
+                   截图上只剩左/上/下三段。改挂到 root，环与填充一起挪，四边等宽。 -->
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
-                <Setter TargetName="fill" Property="RenderTransform">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                <Setter TargetName="root" Property="RenderTransform">
                   <Setter.Value>
                     <TranslateTransform X="2"/>
                   </Setter.Value>

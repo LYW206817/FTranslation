@@ -1743,42 +1743,48 @@ v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成�
 - `BrandText` 只覆盖了「品牌色当文字」这一类；`Accent`（`#40A9FF` / `#5BB4FF`）当文字用的场景目前没有，真要用得另配一档。
 - 字号阶里 10px 那六处是刻意保留的，但如果以后再加 chip 类小标签，需要明确它属于 10 这一档而不是跟着正文走。
 
-## v70 · 侧栏悬停借活动项的蓝底
+## v70 · 侧栏悬停画出点击时那圈品牌色边框
 
-用户提的（原话）：「当前点击侧栏瞬时的蓝色样式很好看，给鼠标浮动到侧栏时也加上」。范围就一条：**只改悬停，不动点击后的活动态**。原来悬停走的是 `HoverBrush`（浅色 `#F0F4FA` / 深色 `#262C35`），比侧栏底色只深一点点，加上 v60 那个 2px 右移，实际扫过去几乎看不出鼠标停在哪一项。
+用户提了两轮，第二轮的定论（原话）：「当前鼠标悬浮上去特效是有淡淡的阴影，点击侧栏会有蓝色边框，我想要的效果是，悬浮上去就会有点击时的蓝色边框」。
+
+第一版把悬停底色换成活动项的 `BrandFillBrush`，是这个需求的错读——用户要的「蓝色」不是蓝底，是点下去时那一瞬间出现的 2px 外环。范围仍然只有一条：**只改悬停，`SidebarItemActive` 一个字不动**。
+
+### 为什么悬停原来「没有边框」
+
+点侧栏时那圈蓝不是点击态的样式，是 `IsKeyboardFocused` 触发器画的 `ring`（`src/FastTranslation.App/App.xaml:488`）。点完 `SyncSidebar()`（`src/FastTranslation.App/MainWindow.xaml.cs:297-304`）把该项换成 `SidebarItemActive`，而活动项那支模板整个重写过（`App.xaml:499`，只覆盖左侧竖条，因为控件模板没法只替换继承模板里的某一个元素），里面没有 `ring`，所以蓝边一闪就消失——这正是用户觉得好看的瞬间。
 
 ### 改法
 
-只有一处：**`src/FastTranslation.App/App.xaml:477`**（`SidebarItem` 的 `IsMouseOver` 触发器）——
+两处，都在 `src/FastTranslation.App/App.xaml` 的 `SidebarItem`：
 
-- `fill.Background` 从 `HoverBrush` 换成 **`BrandFillBrush`**（浅色 `#EDF2FF` / 深色 `#22304D`），与活动项同底。
-- 补一条 `Foreground = BrandTextBrush`。文字颜色必须跟着换：`TextSecondary` 压在 `BrandFill` 上浅色只有 4.83:1、深色 5.86:1，而 `BrandText` 是 **5.77:1 / 6.35:1**。
-- v60 的 `TranslateTransform X=2`（「被手推了一下」）保留，它管手感，跟底色不冲突。
+- `App.xaml:462`：模板根 `<Grid>` 补 `x:Name="root"`。
+- `App.xaml:479-485` 的 `IsMouseOver` 触发器：给 `ring.BorderBrush` 设 `BrandBrush`（和焦点环同一圈、同一个 `Margin="-1"` 与 `CornerRadius="9"`），`fill.Background` 保持原来的 `HoverBrush`（浅色 `#F0F4FA` / 深色 `#262C35`）。
 
-悬停态与活动态现在只差左侧那根 3px 竖条和 `SemiBold` 字重——正好是「即将点」与「已经在这」的区别。`SidebarItemActive`（`App.xaml:497`）一个字没动。
+v60 那个「被手推了一下」的 `TranslateTransform X=2` 也从 `fill` 挪到了 `root`——**这是第二遍才发现的坑**：位移只加在 `fill` 上时，填充整体右移 2px 会把环的右边整段盖住，截图上只剩左/上/下三段（右边缘 `#4A82FF` 命中 0）。改挂到 `root` 后环与填充一起挪，四边等宽。
 
 ### 取证
 
-脚本 `tools/qa/shot-sidebar-hover.ps1`（`-ExePath -Theme -Out [-AutoId]`，默认 `WordButton`）：备份 settings.json → 注入 Theme → 杀进程 → 启动 → UIA 按 AutomationId 找按钮 → 光标先挪到 (5,5)、再 `SetCursorPos` 到按钮中心 → 停 900ms → `PrintWindow(hwnd, dc, 2)` 存 PNG → 还原 settings.json。截图 1820×1155。
+脚本 `tools/qa/shot-sidebar-hover.ps1`（`-ExePath -Theme -Out [-AutoId]`，默认 `WordButton`）：备份 settings.json → 注入 Theme → 杀进程 → 启动 → UIA 按 AutomationId 找按钮 → 光标先挪到 (5,5) 停 120ms、再 `SetCursorPos` 到按钮中心 → 停 900ms → `PrintWindow(hwnd, dc, 2)` 存 PNG → 还原 settings.json。截图 1820×1155。
 
-侧栏那一列在截图里是 x∈[30,200]，逐行数底色像素分出两条带：y∈[150,216) 是当前页「首页」，y∈[220,286) 是悬停的「单词」项。
+侧栏那一列在截图里是 x∈[30,300]，逐行数品牌色像素分出两条带：y∈[152,214] 是当前页「首页」，y∈[221,284] 是悬停的「单词」项，两者之间的 y 218–219 与 286–287 就是悬停项的上下两条边框。
 
-| 取样（y 222–284 悬停带） | 深色 | 浅色 |
+| 取样 | 深色 | 浅色 |
 | --- | --- | --- |
-| 改后：悬停「单词」 | `#22304D` ×9690、字 `#8FB4FF` ×114 | `#EDF2FF` ×9691、字 `#1D4FE0` ×114 |
-| 同帧：当前页「首页」（y 152–214） | `#22304D` ×9588、字 `#8FB4FF` ×366 | `#EDF2FF` ×9589、字 `#1D4FE0` ×366 |
-| 改前：同一带（`publish/ui-v69/audit-*-main.png`） | `#181D26` ×9987 | `#F8FBFE` ×7356 |
+| 环的上下两条（y 218–219 / 286–287） | `#4A82FF` ×474 | `#2562FF` ×474 |
+| 悬停带内部（y 221–284） | `#262C35` ×16143、字 `#A3AEBF` ×114 | `#F0F4FA` ×16143、字 `#5C6B82` ×114 |
+| 同帧当前页「首页」（y 152–214） | `#22304D` ×15613、字 `#8FB4FF` ×366 | `#EDF2FF` ×15619、字 `#1D4FE0` ×366 |
 
-- 悬停项与当前页底色**完全同色**，正是要的效果；文字像素数 114 vs 366 的差就是 Regular 与 SemiBold 的字形粗细之差（活动项字更粗，所以同字号下像素更多）。
-- 改前那一带是 `#181D26`（深）/ `#F8FBFE`（浅），和侧栏底色几乎同色——原来悬停只有 `#262C35` / `#F0F4FA` 这么一点差，截图里量不出来，这就是用户说「看不出」的原因。
+- 环色与活动项左侧竖条同色（`#4A82FF` / `#2562FF`），正是「点击时那一圈」。
+- 中点 y=250 逐像素：左 `x31 #38579A → x32 #4A82FF → x33 #38579A`，右 `x297 #38579A → x298 #4A82FF → x299 #314F93`，两侧对称；上下各占 2 行。四边都在，宽度一致。
+- 悬停带内部仍是 `HoverBrush`，没有变成活动项的 `BrandFill` —— 悬停＝「带蓝边的一行灰底」，活动＝「蓝底 + 竖条 + SemiBold」，两者一眼能分开。
 
 ### 验证
 
-- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**。
-- `dotnet test FastTranslation.slnx -c Release` → Core **218** / Platform.Windows **97** / QwenMt **94** / Server **193** = **602 全绿**。首轮 QwenMt 的 `QwenOcrClientTests.SuccessWithoutText_IsInvalidResponseNotSuccess` 挂过一次，单跑该用例与整包重跑都通过——是 `FakeQwenServer` 起监听时的端口竞争，与本次改动无关（本次只动 XAML）。
-- 视觉证据：`publish/hover-dark.png`、`publish/hover-light.png`（临时产物，`publish/` 不进仓库）。
+- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**（构建前先 `taskkill //F //IM FastTranslation.exe`，否则 MSB3021 DLL 被锁）。
+- `dotnet test FastTranslation.slnx -c Release` → Core **218** / Platform.Windows **97** / QwenMt **94** / Server **193** = **602 全绿**。
+- 视觉证据：`publish/hover-v4-dark.png`、`publish/hover-v4-light.png`（`publish/` 不进仓库）。
 
 ### 残留风险
 
-- 悬停色与活动色同底，只靠左侧竖条 + 字重区分；如果以后侧栏改成两列或加图标，这条区分度会变弱，得重新给活动态找一档色。
-- 悬停当前页（活动项）时没有反馈：活动项那支模板整个重写过、没有任何触发器，鼠标压在上面与不压一样。要不要给活动项也加「沉一档」由用户决定，本次按要求不动点击后的样式。
+- 悬停与焦点环现在共用同一个 `ring`：键盘 Tab 到某一项、鼠标同时压上去时只显示一圈，两者视觉无差别。当前没有「焦点在这一项但鼠标在别处」的复合态，问题不大；以后若加键盘导航提示，需要把环改成两档颜色。
+- 环是 `Margin="-1"` 外扩画在行外的，侧栏左边界距窗口边只有 ~28px，够用；若以后侧栏内边距收窄到 2px 以内，环会被窗口边界裁掉。
