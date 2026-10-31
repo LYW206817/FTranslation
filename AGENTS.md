@@ -8,12 +8,12 @@
 
 Windows 桌面划词翻译工具 + 一个自建后端。选中文本 → 浮动工具条(复制 / 翻译 / 截图翻译)→ 结果卡;账号、单词本、免费额度与订阅走自己的服务端。
 
-- 客户端:WPF,.NET 10 self-contained win-x64。翻译走阿里云百炼 DashScope(`qwen-mt-flash` / `qwen-mt-plus` / `qwen-mt-image`);免费额度由自建网关转发并记账,超额后客户端静默回落到用户自己的 Key。
-- `src/FastTranslation.App` — WPF 外壳:单实例、托盘、主窗口、设置页、取词浮层与结果卡、账号(`AccountCoordinator`)、单词本(`NotesWindow`)、自动更新(`UpdateCoordinator` / `UpdateWindow`)
-- `src/FastTranslation.Core` — 与 UI 无关的逻辑:设置、翻译抽象、`ReleaseVersion` / `UpdateManifest` / `UpdateChecker`
-- `src/FastTranslation.Platform.Windows` — Win32:取词(UIA + 剪贴板)、浮层(`OverlayWindows.cs`)、托盘原生菜单、写回、`UpdateInstaller`、`InstallLayout`
-- `src/FastTranslation.Providers.QwenMt` — DashScope 实现(直连与自建网关两种 provider)
-- `server/FastTranslation.Server` — ASP.NET Core minimal API(net10.0):登录与账号、单词本、开发者网关(`/v1/chat/completions`、`/v1/image`)、额度与订阅闸门;SQLite(WAL);认证是手写 HS256,不引第三方 DI / 日志 / JWT 库
+- 客户端:WPF,.NET 10 self-contained win-x64。翻译走阿里云百炼 DashScope(`qwen-mt-flash` / `qwen-mt-plus`,图片走 `qwen-mt-image-2.0`,OCR 走 `qwen-vl-ocr`);免费额度由自建网关转发并记账,超额后客户端静默回落到用户自己的 Key。
+- `src/FastTranslation.App` — WPF 外壳:单实例、托盘、主窗口、取词浮层与结果卡、截图翻译(`ImageTranslationCoordinator`)、账号(`AccountCoordinator`)、自动更新(`UpdateCoordinator` / `UpdateWindow`);`Pages/` 下是七个页面(Main / Word / Phrase / Sentence / Review / Plan / Account / Settings),枚举 `MainPageId` 决定侧栏顺序
+- `src/FastTranslation.Core` — 与 UI 无关的逻辑:设置 `Settings.cs`、翻译抽象 `TranslationService.cs` / `TranslationTypes.cs`、语言目录 `LanguageCatalog.cs`、选区协调、图片翻译策略、网关健康 `GatewayHealth.cs`、`Account/`、`Notes/`、`ReleaseVersion` / `UpdateManifest` / `UpdateChecker`
+- `src/FastTranslation.Platform.Windows` — Win32:取词(UIA + 剪贴板)、浮层(`OverlayWindows.cs`)、托盘原生菜单、写回、`UpdateInstaller`、`InstallLayout`、`ThemePalette`
+- `src/FastTranslation.Providers.QwenMt` — DashScope 实现:文本 / 图片 / OCR 三类各有一套「直连」与「自建网关」provider(外加 `QuotaRefusal.cs`)
+- `server/FastTranslation.Server` — ASP.NET Core minimal API(net10.0):登录与账号、单词本、开发者网关(`/v1/chat/completions`、`/v1/image`、`/v1/ocr`)、额度与订阅闸门;SQLite(WAL);认证是手写 HS256,不引第三方 DI / 日志 / JWT 库
 - `site/` — 产品介绍静态单页(纯 HTML/CSS,没有构建步骤)
 - `deploy/` — 一台 ECS 的部署文件(systemd + Caddy + SQLite),用法见 `deploy/README.md`
 - `tests/` — 四个 xunit 项目(Core / Platform.Windows / Providers.QwenMt / Server)
@@ -35,7 +35,7 @@ $tok = [Environment]::GetEnvironmentVariable('GITHUB RELEASE','User')   # ghp_ �
 
 - 令牌只落到 `$env:TEMP` 下的临时文件,不要落在仓库目录里。调 GitHub 时用 `curl -H @headerfile`(把 `Authorization: Bearer <tok>` 写进该文件),不要让令牌出现在命令行参数里;用完立即删掉临时文件。
 - **永远不要**把令牌写进任何会被提交的文件、不要 `echo` 出来、不要贴在对话里、不要 `git remote` 里用(推送走 SSH `git@github.com:LYW206817/FTranslation.git`,不需要令牌)。
-- 用完自检:`git grep -n 'ghp_\|github_pat_'` 应无输出;`git status --short` 应无意外文件(仓库根与 `publish/` 都要查)。
+- 用完自检:`git grep -In 'ghp_[A-Za-z0-9]\{30,\}' -- ':!*.md'` 应无输出(md 文档里出现模式串本身是正常的,别拿 `ghp_\|github_pat_` 这种裸模式去 grep——它永远命中本文件,会让人误判泄漏);`git status --short` 应无意外文件(仓库根与 `publish/` 都要查)。
 - 令牌缺失或过期时,不要反问用户「给我 PAT」,先自己重读一遍变量确认拼写(含空格),再检查是否 401/403;确实失效才说明「`GITHUB RELEASE` 返回 401,请在用户环境变量里更新它」。
 
 ### 服务端密钥
@@ -61,8 +61,8 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 1. `Directory.Build.props` 的 `<Version>` → 程序集版本与「关于」显示
 2. `installer/FastTranslation.iss` 的 `#define AppVersion`
 3. `docs/portable-readme.txt` 的标题、安装包名,并在「更新记录」顶部加一节
-4. `README.md` 安装段的两处包名(最近就漏改过,停在 1.1.3)
-5. `site/index.html` 的四处硬编码:版本徽标、hero 说明、两张安装卡的文件名
+4. `README.md` 安装段的两处包名(最近就漏改过:1.3.7 发布后 README 与 site 都还停在 1.2.2,发布前必须逐处核对)
+5. `site/index.html` 的四处硬编码:版本徽标、hero 说明(含包体积)、两张安装卡的文件名
 
 产品版本号与 `docs/IMPL.md` 里的 `vN` 是两套编号:`vN` 是变更序号,一直累加,不等于版本号。
 
@@ -106,15 +106,15 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 首先就是代码实现一定要简洁,比如一个逻辑写了200行，但是能写50行就有同样的效果，那就重写，务必保证代码精简。
 
 - 语言与工程:`LangVersion preview` / `Nullable` / `TreatWarningsAsErrors` 已开。依赖约束见下节「代码约定」,新能力先写最小实现 + 单测。
-- 类型:类默认 `sealed`(仓库 82 处),只有明确要继承的才不封;不可变数据、API 契约、事件载荷用 `record` / `record struct`;小工具类型用 `internal static`。
+- 类型:类默认 `sealed`(仓库 148 处),只有明确要继承的才不封;不可变数据、API 契约、事件载荷用 `record` / `record struct`;小工具类型用 `internal static`。
 - 命名:类型 / 方法 / 属性 PascalCase;私有实例字段 `_camelCase`;`static readonly` 与常量 PascalCase;局部变量与参数 camelCase;异步方法以 `Async` 结尾;布尔属性用 `Is` / `Has` / `Can` 开头;界面事件处理器 `Xxx_Click`;XAML `x:Name` 用 PascalCase。
 - 空值:`null` 用模式匹配推进控制流(`is null` / `??` / `??=`),少用 `!`;公共入口用 `ArgumentNullException.ThrowIfNull` / `ArgumentException(…, nameof(x))`;不要 `catch` 后返默认值蒙混过关。
-- 异步:库与服务端一律 `await` 到底,非 UI 代码加 `ConfigureAwait(false)`(仓库已有 118 处);UI 线程回调不加;禁止 `.Result` / `.Wait()`;`async void` 只允许事件处理器,且函数体内必须 `try/catch` 兜住,否则异常直接崩进程。
+- 异步:库与服务端一律 `await` 到底,非 UI 代码加 `ConfigureAwait(false)`(仓库已有 108 处);UI 线程回调不加;禁止 `.Result` / `.Wait()`;`async void` 只允许事件处理器,且函数体内必须 `try/catch` 兜住,否则异常直接崩进程。
 - 异常:只捕获能处理的;异常消息用英文、面向开发者;面向用户的错误文案在 UI 层转成中文;吞异常必须注释原因。
 - 资源:`IDisposable` 用 `using` 声明;`CancellationToken` 放参数末尾并向下传;WPF 资源在 `Unloaded` / `Closing` 释放,事件订阅成对退订。
 - 字符串与数字:比较用 `StringComparison.Ordinal` / `OrdinalIgnoreCase`(路径、协议、键名);数字与日期的格式化/解析传 `CultureInfo.InvariantCulture`;中文只出现在用户可见文案。
 - 集合:返回 `IReadOnlyList<T>` / `IReadOnlyCollection<T>`,参数收 `IEnumerable<T>` 且循环外先 `Count()`;不要返回 `null` 集合,返回空集合。
-- 文件与结构:文件名概括内容,相关小类型可以同文件(`OverlayWindows.cs` 就是);成员顺序 字段 → 构造 → 公共成员 → 私有方法;优先 guard clause 提前返回,嵌套不超过 3 层;单方法超过约 50 行就拆私有方法,文件超过约 700 行按职责拆页或拆文件。
+- 文件与结构:文件名概括内容,相关小类型可以同文件(`OverlayWindows.cs` 就是);成员顺序 字段 → 构造 → 公共成员 → 私有方法;优先 guard clause 提前返回,嵌套不超过 3 层;单方法超过约 50 行就拆私有方法,文件超过约 700 行按职责拆页或拆文件。现状例外:`src/FastTranslation.App/App.xaml.cs` 1291 行、`src/FastTranslation.Platform.Windows/OverlayWindows.cs` 742 行——拆它们要连带搬大量实例字段,排在专门的重构里做,不要顺手拆。
 - 魔法值:协议常量、超时、重试次数、限流窗口提成命名常量或 options,不要散落裸数字。
 - 界面:颜色与字体只从 `ThemePalette` / `FtTheme` 取,不在 XAML 或代码里写裸色值;新控件沿用现有的圆角、内边距、虚线 token。
 - 测试:命名用可读英文短语(仓库现状,如 `Login_sends_the_error_code_the_server_returned`);xunit `[Fact]` / `[Theory]`,一个测试一个主题;新增行为必须带测试。
@@ -159,7 +159,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 ```
 注释:
 - src/FastTranslation.Platform.Windows/UpdateInstaller.cs:31 — 为什么只保留这两个镜像前缀
-- server/FastTranslation.Server/Gateway/GatewayEndpoints.cs:334 — 图片计费的固定折算
+- server/FastTranslation.Server/GatewayOptions.cs:48 — 图片计费按 `ImageQuotaChars = 1_000` 字符折算(不是按像素/token,额度体系统一用「字符」)
 规范缺口:App.xaml.cs 的某个方法本次没拆,原因是 …(做不到就明说,别糊过去)
 ```
 
@@ -176,10 +176,10 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 踩过的坑(省时间用)
 
-- **改代码前先看 `docs/IMPL.md`**:同一个坑可能已经踩过并写在那里。文件已过 1300 行,按关键词 grep,再看最近几节,不要从头读。
-- `docs/IMPL.md` 追加中文:不要用 bash heredoc(会报 `Unexpected character`),先用写文件工具落到 `publish/*.md` 再 `cat >> docs/IMPL.md`。
-- PowerShell 5.1 读**无 BOM** 的 UTF-8 脚本 + 中文注释 → 按 GBK 解码报错;脚本一律存成带 BOM 的 UTF-8,或干脆 ASCII-only。输出中文前设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`。
-- 内联 `powershell -Command` 里的 `$_` 会被 shell 包装吞掉 → 先写 `.ps1` 再 `-File`。
+- **改代码前先看 `docs/IMPL.md`**:同一个坑可能已经踩过并写在那里。文件已 1790 行(最新一节是 `## v70`),按关键词 grep,再看最近几节,不要从头读。
+- `docs/IMPL.md` 追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/IMPL.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
+- PowerShell 5.1 读**无 BOM** 的 UTF-8 脚本 + 中文注释 → 按 GBK 解码报错;新脚本存成带 BOM 的 UTF-8,或干脆 ASCII-only(`tools/qa` 现状 69 个 `.ps1` 里 34 带 BOM、35 不带,唯一「无 BOM 且含中文」的是 `shot-image-window.ps1`——坑是真的,只是历史脚本没全守)。输出中文前设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`。
+- `cmd /c powershell -Command` 里的 `$_` 会被 cmd 的引号处理吃掉(MSYS2 bash 里单引号内联是正常的) → 先写 `.ps1` 再 `-File`。
 - `Add-Type` 的 P/Invoke 结构体大小必须精确(x64 `INPUT` = 40 字节,多两个 `int pad` 会让 `SendInput` 返回 0);`Add-Type` 用 `-Namespace '' -Name 'X'`。
 - 安装器、便携包、发布过程中的坑(UIA 在 Inno 向导里、`taskkill`、旧 MSI 1603 等)见 `docs/playbooks/release-and-installer.md`。
 
@@ -200,7 +200,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 ## 文档输出规范
 
 1. 设计文档放 `.agents/design`,实现计划放同目录的 `{日期}-{描述}-实现计划.md`,不要塞进设计文档正文。
-2. 问题分析放 `.agents/issue`;需求文档放 `.agents/requirement`。
+2. 问题分析放 `.agents/issue`(现状只有 `.gitkeep`,还没真用过);需求文档放 `.agents/requirement`。
 3. 大功能的方案讨论放 `docs/superpowers/specs/`;`specs` 写方案与取舍,`.agents/design` 写交付设计(含效果图与实现计划),两边不要重复写同一份内容。
 4. 同一个需求的文档尽量写在一起(超过 500 行再分批),不要平铺一堆同主题不同版本的文档。
 5. 文件名 `{需求日期}-{需求描述}-{输出类型}.{扩展名}`,例如 `2023-05-01-新增固定域开关-设计文档.md`。
@@ -209,7 +209,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 提交与合并请求
 
-- 提交说明用中文,遵循仓库历史的约定式提交;scope 用真实模块名:`app` / `core` / `platform` / `providers` / `server` / `site` / `deploy` / `installer` / `docs` / `qa`。例:`feat(server): 新增额度重置接口`、`fix(overlay): 结果卡在缩放屏上偏移`。
+- 提交说明用中文,遵循仓库历史的约定式提交;scope 用真实模块名,**中文 scope 也是既有事实**(近 80 条里 `feat(界面)` / `feat(复习)` / `feat(单词本)` / `fix(截图)` / `docs(design)` 大量出现)。常用:客户端 `app` / `core` / `overlay` / `界面` / `截图` / `单词本` / `复习` / `账号`;服务端与设施 `server` / `site` / `deploy` / `installer` / `docs` / `design` / `specs` / `qa` / `billing`;平台层 `platform` / `providers`。例:`feat(server): 新增额度重置接口`、`fix(overlay): 结果卡在缩放屏上偏移`。新增 scope 时别硬套一个不在历史里出现过的英文词。
 - 每次提交只聚焦一个逻辑变更。
 - 合并请求写清:修改目的、受影响模块 / 路径、风险说明;界面改动附截图或动图;说明配置或数据迁移的影响。
 - 推送分支:`git push origin master:main`。
