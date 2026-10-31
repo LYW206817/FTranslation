@@ -471,8 +471,12 @@
               </Border>
             </Grid>
             <ControlTemplate.Triggers>
+              <!-- v70：悬停直接借用活动项的蓝底。侧栏只有一列，灰底太安静，鼠标扫过去
+                   常常看不出点在哪儿；文字同步换成 BrandText，压 BrandFill 是 5.77:1（浅）/
+                   6.35:1（深）。和活动项的区别只剩左侧竖条与字重。 -->
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
                 <Setter TargetName="fill" Property="RenderTransform">
                   <Setter.Value>
                     <TranslateTransform X="2"/>
@@ -498,13 +502,29 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
-              <Grid>
-                <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
-                        Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
-                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
-              </Grid>
-            </Border>
+            <!-- v70：这支模板整个重写过，改 SidebarItem 的 Template 不会跟过来，
+                 所以焦点环得在这里再画一次，否则 Tab 到当前页面上什么都看不见。 -->
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="9" Margin="-1"/>
+              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
+                <Grid>
+                  <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
+                          Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
+                  <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+              <!-- v70：鼠标停在当前页面上时底色再沉一档，否则悬停和活动态一模一样，
+                   会觉得点下去没反应 -->
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillHoverBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
