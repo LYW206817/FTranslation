@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>preview</LangVersion>
-    <Version>1.3.7</Version>
+    <Version>1.4.0</Version>
     <!-- InvariantGlobalization 必须保持 false：invariant 模式会破坏 WPF 绑定的区域解析
          （Popup.IsOpen 等会抛 XamlParseException，并静默让下拉框失效，
          任何 ComboBox 模板都中招，Fluent 或 Aero2 都一样）。v15 的根因。 -->

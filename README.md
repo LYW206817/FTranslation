@@ -18,6 +18,7 @@
 - **原位结果卡**：译文浮在原文附近，可以复制、替换原文、插入到原处、切换目标语言、重试、关掉
 - **写回**：替换或插入前做三重校验（窗口句柄 + UIA RuntimeId + 归一化后的选区文本），任何一项对不上就降级成「已复制」并提示，绝不写错地方
 - **剪贴板兜底**：UIA 拿不到文字时，临时占用剪贴板发 Ctrl+C 取词，取完把剪贴板所有格式原样恢复
+- **文档翻译**：把 `.docx` / `.txt` / `.md` 整份译成另一种语言，产出 `原文件名.en.docx` 这样的新文件，原文件一个字节都不动。文件在本机拆段，只有段落文字发往翻译接口；支持断点续译，中途断了再点开始会接着译
 - **托盘常驻**：关窗口不退出；托盘菜单翻译剪贴板、打开主窗口、设置、检查更新、退出
 - **自动更新**：启动 30 秒后静默检查、之后每 6 小时一次，发现新版本一键下载安装并重启；下载有镜像回退和 SHA256 校验
 
@@ -31,9 +32,9 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `FastTranslation-1.3.7-Setup.exe` 双击安装。安装向导里可以改安装位置，默认装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限；装过 1.0.x MSI 版的不必先卸载，安装程序会自动清掉旧版本。
+从 [Releases](../../releases) 下载 `FastTranslation-1.4.0-Setup.exe` 双击安装。安装向导里可以改安装位置，默认装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限；装过 1.0.x MSI 版的不必先卸载，安装程序会自动清掉旧版本。
 
-喜欢绿色版就下 `FastTranslation-1.3.7-portable.zip`，解压即用。便携版没有安装目录，因此不会自动安装更新，只会提示去下载页取新版。
+喜欢绿色版就下 `FastTranslation-1.4.0-portable.zip`，解压即用。便携版没有安装目录，因此不会自动安装更新，只会提示去下载页取新版。
 
 > **当前构建未签名。** Windows SmartScreen 会拦一次，点「更多信息」→「仍要运行」。安装包请只从本仓库 Releases 获取。
 
@@ -61,6 +62,7 @@
 - Chromium 系应用首次划词偶尔需要重试，程序内部已做 3 次探测
 - 终端（Windows Terminal / cmd / PowerShell / conhost）只取词不写回，这是硬拒绝
 - 安装包未做代码签名，企业环境可能被策略拦截
+- 文档翻译只支持 `.docx` / `.txt` / `.md`，单文件 ≤10 MB、可译字符 ≤20 万、段落 ≤5,000；`.xlsx` / `.pptx` / `.pdf` 尚未支持。段落级回写会保留字体、字号、颜色与段落样式，但段落内部的局部加粗/超链接等 run 级格式会被合并成一种
 
 ## 从源码构建
 
@@ -96,20 +98,20 @@ src/
   FastTranslation.Providers.QwenMt/  千问翻译 HTTP 客户端
   FastTranslation.App/               WPF 外壳：主窗口、设置、首次引导、App 启动
 tests/
-  FastTranslation.Core.Tests/              218 个测试
+  FastTranslation.Core.Tests/              284 个测试
   FastTranslation.Platform.Windows.Tests/  97 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
-  FastTranslation.Providers.QwenMt.Tests/  94 个测试（本地假 HTTP 服务）
+  FastTranslation.Providers.QwenMt.Tests/  95 个测试（本地假 HTTP 服务）
   FastTranslation.Server.Tests/            193 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
 tools/
   qa/        截图、内存浸泡、安装校验、E2E 联调等 PowerShell 脚本
   Probe*/    启动耗时与内存探针（历史决策依据）
 docs/
   PLAN.md              技术决策 D1–D9 与实测数据
-  IMPL.md              迭代史 v1–v70，每个版本解决了什么
+  IMPL.md              迭代史 v1–v75，每个版本解决了什么
   superpowers/specs/   设计规格
 ```
 
-全部 602 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
+全部 669 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
 
 架构上有一条硬约束：**Core 不引用 Win32 也不引用 WPF**，所有平台能力走 `Interfaces.cs` 里的接口，因此 Core 的测试可以在任何机器上跑。
 

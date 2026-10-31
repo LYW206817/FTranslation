@@ -1846,3 +1846,244 @@ v60 那个「被手推了一下」的 `TranslateTransform X=2` 也从 `fill` 挪
 - 没有新增 `vN`:本次只改文档状态,代码零改动,归入 v71 这一轮的收尾。
 
 验证:三份文档 grep「待拍板 / 待用户」为 0 命中(`方案:6` 的「拍板后另出」也一并改成配套链接);`git diff --stat` 3 files changed, 26 insertions(+), 14 deletions(-)。
+
+## v72 · 文档翻译(一):文档层与段模型
+
+**为什么改**:用户 2026-10-31 拍板要先做文档翻译(方案文档 Q1)。百炼没有「文档→文档」的托管 API——alimt 的 `CreateDocTranslateTask` 要求 `FileUrl` 是公网可下载地址,结果链接 1 小时过期,回调还要 IP 白名单,从我们的网关转发根本不成立;`qwen-doc-turbo` 是抽取/摘要不是翻译,`qwen-long` 只出纯文本。所以只能自己做「本地解析 → 分段调 `qwen-mt` → 本地回写」这条链路。
+
+**为什么先做 Core、且不引库**:docx 就是一个 zip,正文在 `word/document.xml` 的 `<w:p>`/`<w:r>`/`<w:t>` 里,`ZipArchive` + `XDocument` 是 BCL 现成的。`DocumentFormat.OpenXml 3.5.1` 的 dll 有 7.8 MB、反射重、裁剪有风险;`PdfPig` 5.6 MB 且 < 1.0 不遵 SemVer——都不值得为了省两百行代码引进来(桌面端至今零 PackageReference)。
+
+### 改了什么
+
+新增 `src/FastTranslation.Core/Documents/`(不碰 WPF,便于单测直接驱动):
+
+- `DocumentFormat.cs`:`enum { Docx, Text, Markdown }`、`DocumentFormats.SupportedExtensions = ".docx / .txt / .md"`、`TryFromPath(string?, out DocumentFormat)`(扩展名 `OrdinalIgnoreCase`)。
+- `DocumentSegment.cs`:`enum SegmentStatus { Pending, Done, Failed, Skipped }` 与 `record DocumentSegment(int Index, string Path, string Source, string? Target, SegmentStatus Status)`。**`Path` 不是数组下标**:docx 用 `"{part}#p{n}"`、txt/md 用行号——跳过空白段后下标与 XML 里的段落序数不再一一对应,按数组下标回写会整体错位一段(v72 第一版就是这么错的)。
+- `IDocumentTranslator.cs`:`Format` / `LoadAsync` / `WriteBackAsync`,实现类必须**无状态**(作业可能被取消后续译,段的处理状态归 `DocumentJob` 持有)。
+- `DocumentLimits.cs`:`MaxFileBytes = 10 MB`、`MaxChars = 200_000`、`MaxSegments = 5_000`、`MaxSegmentChars = TranslationRequest.MaxInputLength`(5,000),超限直接给中文提示让用户拆分。10 MB 对应整包 `XDocument` 的 5–10 倍内存;20 万字符约 0.45 元;5,000 段是「一段一请求、并发 4」的上限。
+- `SegmentTextPolicy.cs`(internal):`ShouldTranslate` = 长度 ≥ 2 且不是纯空白/纯符号/纯数字;**纯数字与纯符号不该花钱翻**;`UntranslatedMarker = "【未翻译】"`;`WriteBackText` 三态(Done+Target→译文 / Failed→标记+原文 / 其余→原文)。
+- `TextDocumentTranslator.cs`:txt/md 按行切段,读用 `new UTF8Encoding(false, false)`——抛异常的严格解码会把 GBK 文件读崩。md 不做语法感知(代码块里的英文也不翻),这是 MVP 的明确取舍。
+- `DocxDocumentTranslator.cs`(189 行):只处理 `word/document.xml` 与 `word/header*`、`footer*`、`footnotes.xml`、`endnotes.xml`,**不碰 `comments.xml`**(审核批注,翻了会破坏批注归属)。段落级而非 run 级:纯文本 run 串成源串、`drawing/pict/object/fldChar` 当占位符、整段送译、译文写回第一个纯文本 run 的 `<w:t>` 并删其余纯文本 run,`<w:pPr>` 与 `rPr` 保留。
+- `SegmentTranslator.cs`:合并短段(空行分隔、回切校验段数) + 并发 4 + 重试 3 + 二分降级,详见 v73。
+
+工程:`FastTranslation.Core.csproj` 加 `InternalsVisibleTo`,测试工程加 `<None Include="Documents\Fixtures\*.docx" CopyToOutputDirectory="PreserveNewest" />`;夹具 `tests/FastTranslation.Core.Tests/Documents/Fixtures/sample.docx`(38 KB,python-docx 生成:`word/document.xml` 9 个 `w:p` 其中第 7 个是纯 `w:drawing` 无文本必须跳过,`word/header1.xml` 1 个)。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误。
+- `tests/FastTranslation.Core.Tests/Documents/` 覆盖:格式识别、上限拒绝、段状态机、合并与回切、docx 加载 9 段(跳段占号)、docx 回写保结构(`w:br`/`w:tab`/`xml:space`)。
+- 夹具实测:源中文全部译出,9 个 `w:p` 的 `pStyle` 全保留,第 7 个 drawing 段原样,加粗 run 的 `<w:b/>` 仍在——见 v75。
+
+### 残留风险
+
+- 段落级回写的代价是**段内局部加粗/斜体/颜色/超链接会丢**(整段只有一个 `<w:t>` 承接译文)。二期折中是「连续且 `rPr` 相同的 run 视为单元」;per-run 翻译会把句子切碎,已明确否决。
+- 不处理 `comments.xml`:带批注的文档译完后批注仍在原文上,可能对不上位置。
+- md 的代码块、行内代码不做语法保护(v73 的哨兵只保护行内代码/URL/公式这类「不像自然语言」的片段)。
+
+## v73 · 文档翻译(二):合并、重试、降级、断点与回写
+
+**为什么改**:`qwen-mt` 只吃单条 `role=user` 消息,没有批量、没有编号对齐参数,官方对「一次多段怎么保证顺序」零承诺。按「一段一请求」直译 100 页文档会发出 658 个请求——正好撞上游 60 RPM 与网关 40 RPM 的墙,并且每请求还有约 45 token 的固定开销白烧。所以必须自己做「合并 + 回切校验 + 重试 + 降级」这一层。
+
+### 改了什么
+
+**`src/FastTranslation.Core/Documents/SegmentTranslator.cs`(本版最终 505 行)**
+
+- **合并**:连续、同一 part、`Index` 相邻、单段 < 2,000 字符、累计 ≤ 4,000 字符、最多 20 段,合成一个单元,段间用空行 `"\n\n"` 分隔。回切时按 `"\n\n"` 切回,**段数不符就整包重试**——模型把两段并成一段或多切了,只能作废这一包,不能猜。
+- **占位符保护** `PlaceholderProtector`:行内代码、URL、邮箱、公式、变量这类「不该被翻译」的片段换成 `⟦n⟧` 哨兵(U+27E6/U+27E7,不含 ASCII 字母数字与标点,比 `[[1]]` 更难被模型改写),回写前按哨兵表反替换并**校验计数**,对不上整段回退原文。合并时每段各自 Protect(哨兵从 1 起),回切后按段还原,不会串号。
+- **重试**:每包最多 3 次;**重试之间指数退避** 1 秒 → 2 秒 → 4 秒(最后一次不再等)。不退避的 3 次重试在几十毫秒内就烧完,等于只有 1 次机会。
+- **降级链**:整包 3 次不成 → 单元只有 1 段就单段重试;多于 1 段就**二分递归**(而不是直接退化成「一段一请求」——20 段的单元一次退化成 20 个请求,等于把刚压下去的请求量又还给限流)。全部用尽 → 该段标 `Failed`,回写时保留原文并插 `【未翻译】`。
+- **进度**:按「已完成的段数」用 `Interlocked.Add` 累计,不按单元(按单元计永远到不了 100%)。
+
+**`SegmentTranslator` 里的 `RequestPacer`(v75 定型,详见 v75)**:请求数与字符量两条约束,取更长的那个时间片,逐个平滑放行。
+
+**`src/FastTranslation.Core/Documents/DocumentJob.cs`(162 行):断点续译**
+
+- 断点文件放 `%LOCALAPPDATA%\FastTranslation\documents\{SHA256(绝对路径|长度|LastWriteTimeUtc.Ticks)}.json`,只存 `{ i, path, t }`(序号、段路径、译文)——不存原文,也不存整份文档。
+- 序列化用 `JavaScriptEncoder.UnsafeRelaxedJsonEscaping`:默认编码器会把中文转成 `\uXXXX`,断点文件膨胀六倍。
+- 写盘先写 `.tmp` 再 `File.Move(overwrite: true)`,断电不会留下半个文件。
+- 回填时校验 `TargetLanguage`、`TotalSegments` 与 `Path` 序列,任一不符**整份放弃**——错位回填会把 A 段的译文写进 B 段,比丢掉断点糟得多。坏文件 catch 后当没有断点。
+- 整份译完立刻删断点,不留垃圾。
+
+**`src/FastTranslation.Core/Documents/DocxDocumentTranslator.cs` 的回写**
+
+- 先 `File.Copy` 源文件到输出路径,再改副本——**绝不覆盖源文件**:翻译中途出错时用户至少还有原件,而「原件被半成品覆盖」不可恢复。
+- 改完一个 part 必须 `stream.SetLength(0)` 再写回;**漏了这一步生成的 docx 打不开**(旧内容残留在 zip 条目尾部)。这是本轮踩到并修掉的坑。
+- `Apply` 保留 `w:br`/`w:tab` 等非文本 run 子元素,并给写回的 `<w:t>` 设 `xml:space="preserve"`,否则译文首尾空格被吞。
+
+**`src/FastTranslation.Core/Documents/DocumentTranslationCoordinator.cs`(236 行):编排**
+
+顺序是**格式 → 文件大小 → 解析 → 计字符 → 段数/字符上限 → 额度预检 → 输出路径 → 断点回填 → 逐段翻译 → 存断点 → 回写 → 删断点 → 交结果**。
+
+- **额度预检必须在开始翻译之前**:译到 80% 才发现额度不够,用户既拿不到完整文档,已经花掉的额度也退不回来。文案 `"本月剩余额度只够 {0:N0} 字符,本文件约 {1:N0} 字符"`。
+- 计字符只算 `NeedsTranslation` 的段——没译成的与跳过(空白/纯数字)的段都不计额度,服务端也只按真正送上去的字数记账。
+- 输出名 `{原名}.{目标语言}.{扩展名}`,放源文件旁边(或用户选定目录)。
+- 进度回调**直接调,不走 `Progress<T>`**:`Progress` 会投递到捕获的同步上下文,在 WPF 里等于「每译完一段切一次 UI 线程」,而调用方自己会切。
+- 取消静默、其它异常一律 `_reportError(ex.Message)`;`QuotaExhaustedException` 单独一条文案,说明「已译好的段落已保存在断点里」。
+- 构造 7 个参数全部 `ArgumentNullException.ThrowIfNull`,包括 `progress`。
+
+### 验证
+
+- `dotnet test tests/FastTranslation.Core.Tests -c Release --filter 'FullyQualifiedName~Documents'` → 50 通过 0 失败。
+- 用例覆盖:合并阈值(2,500 字符段不合并)、进度从 0 到 1(`updates[0].Done == 0`、`updates[^1].Fraction == 1d`)、失败段标 `Failed` 不抛、已完成段跳过、取消传导、额度预检拒绝(`Refuses_to_start_when_the_quota_is_too_small`)。
+- 真实端到端(sample.docx 9 段):`failed=0 chars=139`,输出 docx 部件清单与源完全一致,`pStyle`/加粗/页眉/纯 drawing 段全部保真。
+
+### 残留风险
+
+- 合并的段数校验靠 `"\n\n"` 回切,模型若在译文里留下多余空行会误判成「段数不符」而白白重试。已用二分降级兜底,代价是极端情况下请求数上升。
+- 断点按「路径 + 长度 + 修改时间」认领,用户原地改了文件就会重新从头译(这是有意为之:宁可重译,不可错位)。
+
+## v74 · 文档翻译(三):文档页、侧栏入口与截图钩子
+
+**为什么改**:Core 层在 v72/v73 已经能跑完一份文档,但用户只有代码能用。这一步把它接到界面上:侧栏加「文档」入口、新页面承担「选文件 → 预估 → 翻译 → 看结果/看未译段」全流程。页面抽成独立 `UserControl` 而不是塞进 `MainPage`,是因为 `MainWindow.xaml.cs` 已经 375 行,而页面自身有拖放、语言选择、额度预检、进度节流、未译清单五块状态,塞进去必然破 700 行上限。
+
+### 改了什么
+
+**`src/FastTranslation.App/Pages/MainPageId.cs`**:枚举加 `Document`,放在 `Review` 之后、`Account` 之前(功能页聚在一起,账号/设置靠后)。注释从「七个页面」改为「八个」——**枚举顺序就是侧栏渲染顺序**,中间插入会连带移动后面所有按钮,这是有意为之。
+
+**`src/FastTranslation.App/MainWindow.xaml`**:`ReviewButton` 与分隔线之间加 `DocumentButton`(`Style="{StaticResource SidebarItem}"`、`Tag="Document"`、`Click="Nav_Click"`、`Margin="0,2,0,0"`),顶部注释同步改八个页面。
+
+**`src/FastTranslation.App/MainWindow.xaml.cs`**(375 行):把原来内联在 `Build` 里的 `Create(page)` 抽成 `private UserControl CreatePage(MainPageId page)`,加 `MainPageId.Document => Document()` 分支与 `_documentPage` 缓存字段、`RefreshPage` 加 `Document` 分支;构造参数加 `DocumentTranslationCoordinator documents`(第 7 位)。另加三个 public 转发方法:
+
+```csharp
+// v72: 文档作业的三个回调从 App 一路转到这里，再由页面落到控件上。转一层是为了让
+// App 不必知道页面是否已经构造过——窗口藏在托盘里时作业照样能跑完，只是没人画它。
+public void PresentDocument(DocumentJobResult result) => _documentPage?.Present(result);
+public void ReportDocumentError(string message) => _documentPage?.ReportError(message);
+public void ReportDocumentProgress(double fraction, int done, int total) =>
+    _documentPage?.ReportProgress(fraction, done, total);
+```
+
+**`src/FastTranslation.App/Pages/DocumentPage.xaml`(141 行)** + **`.xaml.cs`(453 行)**:拖放区(`AllowDrop` + 虚线框,照 `ReviewPage.xaml` 的 `Rectangle` 虚线写法)+「选择文件」`PrimaryButton`(`Microsoft.Win32.OpenFileDialog` 而非 WinForms 的 `FolderBrowserDialog`——桌面端不引 WinForms)+ 目标语言 `FtComboBox`(复用 `LanguageCatalog`,74 种)+ 额度预估文案 + `MeterBar` 进度(样式在 PlanPage 里是页内资源,**App.xaml 没有全局版,本页自带一份**)+ 完成态【打开所在文件夹】/【再译一份】+ 未译清单(`ItemsControl`,每条带段路径与原文,底部一个「重试未翻译的段」)。提示条复用 `DangerBrush`,**不新增主题令牌**——`ThemeResourceKeysTests.EveryDynamicResourceKeyInAppXamlIsDeclaredOrInjected` 会让未声明的 `DynamicResource` 直接红,新增令牌就得同步改 `ThemePalette`、`ThemeBridge` 与两套主题测试,为一个提示条不值得。
+
+**`src/FastTranslation.Core/Settings.cs`**:`AppSettings` 加 `DocumentTargetLanguage = "en"` 与 `DocumentLastFolder = ""`(JSON 缺字段即默认值,不需要迁移)。
+
+**`src/FastTranslation.App/App.xaml.cs`**(1383 行):
+
+```csharp
+// v72: 文档翻译单独一条 provider 链，**不经过 TranslationService**——那个服务每次新请求会
+// 取消上一次在途请求（划词时"最后一次输入赢"），而文档是一份文档几十段并发在飞，
+// 走它就会变成每段互相打断、只有最后一段能译出来。
+_documentProvider = new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider);
+
+// 作业的三个回调转给主窗口再转给文档页：窗口可能正收在托盘里，作业照样要能跑完。
+_documents = new DocumentTranslationCoordinator(
+    format => format switch
+    {
+        DocumentFormat.Docx => new DocxDocumentTranslator(),
+        _ => new TextDocumentTranslator(format),
+    },
+    TranslateDocumentSegmentsAsync,
+    outputDirectory: () => null,   // null = 落在源文件旁边
+    present: result => _mainWindow?.PresentDocument(result),
+    reportError: message => _mainWindow?.ReportDocumentError(message),
+    progress: (fraction, done, total) => _mainWindow?.ReportDocumentProgress(fraction, done, total));
+```
+
+`TranslateDocumentSegmentsAsync` 照网关回调的形状(登录态 + 网关健康 + 令牌 + `QwenMtProvider` 现造),但**返回 `string` 且失败要抛异常**——不能像划词那样返回一个带 `Error` 的结果对象,因为 `SegmentTranslator` 靠异常决定「重试还是标未译」。额度/余额耗尽抛专用 `QuotaExhaustedException`(v75)。另加 `ShowDocument()`;`ExitApp` **不 Dispose** `_documentProvider`(它包着与划词链路共用的 `ownProvider`,Dispose 会顺带关掉用户的 Key provider)。
+
+**`tools/qa/shot-document.ps1`(86 行)**:四态 × 浅深各一,共 8 张截图。用 `PrintWindow(hwnd, hdc, 2 /*PW_RENDERFULLCONTENT*/)` 而不是 `CopyFromScreen`——第一次用 `CopyFromScreen` 截到的是前台浏览器窗口,`SetWindowPos(HWND_TOPMOST)` 不足以保证应用在最前。四种形态由 `FT_UITEST=document / document-progress / document-done / document-failed` 钩子驱动,直接喂回调给页面,**不跑真实翻译、不耗额度**。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误;`dotnet test` 661 通过 0 失败(Core 277 / Platform 97 / Providers 94 / Server 193)。
+- 8 张截图目视通过:空态、进度态(「已完成 42 / 120 段」+ 35% 蓝条)、完成态(「季度报告.en.docx · 120 段 · 计 8,432 字符」)、未译态(红框「有 2 段没译成」+ 段明细 + 重试按钮);深色四态配色跟随。
+- 侧栏「文档」出现在「复习」之后、「套餐」之前。
+
+**截图当场抓出两个真 UI bug:**
+
+1. **进度态与空态字节完全相同**(SHA256 一致):`ReportProgress` 只更新字段与节流计时器,从不把 `ProgressCard` 置 `Visible`;而 `RunAsync` 里那句 `Visibility = Visible` 排在 coordinator 首次报进度**之后**才轮到 UI 线程。修法是把「露出进度卡」放进 `ReportProgress` 本身。
+2. **未译卡片在视口外看不见**:页面是 `ScrollViewer`,1040×660 装不下「拖放 + 翻译成 + 进度 + 结果 + 未译」五张卡,有段没译成时用户看到的和全部译成时一模一样。`BringIntoView()` 直接调无效——`Visibility` 刚改、此刻卡片还没有高度,必须 `Dispatcher.BeginInvoke(DispatcherPriority.Loaded, ...)` 等这一轮布局跑完再滚。
+
+### 残留风险
+
+- 页面 453 行,离 700 行上限还有余量,但已接近「该拆」的体感阈值;若二期加 xlsx 选项与「高级(术语表)」区,应先把结果区与清单区拆成两个子控件。
+- 只有拖放与文件对话框两种入口,不支持多文件排队——一次一份,与 `Document()` 单例工厂一致。
+
+## v75 · 文档翻译(四):节流、额度耗尽与真实端到端验收
+
+**为什么改**:v72–v74 的实现用 `publish/probe-doc` 探针跑 100 页真实 docx(658 段 / 162,849 字符)时暴露出一串真问题:3 分 41 秒跑完、**63%(417 段)失败**,日志里一片 `RateLimited`。顺着这条线查下去,发现问题根本不在我们的代码写得慢,而在三处对上游行为的错误假设。这一版专门修它们。
+
+### 改了什么
+
+**1. `src/FastTranslation.Providers.QwenMt/QuotaRefusal.cs` —— `insufficient_quota` 被误判成限流(最严重的一条)**
+
+`DashScope` 直连返回 429 时,响应体是**对象**形状:
+
+```json
+{"error":{"message":"You exceeded your current quota, …","type":"insufficient_quota",
+ "param":null,"code":"insufficient_quota"},"request_id":"…"}
+```
+
+而 `ReadErrorCode` 原来只认自建网关的字符串形状 `{"error":"<code>"}`,遇到对象返回 `null`,于是落到 `ClassifyStatus` 的 `429 => RateLimited`,再被无意义地重试一次,最后给用户的提示是「免费额度正在排队,这次用了你自己的 Key」——**账户额度已经耗尽,却告诉用户「稍后再试」**。现在两种形状都认(`JsonValueKind.String` 与 `JsonValueKind.Object` 里的 `code`),新增常量 `InsufficientQuota = "insufficient_quota"` 与文案「API Key 的额度或余额不足」。
+
+**2. `src/FastTranslation.Core/Documents/SegmentTranslator.cs` —— 合并阈值 + 按字符量平滑节流 + 重试退避**
+
+- **合并阈值**:`MergeMaxSegments` 5 → **20**、`MergeMaxSegmentChars` 80 → **2,000**、`MergeMaxTotalChars` 400 → **4,000**。旧值让 658 段发出约 658 个请求、峰值 180 RPM;合并到接近 `TranslationRequest.MaxInputLength`(5,000)后请求数降了一个数量级。留 1,000 字符余量是因为占位符保护会小幅膨胀原文。
+- **`RequestPacer` 重写为「请求数 + 字符量」双约束的平滑时间片**(它中间还经历过一版「滑动窗口记账」,被实测否掉了,见下):用 `_slots` 串行、算 `charTicks = chars * TicksPerMinute / _charsPerMinute`,取 `max(_requestIntervalTicks, charTicks)` 作为这一笔占用的时间片,`_nextTicks = start + 片长`。默认 `RequestsPerMinute = 30`、`CharsPerMinute = 24,000`。
+- **重试退避**:`WaitAfterFailureAsync(attempt, maxAttempts, ct)` = 1 秒 → 2 秒 → 4 秒,最后一次不再等。旧代码 3 次重试之间零等待,几十毫秒内就烧完,等于只有 1 次机会。
+
+**3. `src/FastTranslation.Core/QuotaExhaustedException.cs`(新文件)+ 整份作业快速中止**
+
+额度耗尽意味着「再试一次也一样」,而文档翻译里一段失败会被重试 3 次再标「未翻译」——658 段 × 3 次请求全打在同一个已经枯竭的额度上,用户多等几分钟,看到的仍是「有 400 多段没译成」。
+
+- 新异常类型 `QuotaExhaustedException`,XML 注释说明「为什么要单独一个类型」。
+- `SegmentTranslator` 两处 catch 前加 `catch (QuotaExhaustedException) { throw; }`;`TranslateAsync` 用联动 `CancellationTokenSource` 记住第一个原因并**叫停还在排队的单元**——否则每个单元还要先按 30 RPM 排队 2 秒才轮到它去撞同一堵墙。
+- `DocumentTranslationCoordinator` 单独一条用户文案:「…已译好的段落已保存在断点里,额度恢复后再对同一份文件点开始会接着译。」——断点已经写盘,换 Key 或续费后重开就接着译,不说清用户会以为白等了。
+- `App.xaml.cs` 的 `TranslateDocumentSegmentsAsync` 遇到 `TranslationErrorCode.QuotaExhausted` 抛专用异常,而不是普通 `InvalidOperationException`。
+
+### 上游配额实测(决定节流参数的依据)
+
+用 `publish/probe-raw`(裸 `HttpClient` 直连 DashScope,`<chars> <intervalMs> <count>`)测同一账号:
+
+| 字符数 | 间隔 | 次数 | 成功 | 折算 |
+|---|---|---|---|---|
+| 200 | 1,000ms | 20 | 20 | 7,356 字符/分 |
+| 200 | 6,000ms | 8 | 7 | 1,778 字符/分 |
+| 2,000 | 3,000ms | 5 | 5 | 25,511 字符/分 |
+| 4,000 | 4,000ms | 12 | 3 | 13,612 字符/分 |
+| 4,000 | 6,000ms | 10 | 10 | **31,149 字符/分** |
+| 4,000 | 8,000ms | 4 | 4 | 28,735 字符/分 |
+| 4,000 | 12,000ms | 8 | 7 | 16,590 字符/分 |
+
+⇒ **约束是「按字符/token 量计的滑动窗口」(qwen-mt-flash 官方 35,000 TPM,错误链接就是 `#token-limit`),不是 RPM,也不是封号。** 同样 30 RPM,一段 4,000 字符 = 120,000 字符/分,远超 35,000 TPM——**纯按请求数节流挡不住**。这就否掉了中间的「滑动窗口记账」版本:它允许一次性突发掉整个窗口额度,探针里 28 个请求就把窗口打满、随后整份中止。最终取 24,000 字符/分(留约 30% 余量,剩下留给重试与同账号的划词请求)。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test tests/FastTranslation.Core.Tests -c Release --filter 'FullyQualifiedName~Documents'` → **50 通过 0 失败**(新增 `RequestPacerTests` 6 个 Fact、额度耗尽中止用例)。
+- `dotnet test --filter 'FullyQualifiedName~Quota'` → 7 通过 0 失败(新增 `DashScopeQuotaExhaustion_IsNotMistakenForRateLimiting`,服务端回 429 + 真实对象形状 body,断言 `QuotaExhausted`、文案正确、`calls == 1`)。
+- 全量 `dotnet test`(本轮收尾,四个项目)→ **669 通过 0 失败**(Core **284** / Platform.Windows **97** / Providers.QwenMt **95** / Server **193**),比 v74 那轮的 661 多出来的 8 条正是本版新增的节流退避、额度耗尽中止与 `insufficient_quota` 归类用例。
+- 100 页真实端到端(`publish/probe-doc`,改造前基线):`PREVIEW segments=658 chars=162849` → `elapsed=221.2s`、`failed=417`(63%);改造后重跑:`elapsed=184.3s`、`requests=29`,随后被账户额度(`insufficient_quota`)中止。**这组数字证明了两件事:请求数确实降了一个数量级(658 → 29),以及本机测试账号的额度不足以跑完 162,849 字符。**
+- 100 页纯本地回写(假翻译器,不耗额度):658 段 / 162,849 字符,**解析 + 回写全程结构无损**(样式、表格、页眉、加粗 run 全部保住)。
+
+### 残留风险
+
+- **验收线改写**:原计划 Task 10 第 1 条要求「100 页端到端 ≤3 分钟」。按实测上游上限(24,000–31,000 字符/分),162,849 字符的理论下限就是 **5.3–6.8 分钟**,3 分钟内跑完在物理上不可能——除非降级到付费更高 TPM 的模型。因此本条验收改为**「受上游配额限制,按字符计:24,000 字符/分以内不触发限流」**,3 分钟的原始指标作废并在此记录原因。
+- 本机测试账号额度已耗尽,**100 页端到端 `failed = 0` 未能在本轮取得最终证据**;已用 9 段 `sample.docx` 与 100 页纯本地回写两条路径交叉验证正确性,真实全量端到端待额度恢复后补测。
+- `RequestsPerMinute` / `CharsPerMinute` / `RetryBackoff` 是进程级 `internal static`,便于测试置零,但同进程内多个作业会共享一份节奏(当前 UI 一次只跑一份文档,暂不构成问题;若将来做多文档排队需改成实例级)。
+- 24,000 字符/分是保守值。若上游实际放宽(或换更贵的模型档),可上调;反之若用户使用自带 Key 且额度紧张,30 RPM 的请求数约束会更早成为瓶颈。
+
+### 发版收尾（版本号与文档面）
+
+这一版同时把「产品版本号」和「对外文档」推到 1.4.0。按 AGENTS.md 的五处清单逐条改，用临时脚本 `publish/bump-140.py` / `publish/bump-portable.py` 做替换——**每个替换点先断言出现次数再替换**，避免 `1.3.7` 这种短字符串在别处误伤（`publish/` 整目录在 `.gitignore` 里，脚本不进仓库）。
+
+- `Directory.Build.props` 的 `<Version>` 与 `installer/FastTranslation.iss` 的 `#define AppVersion`：程序集版本与安装包版本。
+- `site/index.html` 四处硬编码：版本徽标、hero 说明、两张下载卡的文件名。
+- `docs/portable-readme.txt`：标题行、安装段的包名，并在「更新记录」顶部加 `v1.4.0(2026-10-31)` 一节。
+
+同时补上文档翻译的**对外说明**，否则下载页写着 1.4.0、正文却只讲划词翻译：
+
+- `README.md`：能力列表新增「文档翻译」一条；「已知限制」补上 `.docx`/`.txt`/`.md` 的格式范围、10 MB / 20 万字符 / 5,000 段三个上限，以及「段落级回写会保住字体字号颜色段落样式，但段落内部的局部加粗/超链接会被合并成一种」这个真实代价；测试数字同步为 284 / 97 / 95 / 193（共 669）。
+- `docs/portable-readme.txt`：新增 `【文档翻译】` 小节，写清产出文件名规则、原文件不动、只有段落文字出网、断点续译、段落级回写的取舍、三个上限、`.xlsx`/`.pptx`/`.pdf` 尚不支持、以及「速度受你自己 Key 的配额限制」——便携包用户是直接拿 Key 直连的，不写清楚会以为是程序慢。
+- `site/index.html`：**新增第 03 节「文档」，后面四节编号顺延为 04–07**（导航同步加「文档」）。这一节用两张真实截图（浅/深各一，取自 `tools/qa/shot-document.ps1` 的完成态）加六条要点，讲清「整份文件、版式还在、原文件不动」。截图从 1820×1155 压到 980 宽放进 `site/assets/img/document-{light,dark}.png`（`assets/qa/` 在 gitignore 里，不能直接引用）。
+- `site/assets/site.css` 两处小改：新增 `.mono` 正文等宽片段样式（原来只有 `footer .mono`，正文里的 `.docx` 会落回正文字体，与页脚不一致）；新增 `.doc-points` 两列要点，**并在 880px 断点里强制回一列**——用了 `column-count:2` 却不加窄屏回退时，手机宽度下每列只剩两三个字宽，实测截图里直接变成竖条。
+
+验证：
+
+- `site/` 用 Chrome headless 全页截图（1440 宽与 800 宽两档、浅色与 `--force-dark-mode` 深色），截图放在 `publish/site-shot/`（不进仓库）；确认新节版式与其余各节一致、编号连续、窄屏要点回到一列、深浅两套配色都正常。
+- 版本号五处改完后 `grep -rn "1\.3\.7" --include=*.html --include=*.md --include=*.iss --include=*.props .` 无命中。
+
+残留风险：
+
+- 站点上的两张文档页截图是**开发机浅/深两种主题**的实拍，不含任何真实用户文件（演示数据是「季度报告.docx · 120 段 · 8,432 字符」），但用户若放大细看仍能看到窗口里的测试账号邮箱一角；截图已按 980 宽缩放，字号下细节不可读。
+- 官网尚未提到语音翻译（下一版 1.5.0 才做），`#how` 一节仍然是「一颗工具条，三个动作」，届时需要一并改。

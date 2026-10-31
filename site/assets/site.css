@@ -215,12 +215,17 @@ h2 .num { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); lett
 .figures dd { margin: 0.35rem 0 0; font-family: var(--serif); font-size: 2rem; line-height: 1.15; }
 .figures dd small { display: block; font-family: var(--sans); font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; line-height: 1.5; }
 
+/* 正文里的等宽片段(文件名、扩展名):页脚另有一条更具体的规则 */
+.mono { font-family: var(--mono); letter-spacing: 0.01em; }
+
 /* 正文列表 */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem 3.5rem; margin-top: 2.4rem; }
 .cols h3 { font-size: 0.95rem; margin: 0 0 0.6rem; letter-spacing: -0.005em; }
 ul.plain { margin: 0; padding: 0; list-style: none; }
 ul.plain li { position: relative; padding-left: 1.1rem; margin-bottom: 0.55rem; font-size: 0.93rem; color: var(--ink-soft); }
 ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--blue); }
+/* 文档页那组要点:宽屏排两列,窄屏(见文件末尾的 @media)必须回到一列,否则每列只剩两三个字宽 */
+.doc-points { margin-top: 2.4rem; column-count: 2; column-gap: 3.5rem; }
 
 /* 套餐 —— 额度做成两行条目，不用徽章 */
 .plans { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1.25rem; }
@@ -283,6 +288,7 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
   .plates, .cols, .plans, .dl { grid-template-columns: 1fr; }
   .strip { grid-template-columns: 1fr; }
   .figures { grid-template-columns: 1fr; gap: 1.4rem; }
+  .doc-points { column-count: 1; }
   section { padding-block: 3rem; }
   .hero { padding-block: 3.2rem; }
 }
