@@ -11,4 +11,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FastTranslation.Core\FastTranslation.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 真实 docx 夹具：解析/回写要按 Word 真的会写出来的结构验证，手搓 XML 会漏掉 python-docx 才有的细节。 -->
+    <None Include="Documents\Fixtures\*.docx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

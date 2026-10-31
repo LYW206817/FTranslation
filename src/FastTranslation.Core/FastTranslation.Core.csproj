@@ -2,4 +2,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- 切段/哨兵这类纯函数只对测试开放：它们不是对外契约，但必须能被单测钉住，-->
+    <!-- 否则出错只能在真实文档上发现（回写错位一段是没法靠肉眼 review 看出来的）。 -->
+    <InternalsVisibleTo Include="FastTranslation.Core.Tests" />
+  </ItemGroup>
 </Project>

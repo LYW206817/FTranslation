@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using FastTranslation.Core;
@@ -214,6 +214,31 @@ public class QwenMtProviderTests
         // 额度用尽是"换个 Key 就行"，不是"稍后再试"，所以不能走 429 的重试分支
         Assert.Equal(TranslationErrorCode.QuotaExhausted, result.Error?.Code);
         Assert.Equal("本月额度已用完", result.Error?.Message);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task DashScopeQuotaExhaustion_IsNotMistakenForRateLimiting()
+    {
+        // v75: 直连 DashScope 时余额耗尽也回 429，但 error 是对象不是字符串。
+        // 以前只认字符串形状，线上表现为整份文档 63% 的段"失败"并被无意义重试。
+        var calls = 0;
+        using var server = new FakeQwenServer
+        {
+            Handler = _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return (429, """
+                    {"error":{"message":"You exceeded your current quota.","type":"insufficient_quota","param":null,"code":"insufficient_quota"},"request_id":"abc"}
+                    """);
+            },
+        };
+        using var provider = new QwenMtProvider(() => "token", new QwenMtOptions { BaseUrl = server.Url });
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(TranslationErrorCode.QuotaExhausted, result.Error?.Code);
+        Assert.Equal("API Key 的额度或余额不足", result.Error?.Message);
         Assert.Equal(1, calls);
     }
 
