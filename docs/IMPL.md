@@ -1813,11 +1813,22 @@ v60 那个「被手推了一下」的 `TranslateTransform X=2` 也从 `fill` 挪
 - `docs/playbooks/release-and-installer.md`:发版自检的「`dotnet test` 408 全绿」改为当前基线 602 并注明以本机输出为准。
 - `deploy/appsettings.Production.json.example`:补上 `Smtp` 段占位。代码一直在用(`ServerOptions.Smtp` → `Auth/VerificationMailSender`),example 里却从未有过这个段,照着 example 部署会漏配。
 
+### 补充(第二轮):三份新方案文档按代码事实校正
+
+第一轮只核了 `AGENTS.md` 与说明文档,三份新方案文档(`docs/superpowers/specs/2026-10-31-语音与文档翻译-方案评估.md`、`.agents/design/2026-10-31-语音与文档翻译-{设计文档,实现计划}.md`)里对现有代码的断言没核过。第二轮逐条对照源码,改掉 8 处硬错与 9 处偏差,其中两处会直接把实现带进坑里:
+
+- **配置键前缀错了会静默失效**。文档写 `Gateway:Speech:*`,但配置根节是 `Server`(`ServerOptions.SectionName = "Server"`,`GatewayOptions` 挂在 `ServerOptions.Gateway` 下),完整路径必须是 `Server:Gateway:Speech:*`。键名写错不会抛异常——属性保持默认值,表现为 `Enabled` 永远 false、端点一直 503,排查起来像"开关没生效"而不是"配置绑不上"。同时补上实现前提:现有 `GatewayOptions` 是扁平属性,要支持这层嵌套必须新加 `public SpeechOptions Speech { get; set; } = new();`。
+- **`RecordUsage` 没有 `source` 参数**。`server/FastTranslation.Server/Storage/AccountStore.cs:239` 的签名里没有它,SQL(`:274-276`)里 `'gateway'` 是硬编码字面量。文档原以为"只改端点就行",漏了 `AccountStore.cs`;不改则 `source='document'` 写不进去,设计文档 §11.2 的 `Document_source_header_is_recorded` 用例必红。改动清单据此从 16 项补到 17 项。
+
+其余修正:`Intent` 是**四道**闸门不是五道(限流 → 日预算 → 账号禁用 → 额度,`Gateway/GatewayEndpoints.cs:221`);`LanguageCatalog` 是 74 语言不是 77;网关回调真名是 `GatewayTranslateImageAsync` / `GatewayRecognizeImageAsync`(文档写的 `GatewayImageAsync` / `GatewayOcrAsync` 不存在);「防刷三道闸」里的设备指纹 90 天在代码里搜不到,实际只有邮箱验证码与单设备日 2000 字符两道;基线 git 头 `0e71b6c` 已是 HEAD~2,改 `3c714a7`;`shot-main.ps1` 实际叫 `main-shot.ps1`;`PricingTests.cs` 尚不存在(标为新建);侧栏行高 38px 不是 34px(`App.xaml` 的 `SidebarItem` `Height=38`),`MainWindow.xaml.cs` 的 344 行是整文件而 `Create` 的 `switch` 只有 12 行。
+
+版本号整体后移一位:文档 1.4.0 定为 **v72–v75**、语音 1.5.0 定为 **v76–v79**,因为本节的 v71 已经占用了原定的起点。§1.3 从「四个必须先拍的决策」改为五个(补 Q5 独立日预算与带宽硬顶),§11 补回漏掉的 Q3 并重排编号。
+
 ### 验证
 
 - 纯文档与配置样例改动,未触碰源码;`deploy/appsettings.Production.json.example` 已用 Python `json.load` 校验合法。
 - `python -c` 校验 + `git status --short` 干净(仅本机 `publish/` 内产物,已在 `.gitignore`)。
-- 提交:`0de8fb9`(AGENTS.md)、`2316a8c`(方案文档与计费 spec 勘误)、`1b1040c`(版本号与过期断言),已 `git push origin master:main`。
+- 提交:`0de8fb9`(AGENTS.md)、`2316a8c`(方案文档与计费 spec 勘误)、`1b1040c`(版本号与过期断言)、`19db100`(三份新方案文档按代码事实校正),已 `git push origin master:main`。
 
 ### 残留风险
 
