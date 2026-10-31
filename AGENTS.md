@@ -176,7 +176,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 踩过的坑(省时间用)
 
-- **改代码前先看 `docs/IMPL.md`**:同一个坑可能已经踩过并写在那里。文件已 1790 行(最新一节是 `## v70`),按关键词 grep,再看最近几节,不要从头读。
+- **改代码前先看 `docs/IMPL.md`**:同一个坑可能已经踩过并写在那里。文件已 1800 多行(最新一节是 `## v71`),按关键词 grep,再看最近几节,不要从头读。
 - `docs/IMPL.md` 追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/IMPL.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
 - PowerShell 5.1 读**无 BOM** 的 UTF-8 脚本 + 中文注释 → 按 GBK 解码报错;新脚本存成带 BOM 的 UTF-8,或干脆 ASCII-only(`tools/qa` 现状 69 个 `.ps1` 里 34 带 BOM、35 不带,唯一「无 BOM 且含中文」的是 `shot-image-window.ps1`——坑是真的,只是历史脚本没全守)。输出中文前设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`。
 - `cmd /c powershell -Command` 里的 `$_` 会被 cmd 的引号处理吃掉(MSYS2 bash 里单引号内联是正常的) → 先写 `.ps1` 再 `-File`。

@@ -1788,3 +1788,39 @@ v60 那个「被手推了一下」的 `TranslateTransform X=2` 也从 `fill` 挪
 
 - 悬停与焦点环现在共用同一个 `ring`：键盘 Tab 到某一项、鼠标同时压上去时只显示一圈，两者视觉无差别。当前没有「焦点在这一项但鼠标在别处」的复合态，问题不大；以后若加键盘导航提示，需要把环改成两档颜色。
 - 环是 `Margin="-1"` 外扩画在行外的，侧栏左边界距窗口边只有 ~28px，够用；若以后侧栏内边距收窄到 2px 以内，环会被窗口边界裁掉。
+
+## v71 · 按审计结果校正文档与记忆文件的不符处
+
+**为什么改**:语音实时翻译与文档翻译的方案评估过程中,发现「给所有会话注入记忆的文件」(`AGENTS.md`)以及若干说明文档里写死的事实已经和仓库现状脱节。这类文件错了不会让构建失败,却会持续误导之后每一个会话,所以单开一轮做校正。
+
+### 改了什么
+
+**`AGENTS.md`**
+- 模块清单补全:图片模型写 `qwen-mt-image-2.0`(不是 `qwen-mt-image`),网关补 `/v1/ocr`,Providers 写明文本/图片/OCR 三类各有一套「直连」与「自建网关」通道,Core 与 App 的行补上实际存在的主要文件。
+- 删掉已不存在的 `NotesWindow`(删除提交 `faa836b`),改指向 `Pages/NotesPage` 与 `Pages/ReviewPage`。
+- 计数类断言一律换成实测:类 `sealed` 82 → **148**,`ConfigureAwait(false)` 118 → **108**,`docs/IMPL.md` 1300 行 → **1790 行(最新 v70)**。
+- 令牌自检从 `git grep -n 'ghp_\|github_pat_'` 改为 `git grep -In 'ghp_[A-Za-z0-9]\{30,\}' -- ':!*.md'`:原裸模式必然命中本文件里的模式串本身,「应无输出」这条自检永远发出误报。
+- 注释回报示例从 `Gateway/GatewayEndpoints.cs:334` 改到 `server/FastTranslation.Server/GatewayOptions.cs:48`(行号与语义双错位:该行现在是 `EstimateInputTokens`,图片折算常量在 `GatewayOptions.ImageQuotaChars`)。
+- 提交 scope 白名单承认中文 scope 也是既有事实(`feat(界面)` / `feat(复习)` / `feat(单词本)` 等大量存在),不再与实际历史互相打架。
+- 踩坑段三处纠正:heredoc 报错改为条件式描述(本机 MSYS2 bash 三种写法实测都跑通,`Unexpected character` 是 Node 解析器文案);BOM 现状写明 34/69;`$_` 的真实失败模式是 `cmd /c` 的引号剥离,不是 bash。
+- 700 行上限补现状例外(`App.xaml.cs` 1291 行、`OverlayWindows.cs` 742 行,拆它们要连带搬实例字段,排在专门重构里做)。
+- 版本号第 4 条的「最近就漏改过,停在 1.1.3」改成 1.3.7 之后的真实漂移;`.agents/issue` 标注只有 `.gitkeep`、尚未真用过。
+
+**其它文档**
+- `docs/PLAN.md` §2 的「T15 的安装器实际用 WiX v4 MSI(非 Inno Setup)」改为历史记录:T15 当时用 WiX,**v30 起已改用 Inno Setup**;`installer/Product.wxs` 与 `files.wxs` 是遗留死文件。§1 补一句指向方案文档 §2.6,说明「不分段不流式」在语音/文档两项新功能上的越界边界。
+- `README.md`:安装段包名 1.2.2 → 1.3.7;测试数 24/48/6 更正为 **218/97/94/193(合计 602)** 并补上缺失的 Server.Tests 一行;`IMPL.md 迭代史 v1–v29` → **v1–v70**。
+- `site/index.html`:版本徽标、hero 说明、两张安装卡文件名 1.2.2 → 1.3.7;包体积按实测改成约 45 MB / 60 MB(原写 70 MB 是旧数字)。
+- `docs/playbooks/release-and-installer.md`:发版自检的「`dotnet test` 408 全绿」改为当前基线 602 并注明以本机输出为准。
+- `deploy/appsettings.Production.json.example`:补上 `Smtp` 段占位。代码一直在用(`ServerOptions.Smtp` → `Auth/VerificationMailSender`),example 里却从未有过这个段,照着 example 部署会漏配。
+
+### 验证
+
+- 纯文档与配置样例改动,未触碰源码;`deploy/appsettings.Production.json.example` 已用 Python `json.load` 校验合法。
+- `python -c` 校验 + `git status --short` 干净(仅本机 `publish/` 内产物,已在 `.gitignore`)。
+- 提交:`0de8fb9`(AGENTS.md)、`2316a8c`(方案文档与计费 spec 勘误)、`1b1040c`(版本号与过期断言),已 `git push origin master:main`。
+
+### 残留风险
+
+- 审计里「无法机器核实」的条目(GitHub Pages 600 秒缓存、`ghfast.top` 连不上、`SendInput` 返回 0、UIA 在 Inno 向导里、旧 MSI 1603)保持原样:它们记录的是当时实测到的现象,本次没有条件复现,不做改动。
+- `AGENTS.md` 里的计数(148 / 108 / 1790)同样会随时间漂移。本次已注明是实测值,但下次改动仍可能让它们过期——计数类断言本身就该少写。
+- `publish/.server-secrets.json` 与 `publish/ft-emergency-copy-put-this-off-this-laptop` 仍留在本机(`.gitignore` 内,未进 git)。前者是 `docs/IMPL.md` v60 明确记录的两份密钥副本之一(签名密钥 + 管理令牌),后者是应急 SSH 私钥的异地副本,**都是有意保留的关键备份,不是泄漏**,不要随手删。
