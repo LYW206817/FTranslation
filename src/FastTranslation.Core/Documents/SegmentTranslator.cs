@@ -25,9 +25,10 @@ public static class SegmentTranslator
     /// <para>
     /// 旧值让一份 100 页、658 段的文档发出约 658 个请求（实测 180 RPM），而 qwen-mt-flash 的
     /// 上限是 60 RPM，于是大批段落撞 429、3 次重试在毫秒内耗光，最终 417 段没译成。
-    /// 合并到接近 <see cref="TranslationRequest.MaxInputLength"/>（5000）后请求数降一个数量级，
-    /// 才谈得上「100 页 3 分钟」这条验收线。留 1000 字符余量是因为占位符保护会把
-    /// 受保护片段换成哨兵，长度会有小幅膨胀。
+    /// 合并到接近 <see cref="TranslationRequest.MaxInputLength"/>（5000）后请求数降一个数量级。
+    /// 留 1000 字符余量是因为占位符保护会把受保护片段换成哨兵，长度会有小幅膨胀。
+    /// 但合并只压请求数，压不了上游按字符计的配额——100 页 16 万字符的物理下限仍是 5–7 分钟，
+    /// 所以原验收线「100 页 ≤3 分钟」在 v75 已作废。
     /// </para>
     /// </summary>
     private const int MergeMaxSegments = 20;
