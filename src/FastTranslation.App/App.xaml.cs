@@ -5,6 +5,7 @@ using System.Windows;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Documents;
 using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
@@ -42,6 +43,8 @@ public partial class App : Application, IResultPresenter
     private AccountApiClient? _accountClient;
     private NotesApiClient? _notesClient;
     private HttpClient? _gatewayHttp;
+    private DocumentTranslationCoordinator? _documents;
+    private GatewayTranslationProvider? _documentProvider;
 
     // v67: 网关能不能用只由后台探测决定（见 GatewayHealth）。原来的做法是「60 秒内别碰网关」，
     // 窗口一过，下一次翻译就当场去连一个没人监听的端口——在带过滤驱动/代理的机器上这类连接要
@@ -126,6 +129,26 @@ public partial class App : Application, IResultPresenter
         // 网关与账号共用主机；单独一个 HttpClient，因为它的超时要盖住服务端自己的上游超时
         _gatewayHttp = CreateApiHttpClient(TimeSpan.FromSeconds(45), GatewayBaseUrl());
         _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider));
+
+        // v72: 文档翻译单独一条 provider 链，**不经过 TranslationService**——那个服务每次新请求会
+        // 取消上一次在途请求（划词时"最后一次输入赢"），而文档是一份文档几十段并发在飞，
+        // 走它就会变成每段互相打断、只有最后一段能译出来。这里直接用组合 provider：
+        // 网关优先、失败回落用户自己的 Key，和划词是同一条策略，只是少了缓存与单飞。
+        _documentProvider = new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider);
+
+        // 作业的三个回调转给主窗口再转给文档页：窗口可能正收在托盘里，作业照样要能跑完。
+        _documents = new DocumentTranslationCoordinator(
+            format => format switch
+            {
+                DocumentFormat.Docx => new DocxDocumentTranslator(),
+                _ => new TextDocumentTranslator(format),
+            },
+            TranslateDocumentSegmentsAsync,
+            // 输出目录给 null = 落在源文件旁边，由 coordinator 自己取目录
+            outputDirectory: () => null,
+            present: result => _mainWindow?.PresentDocument(result),
+            reportError: message => _mainWindow?.ReportDocumentError(message),
+            progress: (fraction, done, total) => _mainWindow?.ReportDocumentProgress(fraction, done, total));
 
         // 第一阶段工具栏（复制/翻译）+ 第二阶段结果卡（复制/替换/插入/✕）
         _toolbar = new SelectionToolbar();
@@ -245,6 +268,7 @@ public partial class App : Application, IResultPresenter
             _settingsService,
             _secrets,
             _hotkey!,
+            _documents!,
             enabled =>
             {
                 _captureEnabled = enabled;
@@ -612,6 +636,39 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "document" or "document-progress" or "document-done" or "document-failed")
+        {
+            // FT_UITEST=document* -> 文档页的四种形态，只为了拍对比截图。空态走真实页面，
+            // 另外三种直接把回调喂给页面：截图不该等一次真实的文档翻译，也不该消耗额度。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    ShowDocument();
+                    if (uitest == "document") return;
+
+                    _mainWindow?.ReportDocumentProgress(0.35, 42, 120);
+                    if (uitest == "document-progress") return;
+
+                    List<DocumentSegment> failed = uitest == "document-failed"
+                        ?
+                        [
+                            new DocumentSegment(17, "/word/document.xml#p18",
+                                "这一段里有 ⟦1⟧ 之类的受保护片段，模型没能原样还回来。", null, SegmentStatus.Failed),
+                            new DocumentSegment(64, "/word/document.xml#p65",
+                                "To be translated — the gateway refused this segment three times.", null, SegmentStatus.Failed),
+                        ]
+                        : [];
+                    _mainWindow?.PresentDocument(new DocumentJobResult(
+                        @"C:\Users\Public\Documents\季度报告.en.docx", 120, failed.Count, 8_432)
+                    { Failed = failed });
+                }
+                catch (Exception ex) { Trace($"uitest document: {ex}"); }
+            };
+            uiTimer.Start();
+        }
     }
 
     /// <summary>
@@ -877,6 +934,36 @@ public partial class App : Application, IResultPresenter
             NoteGatewayFailure(ocrResult.Error);
             return ocrResult;
         });
+
+    /// <summary>
+    /// 文档里的一段。没有 <c>TranslationResult</c> 那条兜底链：段落翻译失败就是失败，
+    /// 抛出去让 <see cref="SegmentTranslator"/> 重试、用尽后把这一段标成「未翻译」，
+    /// 而不是拿一句空译文写回用户的文档。
+    /// </summary>
+    private async Task<string> TranslateDocumentSegmentsAsync(
+        string text,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        // 源语言给 auto：文档里的段落可能整段是英文也可能整段是中文，
+        // 逐段猜比整份猜更准，而 qwen-mt 接受 auto。
+        var request = new TranslationRequest(
+            text,
+            "auto",
+            LanguageCatalog.ToApiName(targetLanguage),
+            _settings.Model);
+        var result = await _documentProvider!.TranslateAsync(request, cancellationToken).ConfigureAwait(false);
+        if (result.Succeeded) return result.TranslatedText;
+
+        // 额度/余额耗尽是「换个 Key 或充值」而不是「这一段有问题」：换成专用异常让
+        // SegmentTranslator 立刻放弃整份作业，而不是逐段把 3 次重试都打在枯竭的额度上。
+        if (result.Error is { Code: TranslationErrorCode.QuotaExhausted } quota)
+        {
+            throw new QuotaExhaustedException(quota.Message);
+        }
+
+        throw new InvalidOperationException(result.Error?.Message ?? "翻译失败");
+    }
 
     /// <summary>
     /// 三条网关链路的兜底。任何没预料到的异常都不该让整次翻译 / 截图翻译失败：
@@ -1181,6 +1268,9 @@ public partial class App : Application, IResultPresenter
 
     private void ShowSettings() => ShowPage(MainPageId.Settings);
 
+    /// <summary>文档翻译页（v72）。</summary>
+    private void ShowDocument() => ShowPage(MainPageId.Document);
+
     /// <summary>应用内每个目的地现在都是单窗口的一个页面了（设计 D13）。</summary>
     private void ShowPage(MainPageId page)
     {
@@ -1233,6 +1323,9 @@ public partial class App : Application, IResultPresenter
         _hotkey?.Dispose();
         if (_account is not null) _account.Changed -= OnAccountChanged;
         _accountClient = null;
+        // 不 Dispose 文档链路：它的组合 provider 包着与划词链路共用的那个 ownProvider，
+        // Dispose 会顺着把用户 Key 的 provider 也关掉，而进程正要退出，没必要冒这个风险。
+        _documentProvider = null;
         _gatewayHttp?.Dispose();
         _gatewayHttp = null;
         // 只取消不 Dispose：探测循环此刻可能正挂在 Task.Delay 上，Dispose 会让它的注册抛

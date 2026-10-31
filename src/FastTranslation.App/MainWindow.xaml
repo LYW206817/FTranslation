@@ -37,7 +37,7 @@
                      Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
         </StackPanel>
 
-        <!-- 七个页面 -->
+        <!-- 八个页面 -->
         <StackPanel x:Name="SidebarItems">
           <Button x:Name="HomeButton" Style="{StaticResource SidebarItemActive}" Tag="Home" Click="Nav_Click">
             <TextBlock Text="首页"/>
@@ -81,6 +81,9 @@
               </Border>
               <TextBlock Text="复习" VerticalAlignment="Center"/>
             </DockPanel>
+          </Button>
+          <Button x:Name="DocumentButton" Style="{StaticResource SidebarItem}" Tag="Document" Click="Nav_Click" Margin="0,2,0,0">
+            <TextBlock Text="文档"/>
           </Button>
 
           <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,8"/>

@@ -5,6 +5,7 @@ using System.Windows.Media.Animation;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Documents;
 using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
@@ -26,6 +27,7 @@ public partial class MainWindow : Window
     private readonly Action? _checkUpdates;
     private readonly Action<bool> _setCaptureEnabled;
     private readonly Func<bool> _isCaptureEnabled;
+    private readonly DocumentTranslationCoordinator _documents;
 
     private readonly Dictionary<MainPageId, UserControl> _pages = [];
     private readonly Dictionary<NoteKind, NotesPage> _shelves = [];
@@ -34,6 +36,7 @@ public partial class MainWindow : Window
     private PlanPage? _plan;
     private SettingsPage? _settingsPage;
     private ReviewPage? _reviewPage;
+    private DocumentPage? _documentPage;
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
@@ -54,6 +57,7 @@ public partial class MainWindow : Window
         SettingsService settingsService,
         ISecretStore secrets,
         HotkeyService hotkey,
+        DocumentTranslationCoordinator documents,
         Action<bool> setCaptureEnabled,
         Func<bool> isCaptureEnabled,
         Action? checkUpdates = null)
@@ -71,6 +75,7 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
         _secrets = secrets;
         _hotkey = hotkey;
+        _documents = documents;
         _checkUpdates = checkUpdates;
         _setCaptureEnabled = setCaptureEnabled;
         _isCaptureEnabled = isCaptureEnabled;
@@ -130,18 +135,23 @@ public partial class MainWindow : Window
     private UserControl Build(MainPageId page)
     {
         if (_pages.TryGetValue(page, out var existing)) return existing;
-        var built = Create(page);
+        var built = CreatePage(page);
         _pages[page] = built;
         return built;
     }
 
-    private UserControl Create(MainPageId page) => page switch
+    /// <summary>
+    /// 页面对应表的唯一出处。<see cref="Build"/> 负责缓存，这里只负责"哪个 id 造什么"，
+    /// 分成两个方法是因为 switch 的增长速度比缓存逻辑快得多（v72）。
+    /// </summary>
+    private UserControl CreatePage(MainPageId page) => page switch
     {
         MainPageId.Home => Home(),
         MainPageId.Word => Notes(NoteKind.Word),
         MainPageId.Phrase => Notes(NoteKind.Phrase),
         MainPageId.Sentence => Notes(NoteKind.Sentence),
         MainPageId.Review => Review(),
+        MainPageId.Document => Document(),
         MainPageId.Account => Account(),
         MainPageId.Plan => Plan(),
         MainPageId.Settings => Settings(),
@@ -174,6 +184,26 @@ public partial class MainWindow : Window
         _reviewPage = page;
         return page;
     }
+
+    /// <summary>
+    /// 文档翻译页（v72）：一次只跑一份文档，所以页面也是单例——切走再切回来时进度条与
+    /// 未翻译清单都还在，用户不会因为点错了一下标签就丢掉跑到一半的作业。
+    /// </summary>
+    private DocumentPage Document()
+    {
+        if (_documentPage is not null) return _documentPage;
+        _documentPage = new DocumentPage(_documents, _account, _settings, _settingsService);
+        return _documentPage;
+    }
+
+    // v72: 文档作业的三个回调从 App 一路转到这里，再由页面落到控件上。转一层是为了让
+    // App 不必知道页面是否已经构造过——窗口藏在托盘里时作业照样能跑完，只是没人画它。
+    public void PresentDocument(DocumentJobResult result) => _documentPage?.Present(result);
+
+    public void ReportDocumentError(string message) => _documentPage?.ReportError(message);
+
+    public void ReportDocumentProgress(double fraction, int done, int total) =>
+        _documentPage?.ReportProgress(fraction, done, total);
 
     /// <summary>
     /// 没有匹配到的 id 会落到这里；上面每个 <see cref="MainPageId"/> 里的页面都有对应工厂。
@@ -290,6 +320,7 @@ public partial class MainWindow : Window
             case MainPageId.Sentence: _shelves.GetValueOrDefault(NoteKind.Sentence)?.Reload(); break;
             // 进行中的练习要能在绕去书架再回来之后存活；只有选题模式会重新拉取
             case MainPageId.Review: _reviewPage?.Reload(); break;
+            case MainPageId.Document: _documentPage?.Reload(); break;
             case MainPageId.Home: _home?.RefreshKeyStatus(); break;
         }
     }
