@@ -1702,3 +1702,43 @@ v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成�
 - 侧栏角标白字压在 `Danger` 上：深色 `#FF6B6B` 底白字 = **2.78:1**（`MainWindow.xaml:49/59/69/79`）。
 - 用 `BrandBrush` 作文字色的 7 处（`AccountPage.xaml:150,161`、`MainPage.xaml:44`、`PlanPage.xaml:99`、`ReviewPage.xaml:119`、`SettingsPage.xaml:230`、`UpdateWindow.xaml:33`）：深色下对 Surface 是 4.40:1；侧栏活动项 `#4A82FF` on `BrandFill #22304D` = **3.71:1**。要修得给它们单独一支「品牌作字」色（深色 `#8FB4FF` = 6.35:1）。
 - 三处清空 `FocusVisualStyle` 且模板内没自绘焦点环（`App.xaml:299` FtComboBox / `:415` SidebarItem / `:496` GradeButton），键盘 Tab 看不到焦点。
+## v69 · 界面审查整改：焦点环、加载态、字号阶与品牌作字
+
+拿双主题全页截图逐页取证，量出 11 项问题，按 P0–P4 分档。P0/P1（禁用态主按钮、TextMuted 太淡、品牌底字色）随 v68 落地，这一版把剩下的 P2–P4 与 v68 结果卡里遗留的两条对比度收掉。
+
+### P2 · 键盘焦点环
+
+三处控件把 `FocusVisualStyle` 清空后模板里没画替代品（`App.xaml` 的 FtComboBox / SidebarItem / GradeButton），Tab 走过去屏幕上没有任何反应。改法照抄 TextBox 已有的范式：模板里加一支 `<Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2" Margin="-2"/>` 垫在实底下面，`IsKeyboardFocused` 触发器把 `ring.BorderBrush` 描成 BrandBrush。三处现在分别是 `App.xaml:340`（FtComboBox，CornerRadius 11 / Margin -1，因为外框是圆角 10）、`:463`（SidebarItem）、`:550`（GradeButton）。
+
+### P3 · 三个「中间态」
+
+- **套餐页用量卡**（`Pages/PlanPage.xaml.cs:79` 新增 `ShowReading()`）：`LoadUsageAsync()` 先折叠 `UsageError`、调 `ShowReading()` 把四段文字写成「读取中…」并把两条进度条归零，再 await；失败分支现在会主动写「读取失败」并清空残留值。此前失败时进度条留着上一次的数，看不出是新数据还是旧数据。
+- **单词/短语/语句页空态**（`Pages/NotesPage.xaml:175,187`）：12px + `TextMutedBrush` + MaxWidth 230 → 13px + LineHeight 22 + `TextSecondaryBrush` + MaxWidth 260。原来一行又小又灰的字摆在两块大白卡中间，看起来像加载残留而不是「这栏还是空的」。
+- **设置页滚动区底部**（`Pages/SettingsPage.xaml:62`）：`BodyStack` 的 `Margin="24,0,24,6"` → `"24,0,24,18"`。原来滚到底时最后一张卡的脚注被视口边缘切成半行——不是布局溢出，纯粹少了半行内边距。
+
+### P4 · 令牌、字号与样式去重
+
+- **P4a 渐变令牌化**：`Pages/MainPage.xaml` 里硬编码的 `LinearGradientBrush x:Key="BoltRule"`（`#40A9FF` → `#2562FF`）是全仓唯一的裸色值，深色主题下 `#2562FF` 压在卡片上只有 3.17:1。改为令牌：`ThemePalette.ThemeColors` 新增 `BoltFrom` / `BoltTo`（浅 `#40A9FF`→`#2562FF`、深 `#4A82FF`→`#5BB4FF`），`ThemeBridge` 新增带端点的 `SetGradient(resources, key, fromHex, toHex, Point start, Point end)` 重载并注册 `BoltRuleBrush`，MainPage 改引用 `{DynamicResource BoltRuleBrush}`。那道渐变是斜着走的（0,0 → 0.35,1）而非上下铺满，所以端点必须能传。
+- **P4b 字号收敛**：阶定为 10/11/12/13/14/15/17/19/21。清掉三档掉队的：`UpdateWindow.xaml:17` 标题 16→17（其余五处标题本来都是 17）、`Pages/MainPage.xaml:19,22,58` 14.5→14、`Pages/AccountPage.xaml:123` 头像 18→17。`MainPage.xaml:58` 保留 `LineHeight="26"`。10px 的六处（`MainWindow.xaml:49/59/69/79` 侧栏角标、`ReviewPage.xaml:112/118` 的 kind / 「新」chip）刻意不动——chip 级微型标签本来就不该跟正文同阶。
+- **P4c 样式去重**：`Hint` / `CardTitle` / `FieldLabelTight` / `SmallButton` 四支在五个页面里各抄一份、参数一模一样，全部上移到 `App.xaml:43-67`，页面里的副本删掉。`Pages/NotesPage.xaml` 自己的 `GradeButton`（Height 30 / FontSize 12）**保留**：和 `App.xaml:538` 那支（Height 40 / FontSize 13）参数不同，它是挤在详情卡里而不是独占一行。
+
+### 收掉 v68 残留的两条对比度
+
+- **新增 `BrandText` 令牌**：v68 记过「用 BrandBrush 当文字色」的 7 处深色下只有 4.40:1（对 Surface）、3.71:1（侧栏活动项对 BrandFill）。文字和描边共用一个色是根因，所以拆一支独立的「品牌作字」：浅 `#1D4FE0`（对 `#FFFFFF` 6.47 / 对 `#EDF2FF` 5.77）、深 `#8FB4FF`（对 `#1F242C` 7.53 / 对 `#22304D` 6.35）。`ThemeBridge.cs:47` 注入 `BrandTextBrush`，`App.xaml:26` 声明默认值；共 8 处改用新键——两支样式 `App.xaml:435`（FtComboBox 选中项）与 `:496`（SidebarItemActive），加六个页面：`Pages/AccountPage.xaml:124,135`、`Pages/MainPage.xaml:36`、`Pages/PlanPage.xaml:73`、`Pages/ReviewPage.xaml:113`、`Pages/SettingsPage.xaml:212`。描边、图标、进度条继续用 `BrandBrush`——`UpdateWindow.xaml:34` 那处是 ProgressBar 的 Foreground，不是文字，不动。
+- **侧栏角标**：`MainWindow.xaml:49/59/69/79` 四个角标文本 `Foreground="White"` → `{DynamicResource OnBrandTextBrush}`。深色 Danger `#FF6B6B` 上白字 2.78:1，`OnBrandText` 的 `#101820` 是 6.34:1；浅色 `OnBrandText` 就是 `#FFFFFF`，对 `#DC2626` 4.83:1，不变。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误。
+- `dotnet test` = **602 全绿**（Core 218 / Platform.Windows 97 / Providers.QwenMt 94 / Server 193）。P4c 那轮是 95，本版末尾两条对比度带了 2 条 theory。
+- 新增测试：`ThemePaletteTests.BrandTextIsReadableOnSurfaceAndOnBrandFill`（两主题断言 `BrandText` 对 `Surface` 与 `BrandFill` 各 ≥ 4.5，复用 v68 已有的私有 `Contrast` 实现）；`EveryTokenIsFilledInBothThemes` 的令牌数组加 `BoltFrom` / `BoltTo` / `BrandText`，断言 18 → **21**。
+- 截图 `tools/qa/shot-audit.ps1 -ExePath <bin/Release/net10.0-windows/FastTranslation.exe> -Theme light|dark -OutDir publish/ui-v69`，双主题各 8 页 1820×1155（PrintWindow）。
+  - 侧栏活动项 (40,165)-(130,195)：深色 `#22304D` ×1992 底 + **`#8FB4FF` ×361** 文字，浅色 `#EDF2FF` ×1992 + **`#1D4FE0` ×361**。文字主色命中数和换色前一样是 361 像素，说明只是换色没动版面。
+  - 全图计数：`audit-dark-main.png` 里 `#8FB4FF` 137 处、`#4A82FF` 仍有 2044（描边/图标/进度条）、`#1D4FE0` 0 处；`audit-light-main.png` 正好相反（`#1D4FE0` 137、`#2562FF` 2046）。
+  - 角标取样时该页没有未读数字，`#FF6B6B` 0 命中属正常。
+
+### 残留风险
+
+- 焦点环只在截图上验过存在，没做键盘 Tab 的逐控件巡览（UIA 驱动不支持 Tab 序断言）；`SidebarItem` 与 `GradeButton` 的 ring 用 `Margin="-2"` 外扩，紧贴容器边缘时会被裁掉 1–2px，要不要改成内缩留给下一版。
+- `BrandText` 只覆盖了「品牌色当文字」这一类；`Accent`（`#40A9FF` / `#5BB4FF`）当文字用的场景目前没有，真要用得另配一档。
+- 字号阶里 10px 那六处是刻意保留的，但如果以后再加 chip 类小标签，需要明确它属于 10 这一档而不是跟着正文走。

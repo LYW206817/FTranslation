@@ -23,3 +23,6 @@ server/**/data/
 *.db
 *.db-wal
 *.db-shm
+
+# Qoder IDE 生成的仓库快照，属于本地工具产物
+/.qoder/
