@@ -502,29 +502,13 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <!-- v70：这支模板整个重写过，改 SidebarItem 的 Template 不会跟过来，
-                 所以焦点环得在这里再画一次，否则 Tab 到当前页面上什么都看不见。 -->
-            <Grid>
-              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
-                      CornerRadius="9" Margin="-1"/>
-              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
-                <Grid>
-                  <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
-                          Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
-                  <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
-                </Grid>
-              </Border>
-            </Grid>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
-              </Trigger>
-              <!-- v70：鼠标停在当前页面上时底色再沉一档，否则悬停和活动态一模一样，
-                   会觉得点下去没反应 -->
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillHoverBrush}"/>
-              </Trigger>
-            </ControlTemplate.Triggers>
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
+              <Grid>
+                <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
+                        Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
+                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
           </ControlTemplate>
         </Setter.Value>
       </Setter>

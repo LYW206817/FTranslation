@@ -60,7 +60,12 @@ try {
   $r = $btn.Current.BoundingRectangle
   $hwnd = [IntPtr]$main.Current.NativeWindowHandle
   [Hv]::SetForegroundWindow($hwnd) | Out-Null
-  [Hv]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2)) | Out-Null
+  $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2)
+  # Park the cursor elsewhere first: if it already sits on the target, SetCursorPos
+  # produces no WM_MOUSEMOVE and WPF never flips IsMouseOver on the fresh window.
+  [Hv]::SetCursorPos(5, 5) | Out-Null
+  Start-Sleep -Milliseconds 120
+  [Hv]::SetCursorPos($cx, $cy) | Out-Null
   Start-Sleep -Milliseconds 900
 
   $wr = $main.Current.BoundingRectangle
