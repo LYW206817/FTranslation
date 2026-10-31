@@ -1742,3 +1742,42 @@ v65 把截图翻译改成「谁先回谁先上屏」之后，用户体感变成�
 - 焦点环只在截图上验过存在，没做键盘 Tab 的逐控件巡览（UIA 驱动不支持 Tab 序断言）；`SidebarItem` 与 `GradeButton` 的 ring 用 `Margin="-2"` 外扩，紧贴容器边缘时会被裁掉 1–2px，要不要改成内缩留给下一版。
 - `BrandText` 只覆盖了「品牌色当文字」这一类；`Accent`（`#40A9FF` / `#5BB4FF`）当文字用的场景目前没有，真要用得另配一档。
 - 字号阶里 10px 那六处是刻意保留的，但如果以后再加 chip 类小标签，需要明确它属于 10 这一档而不是跟着正文走。
+
+## v70 · 侧栏悬停借活动项的蓝底
+
+用户提的：点击侧栏那一瞬的蓝底好看，悬停也想要。原来悬停走的是 `HoverBrush`（浅色 `#F0F4FA` / 深色 `#262C35`），比侧栏底色只深一点点，加上 v60 那个 2px 右移，实际扫过去几乎看不出鼠标停在哪一项。
+
+### 改法
+
+- **`src/FastTranslation.App/App.xaml:477`**（`SidebarItem` 的 `IsMouseOver` 触发器）：`fill.Background` 从 `HoverBrush` 换成 **`BrandFillBrush`**，并补一条 `Foreground = BrandTextBrush`。文字颜色必须跟着换——`TextSecondary` 压在 `BrandFill` 上浅色只有 4.83:1、深色 5.86:1，而 `BrandText` 是 **5.77:1 / 6.35:1**。悬停态与活动态现在只差左侧那根 3px 竖条和字重，正好是「即将点」与「已经在这」的区别。v60 的 `TranslateTransform X=2` 保留，它负责「被手推了一下」的手感，跟底色不冲突。
+- **`src/FastTranslation.App/App.xaml:497`**（`SidebarItemActive`）：这支样式 `BasedOn` SidebarItem 但**把整块模板重写过**，所以两件事跟着丢：
+  1. 悬停当前页时底色仍是 `BrandFill`，跟没悬停一模一样，点了像没反应 ⇒ 模板里补 `IsMouseOver` → `fill.Background = BrandFillHoverBrush`（浅色 `#E0EAFF` / 深色 `#2B3C60`），沉一档。
+  2. v69 补的键盘焦点环也丢了（ring 在那个模板里根本不存在）⇒ 补回 `Grid` + `ring` 与 `IsKeyboardFocused` 触发器。这是 v69 的漏，只是当时焦点环只在 MainPage 上取证，没 Tab 到侧栏。
+
+### 取证
+
+脚本 `tools/qa/shot-sidebar-hover.ps1`（`-ExePath -Theme -Out [-AutoId]`，默认 `WordButton`）：备份 settings.json → 注入 Theme → 杀进程 → 启动 → UIA 按 AutomationId 找按钮 → `SetCursorPos` 到按钮中心 → 停 900ms → `PrintWindow(hwnd, dc, 2)` 存 PNG → 还原 settings.json。截图 1820×1155。
+
+侧栏那一列在截图里是 x∈[30,200]，逐行数底色像素得到两条带：y∈[150,216) 是当前页（首页），y∈[220,286) 是悬停的「单词」项。两带的直方图：
+
+| 取样 | 深色 | 浅色 |
+| --- | --- | --- |
+| 悬停「单词」（y 222–284） | `#22304D` ×9690、文字 `#8FB4FF` ×114 | `#EDF2FF` ×9691、文字 `#1D4FE0` ×114 |
+| 当前页「首页」（y 152–214） | `#22304D` ×9588、文字 `#8FB4FF` ×366 | — |
+| 悬停当前页时该带（`-AutoId HomeButton`） | `#2B3C60` ×9588 | — |
+| 改前同一带（`publish/ui-v69/audit-*-main.png`） | `#181D26` ×9987 | `#F8FBFE` ×7356 |
+
+- 悬停项与当前页底色**完全同色**（`#22304D` / `#EDF2FF`），这正是要的效果；文字像素数 114 vs 366 的差就是 Regular 与 SemiBold 的字形粗细之差。
+- 悬停当前页时变 `#2B3C60`，与未悬停的 `#22304D` 一眼能分开。
+- 改前那一带是 `#181D26`（深）/ `#F8FBFE`（浅），和侧栏底色同色——悬停本来就只有 `#262C35` / `#F0F4FA` 这么一点差，截图里几乎量不出来，这就是用户说「看不出」的原因。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` → **0 警告 0 错误**。
+- `dotnet test FastTranslation.slnx -c Release` → Core **218** / Platform.Windows **97** / QwenMt **94** / Server **193** = **602 全绿**。首轮 QwenMt 的 `QwenOcrClientTests.SuccessWithoutText_IsInvalidResponseNotSuccess` 挂过一次，单跑该用例与整包重跑都通过——是 `FakeQwenServer` 起监听时的端口竞争，与本次改动无关（本次只动 XAML）。
+- 视觉证据：`publish/hover-dark.png`、`publish/hover-light.png`、`publish/hover-active-dark.png`（临时产物，`publish/` 不进仓库）。
+
+### 残留风险
+
+- 悬停色与活动色同底，靠竖条 + 字重区分；如果以后侧栏改成两列或加图标，这条区分度会变弱，得重新给活动态找一档色。
+- `BrandFillHover` 现在同时服务「选中项悬停」与别的悬停场景，深色 `#2B3C60` 压 `BrandText #8FB4FF` 是 5.29:1，仍过 AA，但余量比 `BrandFill` 的 6.35 小。
