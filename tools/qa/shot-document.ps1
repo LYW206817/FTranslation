@@ -1,13 +1,12 @@
-# Document page (v72): four states x one theme. States are driven by the FT_UITEST hook
-# (document / document-progress / document-done / document-failed) so no real translation
-# runs -- screenshots must not depend on network or burn quota.
+﻿# 文档页(v72):四种状态 x 一种主题。状态由 FT_UITEST 钩子驱动
+# (document / document-progress / document-done / document-failed),不跑真实翻译——
+# 截图不能依赖网络,也不能烧额度。
 #
-# Uses PrintWindow(PW_RENDERFULLCONTENT) instead of CopyFromScreen: the DSH/browser window
-# this agent runs in is usually in front, and a topmost-flip is not enough to guarantee the
-# app is what lands in the bitmap.
+# 用 PrintWindow(PW_RENDERFULLCONTENT) 而不是 CopyFromScreen:跑这个脚本的 agent 通常
+# 把浏览器窗口放在最前,靠临时置顶不能保证抓到的就是我们自己的窗口。
 param(
   [Parameter(Mandatory = $true)][string]$ExePath,
-  [Parameter(Mandatory = $true)][string]$Theme,   # 取值 light | dark
+  [Parameter(Mandatory = $true)][string]$Theme,   # 取值 light | dark(见下方 settings.json)
   [Parameter(Mandatory = $true)][string]$OutDir
 )
 $ErrorActionPreference = 'Continue'
