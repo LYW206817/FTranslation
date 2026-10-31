@@ -14,7 +14,8 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <TextBlock Grid.Row="0" x:Name="Headline" FontSize="16" FontWeight="SemiBold"
+    <!-- v69：标题字号收敛到 17，与其余四扇窗和五个页面的标题同一档 -->
+    <TextBlock Grid.Row="0" x:Name="Headline" FontSize="17" FontWeight="SemiBold"
                Foreground="{DynamicResource TextPrimaryBrush}"/>
 
     <TextBlock Grid.Row="1" x:Name="Subline" Margin="0,6,0,0" FontSize="12"

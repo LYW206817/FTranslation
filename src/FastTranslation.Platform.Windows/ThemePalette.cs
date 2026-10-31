@@ -19,6 +19,10 @@ public sealed record ThemeColors(
     // v68：压在品牌色实底上的字色。深色主题的品牌蓝偏亮(#4A82FF)，白字只有
     // 3.54:1；换成近黑墨色才是 5.05:1。浅色主题仍是白字(4.92:1)。
     string OnBrandText,
+    // v69：品牌色当文字用时的颜色。压在白底/卡片上的品牌蓝深色只有 4.40:1、
+    // 压在侧栏活动项的 BrandFill 上只有 3.71:1，都够不着 AA。这个令牌只给文字用，
+    // 描边、图标、进度条仍然直接用 Brand。
+    string BrandText,
     string Accent,
     string WindowBg,
     string Surface,
@@ -50,6 +54,10 @@ public sealed record ThemeColors(
     string PageTo,
     string SidebarFrom,
     string SidebarTo,
+    // v69：译文上方那道闪电引文线。深色下原来的 #2562FF 压在卡片上只有 3.17:1，
+    // 换成品牌色到强调色的一段。
+    string BoltFrom,
+    string BoltTo,
     // 悬停抬起时那层很淡的投影（#AARRGGBB）
     string Shadow);
 
@@ -71,6 +79,7 @@ public static class ThemePalette
         BrandFill: "#EDF2FF",
         BrandFillHover: "#E0EAFF",
         OnBrandText: "#FFFFFF",
+        BrandText: "#1D4FE0",
         Accent: "#40A9FF",
         WindowBg: "#F7F9FC",
         Surface: "#FFFFFF",
@@ -101,6 +110,8 @@ public static class ThemePalette
         PageTo: "#E7EEF9",
         SidebarFrom: "#FAFCFF",
         SidebarTo: "#F0F5FC",
+        BoltFrom: "#40A9FF",
+        BoltTo: "#2562FF",
         Shadow: "#1F1B2536");
 
     public static ThemeColors Dark { get; } = new(
@@ -110,6 +121,7 @@ public static class ThemePalette
         BrandFill: "#22304D",
         BrandFillHover: "#2B3C60",
         OnBrandText: "#101820",
+        BrandText: "#8FB4FF",
         Accent: "#5BB4FF",
         WindowBg: "#16191F",
         Surface: "#1F242C",
@@ -139,6 +151,8 @@ public static class ThemePalette
         PageTo: "#1B2431",
         SidebarFrom: "#171C25",
         SidebarTo: "#1B212B",
+        BoltFrom: "#4A82FF",
+        BoltTo: "#5BB4FF",
         Shadow: "#99000000");
 
     /// <summary>从此刻起创建的界面所使用的调色板。</summary>

@@ -49,9 +49,10 @@ public class ThemePaletteTests
                 palette.BrandFillHover, palette.OnBrandText, palette.Accent, palette.WindowBg,
                 palette.Surface, palette.Hair, palette.HairStrong, palette.BorderStrong,
                 palette.Hover, palette.TextPrimary, palette.TextSecondary, palette.TextMuted,
-                palette.Danger, palette.Notice,
+                palette.Danger, palette.Notice, palette.BoltFrom, palette.BoltTo,
+                palette.BrandText,
             };
-            Assert.Equal(18, values.Length);
+            Assert.Equal(21, values.Length);
             Assert.All(values, v =>
             {
                 Assert.False(string.IsNullOrWhiteSpace(v));
@@ -73,6 +74,24 @@ public class ThemePaletteTests
         Assert.True(
             Contrast(palette.OnBrandText, palette.Brand) >= 4.5,
             $"{theme}: OnBrandText {palette.OnBrandText} 压在 Brand {palette.Brand} 上对比度不足");
+    }
+
+    /// <summary>
+    /// v69：品牌色当文字用的时候要单独一支更浅/更深的色。深色下 Brand 压 Surface
+    /// 只有 4.40:1、压侧栏活动项的 BrandFill 只有 3.71:1，正文级文字读不清。
+    /// </summary>
+    [Theory]
+    [InlineData(AppTheme.Light)]
+    [InlineData(AppTheme.Dark)]
+    public void BrandTextIsReadableOnSurfaceAndOnBrandFill(AppTheme theme)
+    {
+        var palette = theme == AppTheme.Dark ? ThemePalette.Dark : ThemePalette.Light;
+        Assert.True(
+            Contrast(palette.BrandText, palette.Surface) >= 4.5,
+            $"{theme}: BrandText {palette.BrandText} 压在 Surface {palette.Surface} 上对比度不足");
+        Assert.True(
+            Contrast(palette.BrandText, palette.BrandFill) >= 4.5,
+            $"{theme}: BrandText {palette.BrandText} 压在 BrandFill {palette.BrandFill} 上对比度不足");
     }
 
     /// <summary>WCAG 2.x 相对亮度对比度。</summary>

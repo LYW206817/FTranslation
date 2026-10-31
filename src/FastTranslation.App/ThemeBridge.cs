@@ -43,6 +43,8 @@ internal static class ThemeBridge
         Set(r, "TextMutedBrush", c.TextMuted);
         Set(r, "DangerBrush", c.Danger);
         Set(r, "OnBrandTextBrush", c.OnBrandText);
+        // v69：品牌色当文字用的那一支，和 BrandBrush 分开——描边和图标继续用 Brand。
+        Set(r, "BrandTextBrush", c.BrandText);
 
         // 四档自评：文字 / 底色 / 描边各一条，XAML 只引用键名
         SetGrade(r, "Known", c.GradeKnown, c.GradeKnownFill, c.GradeKnownBorder);
@@ -55,6 +57,8 @@ internal static class ThemeBridge
         // 页面底色：左上到右下。侧栏是同一套色相的更窄一段，用来和内容区分开。
         SetGradient(r, "PageGradientBrush", c.PageFrom, c.PageTo, 0.15, 0.85);
         SetGradient(r, "SidebarGradientBrush", c.SidebarFrom, c.SidebarTo, 0.0, 1.0);
+        // 引文线那道窄渐变斜着走（0,0 → 0.35,1），不是上下铺满，所以单独给端点。
+        SetGradient(r, "BoltRuleBrush", c.BoltFrom, c.BoltTo, new Point(0, 0), new Point(0.35, 1));
     }
 
     private static void Set(ResourceDictionary resources, string key, string hex)
@@ -99,11 +103,15 @@ internal static class ThemeBridge
     /// </summary>
     private static void SetGradient(
         ResourceDictionary resources, string key, string fromHex, string toHex, double y1, double y2)
+        => SetGradient(resources, key, fromHex, toHex, new Point(0, y1), new Point(1, y2));
+
+    private static void SetGradient(
+        ResourceDictionary resources, string key, string fromHex, string toHex, Point start, Point end)
     {
         var brush = new LinearGradientBrush
         {
-            StartPoint = new Point(0, y1),
-            EndPoint = new Point(1, y2),
+            StartPoint = start,
+            EndPoint = end,
             GradientStops =
             {
                 new GradientStop((Color)ColorConverter.ConvertFromString(fromHex), 0),

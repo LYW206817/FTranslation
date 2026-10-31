@@ -4,13 +4,6 @@
              Background="Transparent"
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <UserControl.Resources>
-    <Style x:Key="Hint" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
-      <Setter Property="Margin" Value="0,6,0,0"/>
-      <Setter Property="TextWrapping" Value="Wrap"/>
-    </Style>
-
     <Style x:Key="NoteRow" TargetType="ListBoxItem">
       <Setter Property="Padding" Value="0"/>
       <Setter Property="Margin" Value="0,0,0,2"/>
@@ -55,7 +48,8 @@
       </Setter>
     </Style>
 
-    <!-- 四档评分：一行等宽，悬停前保持安静（设计 D12） -->
+    <!-- 四档评分：一行等宽，悬停前保持安静（设计 D12）。比 App.xaml 的
+         GradeButton 矮一档（30 对 40），因为它挤在详情卡里而不是独占一行。 -->
     <Style x:Key="GradeButton" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -176,9 +170,12 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+            <!-- v69：空态别只是一行小灰字。提到 13px、放宽行距、换成次要文字色，
+                 让「这一栏还是空的」看起来像一句解释，而不是加载残留。 -->
             <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center"
-                       VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" MaxWidth="230"
-                       TextAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
+                       VerticalAlignment="Center" FontSize="13" LineHeight="22" TextWrapping="Wrap"
+                       MaxWidth="260" TextAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
           </Grid>
         </Border>
       </Grid>
@@ -187,8 +184,8 @@
       <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
               BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="16,14,16,16">
         <Grid>
-          <TextBlock x:Name="DetailEmpty" Text="从左边选一条看看。" FontSize="12"
-                     Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
+          <TextBlock x:Name="DetailEmpty" Text="从左边选一条看看。" FontSize="13" LineHeight="22"
+                     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
           <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
             <StackPanel>
               <TextBlock Text="原文" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>

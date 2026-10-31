@@ -3,14 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:FastTranslation.App"
              Background="Transparent" FontFamily="Segoe UI, Microsoft YaHei UI">
-  <UserControl.Resources>
-    <!-- 唯一的重音：译文上方那道闪电渐变的引文线 -->
-    <LinearGradientBrush x:Key="BoltRule" StartPoint="0,0" EndPoint="0.35,1">
-      <GradientStop Offset="0" Color="#40A9FF"/>
-      <GradientStop Offset="1" Color="#2562FF"/>
-    </LinearGradientBrush>
-  </UserControl.Resources>
-
   <Grid Margin="24,18,24,14">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -24,10 +16,10 @@
             BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="4">
       <Grid MinHeight="96">
         <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0"
-                 Padding="14,12,14,10" FontSize="14.5" AcceptsReturn="True" TextWrapping="Wrap"
+                 Padding="14,12,14,10" FontSize="14" AcceptsReturn="True" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                  TextChanged="InputBox_TextChanged" KeyDown="InputBox_KeyDown"/>
-        <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="14.5"
+        <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="14"
                    Foreground="{DynamicResource TextMutedBrush}"
                    Margin="15,13,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
                    Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
@@ -41,7 +33,7 @@
                           SelectionChanged="TargetCombo_SelectionChanged"/>
         <Border Margin="10,0,0,0" VerticalAlignment="Center"
                 Background="{DynamicResource BrandFillBrush}" CornerRadius="9" Padding="10,3">
-          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{DynamicResource BrandBrush}"/>
+          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{DynamicResource BrandTextBrush}"/>
         </Border>
       </StackPanel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -62,8 +54,8 @@
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
-                   Fill="{StaticResource BoltRule}" Margin="0,5,16,5" VerticalAlignment="Stretch"/>
-        <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="14.5" LineHeight="26"
+                   Fill="{DynamicResource BoltRuleBrush}" Margin="0,5,16,5" VerticalAlignment="Stretch"/>
+        <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="14" LineHeight="26"
                    Foreground="{DynamicResource TextPrimaryBrush}"
                    Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
       </Grid>

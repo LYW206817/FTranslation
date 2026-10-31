@@ -5,12 +5,6 @@
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
              Focusable="True">
   <UserControl.Resources>
-    <Style x:Key="Hint" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
-      <Setter Property="TextWrapping" Value="Wrap"/>
-    </Style>
-
     <!-- 选题列表的一行：一个复选框、种类标签，然后是保存的内容 -->
     <Style x:Key="PickRow" TargetType="ListBoxItem">
       <Setter Property="Padding" Value="0"/>
@@ -116,7 +110,7 @@
                         <Border Background="{DynamicResource BrandFillBrush}" CornerRadius="4"
                                 Padding="5,1" VerticalAlignment="Center" Margin="0,0,8,0">
                           <TextBlock Text="{Binding KindLabel}" FontSize="10"
-                                     Foreground="{DynamicResource BrandBrush}"/>
+                                     Foreground="{DynamicResource BrandTextBrush}"/>
                         </Border>
                         <Border Background="{DynamicResource HairBrush}" CornerRadius="4"
                                 Padding="5,1" VerticalAlignment="Center" Margin="0,0,8,0"

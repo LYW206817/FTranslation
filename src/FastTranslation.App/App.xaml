@@ -23,6 +23,7 @@
     <SolidColorBrush x:Key="HairBrush" po:Freeze="False" Color="#E4EAF3"/>
     <SolidColorBrush x:Key="HairStrongBrush" po:Freeze="False" Color="#D9E3F1"/>
     <SolidColorBrush x:Key="OnBrandTextBrush" po:Freeze="False" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BrandTextBrush" po:Freeze="False" Color="#1D4FE0"/>
     <SolidColorBrush x:Key="BorderStrongBrush" po:Freeze="False" Color="#CFD9EA"/>
     <SolidColorBrush x:Key="HoverBrush" po:Freeze="False" Color="#F0F4FA"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" po:Freeze="False" Color="#1B2536"/>
@@ -35,6 +36,34 @@
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
       <Setter Property="Margin" Value="0,14,0,6"/>
+    </Style>
+
+    <!-- v69：下面四支原本在五个页面里各抄了一份，参数一模一样。
+         页面级的同名 Style 会盖住这里的，所以各页的那几份已经删掉。 -->
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="CardTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+
+    <Style x:Key="FieldLabelTight" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+
+    <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
     </Style>
 
     <!-- ===== 按钮：默认是安静的次要样式 ===== -->
@@ -306,6 +335,10 @@
         <Setter.Value>
           <ControlTemplate TargetType="ComboBox">
             <Grid>
+              <!-- v69：FocusVisualStyle 被清空是为了不让默认虚线框压在下拉框的描边上，
+                   但键盘 Tab 过来必须还有东西指出焦点在哪，所以自己画一圈。 -->
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="10" Margin="-3"/>
               <Border x:Name="bd" Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8"/>
@@ -372,6 +405,9 @@
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
                 <Setter Property="Opacity" Value="0.55"/>
               </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -396,7 +432,7 @@
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -415,20 +451,25 @@
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Cursor" Value="Hand"/>
       <!-- 默认的虚线焦点框会叠在活动高亮上面，看起来像 bug；
-           高亮本身已经说明了你在哪个页面 -->
+           高亮本身已经说明了你在哪个页面。v69：换成外面一圈 2px 品牌色环，
+           与 TextBox 的焦点环同一套画法，Tab 过来仍然看得见。 -->
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <!-- v60：悬停时整行向右挪 2px，读起来像"被手推了一下"；只挪不缩放，
                  侧栏很窄，缩放会挤到右边的角标 -->
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="8">
-              <Grid>
-                <Border x:Name="marker" Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
-                        Background="Transparent" Margin="0,9,0,9"/>
-                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
-              </Grid>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="9" Margin="-1"/>
+              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="8">
+                <Grid>
+                  <Border x:Name="marker" Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
+                          Background="Transparent" Margin="0,9,0,9"/>
+                  <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
@@ -437,6 +478,9 @@
                     <TranslateTransform X="2"/>
                   </Setter.Value>
                 </Setter>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -448,7 +492,8 @@
          而这里变的只有左侧那条标记。 -->
     <Style x:Key="SidebarItemActive" TargetType="Button" BasedOn="{StaticResource SidebarItem}">
       <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-      <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+      <!-- v69：压在 BrandFill 上的文字用 BrandText，Brand 在这里只有 3.71:1。 -->
+      <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -501,17 +546,24 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="bd" Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="10" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="11" Margin="-1"/>
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="10" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

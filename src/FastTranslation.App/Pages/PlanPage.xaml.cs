@@ -75,15 +75,33 @@ public partial class PlanPage : UserControl
         }
     }
 
+    /// <summary>读取中的占位：两条计量都写同一个词，进度条清零等真值。</summary>
+    private void ShowReading()
+    {
+        MonthlyText.Text = "读取中…";
+        MonthlyLeftText.Text = string.Empty;
+        MonthlyBar.Value = 0;
+        DailyText.Text = "读取中…";
+        DailyLeftText.Text = string.Empty;
+        DailyBar.Value = 0;
+    }
+
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
 
     private async Task LoadUsageAsync()
     {
         if (_account.Session is null) return;
         UsageError.Visibility = Visibility.Collapsed;
+        // v69：拿到结果前先写清楚「在读取」。原来这里什么都不写，卡片里只剩两条
+        // 空进度条，看起来像坏了而不是在等网络。
+        ShowReading();
         var result = await _account.ReadUsageAsync(CancellationToken.None);
         if (!result.Succeeded)
         {
+            MonthlyText.Text = "读取失败";
+            MonthlyLeftText.Text = string.Empty;
+            DailyText.Text = string.Empty;
+            DailyLeftText.Text = string.Empty;
             UsageError.Text = result.Error!.Display;
             UsageError.Visibility = Visibility.Visible;
             return;
