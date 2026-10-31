@@ -9,6 +9,14 @@
     "SigningKey": "__BASE64_32_BYTES__",
     "AdminToken": "__LONG_RANDOM_ADMIN_TOKEN__",
     "RequireEmailVerification": false,
+    "Smtp": {
+      "Host": "__SMTP_HOST__",
+      "Port": 587,
+      "UseStartTls": true,
+      "User": "__SMTP_USER__",
+      "Password": "__SMTP_PASSWORD__",
+      "From": "__SMTP_FROM__"
+    },
     "Gateway": {
       "Enabled": true,
       "ApiKey": "__DASHSCOPE_API_KEY__",

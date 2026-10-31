@@ -31,9 +31,9 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `FastTranslation-1.2.2-Setup.exe` 双击安装。安装向导里可以改安装位置，默认装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限；装过 1.0.x MSI 版的不必先卸载，安装程序会自动清掉旧版本。
+从 [Releases](../../releases) 下载 `FastTranslation-1.3.7-Setup.exe` 双击安装。安装向导里可以改安装位置，默认装到当前用户目录（`%LOCALAPPDATA%\Programs\FastTranslation`），不需要管理员权限；装过 1.0.x MSI 版的不必先卸载，安装程序会自动清掉旧版本。
 
-喜欢绿色版就下 `FastTranslation-1.2.2-portable.zip`，解压即用。便携版没有安装目录，因此不会自动安装更新，只会提示去下载页取新版。
+喜欢绿色版就下 `FastTranslation-1.3.7-portable.zip`，解压即用。便携版没有安装目录，因此不会自动安装更新，只会提示去下载页取新版。
 
 > **当前构建未签名。** Windows SmartScreen 会拦一次，点「更多信息」→「仍要运行」。安装包请只从本仓库 Releases 获取。
 
@@ -96,17 +96,20 @@ src/
   FastTranslation.Providers.QwenMt/  千问翻译 HTTP 客户端
   FastTranslation.App/               WPF 外壳：主窗口、设置、首次引导、App 启动
 tests/
-  FastTranslation.Core.Tests/              24 个测试
-  FastTranslation.Platform.Windows.Tests/  48 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
-  FastTranslation.Providers.QwenMt.Tests/   6 个测试（本地假 HTTP 服务）
+  FastTranslation.Core.Tests/              218 个测试
+  FastTranslation.Platform.Windows.Tests/  97 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
+  FastTranslation.Providers.QwenMt.Tests/  94 个测试（本地假 HTTP 服务）
+  FastTranslation.Server.Tests/            193 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
 tools/
   qa/        截图、内存浸泡、安装校验、E2E 联调等 PowerShell 脚本
   Probe*/    启动耗时与内存探针（历史决策依据）
 docs/
   PLAN.md              技术决策 D1–D9 与实测数据
-  IMPL.md              迭代史 v1–v29，每个版本解决了什么
+  IMPL.md              迭代史 v1–v70，每个版本解决了什么
   superpowers/specs/   设计规格
 ```
+
+全部 602 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
 
 架构上有一条硬约束：**Core 不引用 Win32 也不引用 WPF**，所有平台能力走 `Interfaces.cs` 里的接口，因此 Core 的测试可以在任何机器上跑。
 

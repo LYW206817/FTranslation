@@ -3,12 +3,16 @@
 - 版本:2026-10-25(基于 M0 实测修订;原始蓝图见 `superpowers/plans/2026-10-23-fast-translation-v1.md`,以其为底本,M0 结论覆盖冲突项)
 - M0 结论:**PASS_WITH_SCOPE**(详见 `tools/Probe/RESULTS.md`)
 - 状态基线:产品代码 0 行;本文档是唯一执行依据;实施日志见 `IMPL.md`
-- 2026-10-26 更新:用户明确要求启用 git(基线提交 `a10fd00`),原「不自行 git」红线作废;T15 的安装器实际用 WiX v4 MSI(非 Inno Setup)
+- 2026-10-26 更新:用户明确要求启用 git(基线提交 `a10fd00`),原「不自行 git」红线作废;安装器历史记录——T15 当时用 WiX v4 MSI,**v30 起已改为 Inno Setup**(见 `installer/FastTranslation.iss`;`installer/Product.wxs` 与 `files.wxs` 是遗留死文件,别再照着改)
 - 2026-10-26 补充:§1 的「跟随系统深浅色」按**启动时定调色板**实现(`ThemePalette.Resolve` 读 `AppsUseLightTheme`),不做运行时热切换——设置页标注「下次启动生效」。理由是运行时切换需要把全部 `StaticResource` 改 `DynamicResource` 并重建窗口,换来的只是省一次重启;若后续确实需要热切换,应作为独立一轮连同 UI 回归一起做
 
 ## 1. 产品定义(不变)
 
 Windows 划词翻译,单进程,空载 ≤50MB 私有工作集,BYO Qwen-MT Key 直连,拖选/双击/三击+全局热键,no-activate 浮窗,可写控件替换写回(v1.0:替换+复制;插入暂缓)。中文 UI,跟随系统深浅色。单次 ≤5,000 字符,不分段不流式。
+
+> 「不分段不流式」是 v1.0 划词翻译的约束。语音与文档翻译两项新功能的越界已在
+> `superpowers/specs/2026-10-31-语音与文档翻译-方案评估.md` §2.6 逐条论证(字符上限仍遵守;
+> 分段只发生在客户端本地,网关依旧一次一请求;流式只用于音频上行与识别中间态)。
 
 ## 2. M0 实测覆盖的设计决策(与蓝图的差异)
 
