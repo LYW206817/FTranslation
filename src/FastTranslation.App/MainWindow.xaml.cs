@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private SettingsPage? _settingsPage;
     private ReviewPage? _reviewPage;
     private DocumentPage? _documentPage;
+    private SpeechPage? _speechPage;
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
@@ -152,6 +153,7 @@ public partial class MainWindow : Window
         MainPageId.Sentence => Notes(NoteKind.Sentence),
         MainPageId.Review => Review(),
         MainPageId.Document => Document(),
+        MainPageId.Speech => Speech(),
         MainPageId.Account => Account(),
         MainPageId.Plan => Plan(),
         MainPageId.Settings => Settings(),
@@ -194,6 +196,13 @@ public partial class MainWindow : Window
         if (_documentPage is not null) return _documentPage;
         _documentPage = new DocumentPage(_documents, _account, _settings, _settingsService);
         return _documentPage;
+    }
+
+    private SpeechPage Speech()
+    {
+        if (_speechPage is not null) return _speechPage;
+        _speechPage = new SpeechPage(_settings, _settingsService);
+        return _speechPage;
     }
 
     // v72: 文档作业的三个回调从 App 一路转到这里，再由页面落到控件上。转一层是为了让

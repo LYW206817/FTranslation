@@ -4,6 +4,11 @@ using System.Threading;
 using System.Windows;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
+using System.Runtime.InteropServices;
+using System.Windows.Threading;
+using FastTranslation.Core.Audio;
+using FastTranslation.Core.Speech;
+using FastTranslation.App.Speech;
 using FastTranslation.Core.Account;
 using FastTranslation.Core.Documents;
 using FastTranslation.Core.Notes;
@@ -24,6 +29,13 @@ public partial class App : Application, IResultPresenter
     private TrayIconService? _tray;
     private HotkeyService? _hotkey;
     private HotkeyService? _imageHotkey;
+    private HotkeyService? _speechHotkey;
+    private SpeechTranslationCoordinator? _speechCoordinator;
+    private GatewaySpeechTransport? _speechTransport;
+    private SpeechTranscriptService? _speechSubtitles;
+    private WasapiLoopbackCapture? _speechCapture;
+    private AudioResampler? _speechResampler;
+    private SpeechWindow? _speechWindow;
     private WindowsSelectionCapture? _capture;
     private SelectionCoordinator? _coordinator;
     private SelectionToolbar? _toolbar;
@@ -250,6 +262,7 @@ public partial class App : Application, IResultPresenter
             // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
             () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
+        _tray.SpeechRequested += RunSpeechTranslation;
 
         // 第二个热键服务：HotkeyService 每个实例有自己的 message-only 窗口，
         // 取词热键(Register/重注册)完全不受影响。
@@ -259,6 +272,14 @@ public partial class App : Application, IResultPresenter
         if (!_imageHotkey.Register(_settings.ImageHotkey))
         {
             _tray.ShowBalloon("Fast Translation", $"截图翻译热键 {_settings.ImageHotkey} 被占用,请到设置里换一个");
+        }
+
+        // 第三个热键实例：HotkeyService 每个实例自建 message-only 窗口，(hwnd,id) 互不冲突
+        _speechHotkey = new HotkeyService();
+        _speechHotkey.Pressed += RunSpeechTranslation;
+        if (!_speechHotkey.Register(_settings.SpeechHotkey))
+        {
+            _tray.ShowBalloon("Fast Translation", $"语音翻译热键 {_settings.SpeechHotkey} 被占用,请到设置里换一个");
         }
 
         _mainWindow = new MainWindow(
@@ -666,6 +687,44 @@ public partial class App : Application, IResultPresenter
                     { Failed = failed });
                 }
                 catch (Exception ex) { Trace($"uitest document: {ex}"); }
+            };
+            uiTimer.Start();
+              }
+        else if (uitest is "speech" or "speech-window" or "speech-window-failed")
+        {
+            // FT_UITEST=speech* -> 语音页与字幕浮窗的对比形态。不采集、不联网、不烧额度：
+            // 浮窗直接喂演示行，failed 形态只换头部状态。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    if (uitest == "speech")
+                    {
+                        ShowPage(MainPageId.Speech);
+                        return;
+                    }
+
+                    _speechWindow ??= new SpeechWindow();
+                    _speechWindow.Closed += (_, _) => { };
+                    _speechWindow.BeginSession();
+                    if (uitest == "speech-window-failed")
+                    {
+                        _speechWindow.EndSession("无法连接语音服务,请稍后再试");
+                        return;
+                    }
+                    var show = _settings.SpeechShowSource;
+                    var max = _settings.SpeechMaxSentences;
+                    _speechWindow.ShowLine(new SpeechTranscriptLine(1, "And that brings us to the quarterly numbers.",
+                        "这就把我们带到了本季度的数字。", true, DateTimeOffset.Now), show, max);
+                    _speechWindow.ShowLine(new SpeechTranscriptLine(2, "Revenue is up twelve percent year over year.",
+                        "营收同比增长了百分之十二。", true, DateTimeOffset.Now), show, max);
+                    _speechWindow.ShowLine(new SpeechTranscriptLine(3, "We're seeing strong demand in the enterprise segment.",
+                        "企业级市场的需求非常强劲。", false, DateTimeOffset.Now), show, max);
+                    _speechWindow.SetUsage(840);
+                }
+                catch (Exception ex) { Trace($"uitest speech: {ex}"); }
             };
             uiTimer.Start();
         }
@@ -1308,6 +1367,128 @@ public partial class App : Application, IResultPresenter
         // ApplyUpdate 成功就已经退出了应用；这之后不会再执行
     }
 
+    // ----- 语音翻译（Task 19）：组装采集→重采样→协调器→浮窗 -----
+
+    private void RunSpeechTranslation()
+    {
+        if (_speechCoordinator is not null)
+        {
+            // 已在会话中：把浮窗带到前台，再点一次就靠浮窗上的「结束」收尾
+            ShowSpeechWindow();
+            return;
+        }
+        if (_account is not { IsSignedIn: true })
+        {
+            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            return;
+        }
+        _speechWindow ??= new SpeechWindow();
+        _speechWindow.StopRequested += OnSpeechStopRequested;
+        _speechWindow.ClearRequested += () => { };
+        _speechWindow.Closed += (_, _) => { _speechWindow = null; };
+        _speechWindow.BeginSession();
+        _ = StartSpeechSessionAsync();
+    }
+
+    private async Task StartSpeechSessionAsync()
+    {
+        var account = _account!;
+        // 传输与字幕服务的生命周期都挂在会话上，EndSpeechSession 统一释放
+        var transport = new GatewaySpeechTransport(
+            async () => account is { IsSignedIn: true } a
+                ? await a.GetAccessTokenAsync(CancellationToken.None).ConfigureAwait(false)
+                : null,
+            new Uri(GatewayBaseUrl()),
+            account.DeviceFingerprint);
+        var options = new SpeechSessionOptions(
+            SourceRate: 16000,
+            TargetLanguage: _settings.SpeechTargetLanguage,
+            MaxSentences: _settings.SpeechMaxSentences);
+        var subtitles = new SpeechTranscriptService(
+            TranslateSpeechBatchAsync,
+            options);
+        var coordinator = new SpeechTranslationCoordinator(transport, subtitles);
+        _speechTransport = transport;
+        _speechSubtitles = subtitles;
+        _speechCoordinator = coordinator;
+        coordinator.TranscriptUpdated += line => Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            () => _speechWindow?.ShowLine(line, _settings.SpeechShowSource, _settings.SpeechMaxSentences));
+        coordinator.Failed += message => Dispatcher.BeginInvoke(() => EndSpeechSession(message));
+        coordinator.UsageObserved += _ => { };  // 用量展示接 Task 20 的额度预检一起做
+
+        // 回环采集：设备给的是混音格式（典型 48k×2ch float32），重采样成 16k mono PCM16 喂给协调器
+        var capture = new WasapiLoopbackCapture();
+        _speechCapture = capture;
+        capture.Started += format =>
+        {
+            _speechResampler = new AudioResampler(format.SampleRate, format.Channels);
+        };
+        capture.DataAvailable += block => PumpSpeechAudio(block);
+        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(() =>
+            EndSpeechSession("音频设备已切换,本轮语音翻译结束"));
+        capture.Failed += ex => Dispatcher.BeginInvoke(() =>
+            EndSpeechSession("无法采集系统声音: " + ex.Message));
+        capture.Start();
+
+        await coordinator.StartAsync(options).ConfigureAwait(false);
+        if (coordinator.State == SpeechCoordinatorState.Failed)
+        {
+            EndSpeechSession("无法连接语音服务,请稍后再试");
+        }
+    }
+
+    // 采集线程回调：float32 混音块 → 下混+线性插值+PCM16 → 推给协调器环形缓冲
+    private void PumpSpeechAudio(byte[] block)
+    {
+        var resampler = _speechResampler;
+        var coordinator = _speechCoordinator;
+        if (resampler is null || coordinator is null) return;
+        var floats = MemoryMarshal.Cast<byte, float>(block);
+        var output = new byte[floats.Length / 2 * 6 + 64];
+        var written = resampler.Process(floats, output);
+        if (written > 0) coordinator.PushAudio(output[..written]);
+    }
+
+    // 字幕服务的翻译回调：走文档链路同一个组合 provider（网关优先、失败回落自带 Key），
+    // 不能用 _translation——它「新请求取消上一在途」的语义会把并发的字幕批互相打断。
+    private async Task<string> TranslateSpeechBatchAsync(string text, CancellationToken cancellationToken)
+    {
+        var request = new TranslationRequest(
+            text,
+            "auto",
+            LanguageCatalog.ToApiName(_settings.SpeechTargetLanguage),
+            _settings.Model);
+        var result = await _documentProvider!.TranslateAsync(request, cancellationToken).ConfigureAwait(false);
+        if (result.Succeeded) return result.TranslatedText;
+        throw new InvalidOperationException(result.Error?.Message ?? "翻译失败");
+    }
+
+    private void OnSpeechStopRequested() => EndSpeechSession(null);
+
+    private void EndSpeechSession(string? error)
+    {
+        var coordinator = _speechCoordinator;
+        _speechCoordinator = null;
+        _speechResampler = null;
+        _speechCapture?.Stop();
+        _speechCapture?.Dispose();
+        _speechCapture = null;
+        coordinator?.StopAsync();
+        // 不等 DisposeAsync：协调器内部对停传已有 2s 超时；这里是 UI 线程，同步等待会死锁
+        _ = coordinator?.DisposeAsync().AsTask();
+        _speechTransport = null;
+        _speechSubtitles = null;
+        _speechWindow?.EndSession(error);
+    }
+
+    private void ShowSpeechWindow()
+    {
+        if (_speechWindow is null) return;
+        _speechWindow.Show();
+        _speechWindow.Activate();
+    }
+
     private void ExitApp()
     {
         _reallyExiting = true;
@@ -1318,6 +1499,8 @@ public partial class App : Application, IResultPresenter
         _imageProvider?.Dispose();
         _imageWindow?.Dispose();
         _imageHotkey?.Dispose();
+        _speechHotkey?.Dispose();
+        EndSpeechSession(null);
         _coordinator?.Dispose();
         _capture?.Dispose();
         _hotkey?.Dispose();

@@ -29,6 +29,12 @@ public sealed class AppSettings
     // 每次重选语言和目录是纯粹的重复劳动。缺字段时 JSON 反序列化直接用默认值，无需迁移。
     public string DocumentTargetLanguage { get; set; } = "en";
     public string DocumentLastFolder { get; set; } = "";
+    // 语音翻译(Task 19):热键独立于取词/截图;目标语言用 auto 时源文是什么就译成什么,
+    // 与取词翻译的 TargetLanguage 分开记,避免划词习惯被语音场景改掉。
+    public string SpeechHotkey { get; set; } = "Ctrl+Alt+V";
+    public string SpeechTargetLanguage { get; set; } = "auto";
+    public bool SpeechShowSource { get; set; } = true;
+    public int SpeechMaxSentences { get; set; } = 200;
 
     public static AppSettings Default() => new();
 }

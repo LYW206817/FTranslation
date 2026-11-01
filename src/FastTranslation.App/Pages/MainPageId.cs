@@ -12,6 +12,7 @@ public enum MainPageId
     Sentence,
     Review,
     Document,
+    Speech,
     Account,
     Plan,
     Settings,

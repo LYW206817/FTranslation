@@ -85,6 +85,9 @@
           <Button x:Name="DocumentButton" Style="{StaticResource SidebarItem}" Tag="Document" Click="Nav_Click" Margin="0,2,0,0">
             <TextBlock Text="文档"/>
           </Button>
+          <Button x:Name="SpeechButton" Style="{StaticResource SidebarItem}" Tag="Speech" Click="Nav_Click" Margin="0,2,0,0">
+            <TextBlock Text="语音"/>
+          </Button>
 
           <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,8"/>
 
