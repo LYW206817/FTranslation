@@ -2087,3 +2087,35 @@ _documents = new DocumentTranslationCoordinator(
 
 - 站点上的两张文档页截图是**开发机浅/深两种主题**的实拍，不含任何真实用户文件（演示数据是「季度报告.docx · 120 段 · 8,432 字符」），但用户若放大细看仍能看到窗口里的测试账号邮箱一角；截图已按 980 宽缩放，字号下细节不可读。
 - 官网尚未提到语音翻译（下一版 1.5.0 才做），`#how` 一节仍然是「一颗工具条，三个动作」，届时需要一并改。
+
+## v76 前置小节：Phase P0 语音 POC 结论（2026-11-01，不随 1.4.0 发版）
+
+**为什么有这一节**：1.4.0 交付后用户说「继续」，按实现计划进入 Phase P0——三个探针（WASAPI 采集 / DashScope 实时 ASR / Caddy wss 透传），产出是结论不是代码。三个探针都在 `publish/`（已 gitignore），结论如下；三条全通，**Phase V（1.5.0）可以开工**。
+
+### 探针一：WASAPI loopback 采集（publish/probe-wasapi）
+
+- `src/FastTranslation.Platform.Windows/WasapiLoopbackCapture.cs`（310 行，进仓库）+ 控制台探针。实测：**默认渲染设备混音格式 48000 Hz × 2ch × 32bit float（blockAlign=8）**，事件驱动每秒约 60 次回调（10ms 包）。
+- 采 5 秒（其中 2 秒 440Hz 正弦）：byte-count 比 1.002、有声窗 RMS 0.2486 对静音窗 0.00007（6800 倍）、事件回调 308 次。**loopback 在端点空闲时不出包**——字节数只按有声时长计，这是特性不是 bug（真实产品恒有静音段，计数要按 wall 时钟）。
+- 16k 单声道 WAV 由 python wave 复核：3.08s/16000Hz/RMS 0.2445/过零率 856/s（440Hz 理论 880/s）——重采样频谱正确。
+- 踩坑三条，全部已修并写进代码注释：**① IMMDevice 的 IID 写成了 IMMDeviceCollection 的 `0BD7A1BE…`（真值 `D666063F-1587-4E43-81F1-B948E807363F`，SDK 头文件机验）**——所有 GUID 校验必须机器字符串比对，肉眼读十六进制不可靠；**② ComImport coclass 壳类不能 sealed**（C# 显式引用转换禁止 sealed 类→接口，QI 转换要求非 sealed，CS0030）；③ WAVEFORMATEXTENSIBLE 在 C 里 4 字节对齐要垫 2 字节（SubFormat 落偏移 24），.NET 结构体复现不出嵌套对齐，按字节偏移读是唯一不踩坑的读法。
+
+### 探针二：DashScope 实时 ASR 直连（publish/probe-asr）
+
+- ClientWebSocket 连 **`wss://dashscope.aliyuncs.com/api-ws/v1/inference`**（普通域即可，无需 workspace 前缀域），模型 **`qwen-audio-3.1-asr-flash-streaming`**，run-task 协议六步全部走通；Key 用 DPAPI 从本机 `qwenmt-api-key.bin` 解出，熵 `ft-qwenmt-api-key`（与 DpapiSecretStore.cs 同构）。
+- 7.66 秒中文测试音频（PowerShell SAPI 合成后转 16k）实测：**语音开始后 ~0.5s 出首个非空部分结果，部分结果节拍 0.5–1.0s；finish-task 后 ~0.30s 出终稿**（带标点、end_time=7040）。部分结果与终稿同 sentence_id、文本漂移会被改写——**部分结果绝不送 MT** 这条设计铁律被机证。
+- **usage 在终稿 result-generated 帧上**（payload.usage，会话累计）：`duration=7`（7.66s 音频向下取整）、input_tokens=96、output_tokens=17；**task-finished 帧无 usage** → 服务端中继要跟踪会话内最后一个 usage 在 finally 里记账。1 秒全零静音也出空终稿但无 usage（纯静音不计费）。
+- **不发 finish-task 的后果（决定性实验）**：服务端不发终稿、不关流，23 秒后 `task-failed code=CLIENT_ERROR message=request timeout after 23 seconds.`——finish-task 必发；同时得到无音频空闲超时 ≈23s（真实产品 loopback 恒有 100ms 块，不会触发；服务端中继需把该错误映射为可恢复）。
+- task-failed 形状：`header.error_code`（ModelNotFound / CLIENT_ERROR）+ `header.error_message`。
+
+### 探针三：Caddy wss 透传（publish/probe-wss，本机等价验证）
+
+- 生产腿被基础设施挡住：ECS 22 端口对开发机不通（BatchMode 超时；ping 19ms 通），`ftranslation.cn` 尚无 A 记录——与 deploy/Caddyfile 注释一致，**ICP 备案下来前域名不生效**。生产域验证属部署阶段事项，等备案后重跑同一探针即可。
+- 本机等价床：Caddy v2.10.2（`publish/caddy/ext/`）+ python stdlib RFC6455 echo + C# 探针。结果：**明文 ws 与 TLS internal 的 wss 各 50×1KB 二进制帧逐位一致、10 秒心跳全通；连接存活中执行 `caddy reload`，10 个心跳全部无恙（state=Open）**——Caddy 优雅 reload 不掐活 WS，客户端重连逻辑只需处理真实网络断。
+- 探针自身教训两条：`buf.AsSpan(1).SequenceEqual(payload.AsSpan(1))` 在 buf 是 64KB 收包缓冲时**长度不等恒 false**（要按 `AsSpan(1, n-1)` 截窗）；C# 插值字符串里嵌三元 `?:` 会 CS8361（`:` 被当格式分隔符，要加括号）。
+
+### 对 Phase V 设计的修订
+
+1. 服务端中继记账：以「最后一个 result-generated 的 payload.usage」为准（duration 秒），finally 落账；task-finished 无 usage。
+2. 语音会话空闲超时按上游 23s 设计（客户端恒流 100ms 静音块不会触发；中继把 CLIENT_ERROR 映射为可恢复错误）。
+3. 客户端字幕状态机确认「部分结果只更新行不投翻译队列、终稿替换」。
+4. 生产 wss 验证（探针三同款）列入 1.5.0 发布前置检查单，与 ICP 备案同步。
