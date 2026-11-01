@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fast Translation — 划词即译的 Windows 桌面工具</title>
-<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口。还能把整份 docx / txt / md 译成另一种语言,版式不动。Windows 10/11,免安装运行时。">
+<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口。还能把整份 docx / txt / md 译成另一种语言,版式不动;电脑里正在播的声音,可以实时出双语字幕。Windows 10/11,免安装运行时。">
 <link rel="icon" href="assets/img/icon.png">
 <link rel="canonical" href="https://ftranslation.cn/">
 <meta property="og:type" content="website">
@@ -21,12 +21,13 @@
     <div class="brand">
       <img src="assets/img/icon.png" alt="">
       <span>Fast Translation</span>
-      <span class="mark">v1.4.0</span>
+      <span class="mark">v1.5.0</span>
     </div>
     <nav>
       <a href="#how">怎么用</a>
       <a href="#look">界面</a>
       <a href="#doc">文档</a>
+      <a href="#speech">语音</a>
       <a href="#numbers">实测</a>
       <a href="#plans">套餐</a>
       <a href="#download">下载</a>
@@ -47,7 +48,7 @@
       <a class="btn btn-primary" href="#download">下载安装 <span aria-hidden="true">→</span></a>
       <a class="btn btn-ghost" href="#how">先看它怎么工作</a>
     </div>
-    <p class="hero-meta">1.4.0 · 约 45 MB · 运行时已内置 · 免管理员安装</p>
+    <p class="hero-meta">1.5.0 · 约 45 MB · 运行时已内置 · 免管理员安装</p>
   </div>
 
   <aside class="note">
@@ -186,11 +187,43 @@
   </div>
 </section>
 
+<section id="speech">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">04 / 语音</span>电脑里在播什么,字幕就翻什么</h2>
+        <p class="sub">会议、网课、视频,按 <span class="mono">Ctrl+Alt+V</span> 开一场语音翻译:屏幕底部升起一块字幕条,原声说完一秒左右,中文原文和译文一起滚出来。</p>
+      </div>
+      <p class="aside-note">采集的是系统回环声音,不上传音频;出网的只有识别出的文字。按秒计费,每秒 20 字符,开始前就能看到还能讲多久。</p>
+    </div>
+
+    <div class="plates">
+      <figure class="plate">
+        <img src="assets/img/speech-page.png" alt="语音翻译页浅色主题:开始卡、目标语言、显示原文与字幕条数设置">
+        <figcaption><span>语音 / 浅色</span><span>四项设置,即时生效</span></figcaption>
+      </figure>
+      <figure class="plate">
+        <img src="assets/img/speech-window.png" alt="字幕浮窗:原文灰色小字在上,译文大字在下,头部显示状态与已用字符">
+        <figcaption><span>字幕浮窗</span><span>非终稿半透明,终稿落定</span></figcaption>
+      </figure>
+    </div>
+
+    <ul class="plain doc-points">
+      <li>回环采声:耳机里听什么就翻什么,不占麦克风,不用选窗口</li>
+      <li>说约一秒出字幕:原文与译文成对滚动,终稿前先出灰色草稿</li>
+      <li>部分结果不送翻译,终稿才计费;字幕条数有上限,只影响显示不影响翻译</li>
+      <li>按秒计费每秒 20 字符,开始前显示「本月剩余可讲约 N 分钟」,不够 1 分钟直接拦下</li>
+      <li>额度用完、服务未开、请求太频都有明确文案,不会拿「连接失败」糊弄</li>
+      <li>切换播放设备自动重接采集,字幕停顿一秒,会话不中断</li>
+    </ul>
+  </div>
+</section>
+
 <section id="numbers">
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">04 / 实测</span>数字来自真实请求</h2>
+        <h2><span class="num">05 / 实测</span>数字来自真实请求</h2>
         <p class="sub">下面这些不是宣传口径,是开发机上跑真实翻译接口记录下来的值。</p>
       </div>
       <p class="aside-note">测量方式:客户端记录 Environment.TickCount64 差值;token 与环境来自服务端记账表 usage_events。</p>
@@ -217,7 +250,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">05 / 取舍</span>能做与不做</h2>
+        <h2><span class="num">06 / 取舍</span>能做与不做</h2>
         <p class="sub">写在这里的边界都是实测出来的,不是没做完。</p>
       </div>
       <p class="aside-note">划词取词顺序:先 UIA 读当前选区,读不到再退回模拟 Ctrl+C 抓剪贴板。两条路径都在你的机器上完成。</p>
@@ -253,7 +286,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">06 / 套餐</span>按字符算,不按时间算</h2>
+        <h2><span class="num">07 / 套餐</span>按字符算,不按时间算</h2>
         <p class="sub">额度用字符衡量:一个汉字、一个字母都算一个字符。额度用完不会断你,会自动切到你自己填的 API Key 继续翻。</p>
       </div>
       <p class="aside-note">付费额度由开发者账号统一出,你不用自己去阿里云开 Key。也可以一直用自己的 Key,免费版即可。</p>
@@ -303,7 +336,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">07 / 下载</span>装完就能用</h2>
+        <h2><span class="num">08 / 下载</span>装完就能用</h2>
         <p class="sub">安装版支持自动更新;便携版解压即用,不写注册表,但升级要手动换包。</p>
       </div>
       <p class="aside-note">系统要求 Windows 10 1903+ / Windows 11,64 位。.NET 运行时已内置,不需要另装。装在用户目录,不需要管理员权限。</p>
@@ -312,13 +345,13 @@
     <div class="dl">
       <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
         <p class="k">安装版 · 推荐</p>
-        <p class="t">FastTranslation-1.4.0-Setup.exe</p>
+        <p class="t">FastTranslation-1.5.0-Setup.exe</p>
         <p class="d">约 45 MB。之后自动检查更新,点一下就能升级,不用再找安装包。</p>
         <span class="dl-btn pri">下载安装包</span>
       </a>
       <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
         <p class="k">便携版</p>
-        <p class="t">FastTranslation-1.4.0-portable.zip</p>
+        <p class="t">FastTranslation-1.5.0-portable.zip</p>
         <p class="d">约 60 MB。解压到任意目录直接运行,不写注册表。适合放 U 盘或不想装东西的机器。</p>
         <span class="dl-btn">下载便携包</span>
       </a>
@@ -336,7 +369,7 @@
         <img src="assets/img/icon.png" alt="">
         <span>Fast Translation</span>
       </div>
-      <div class="mono">划词翻译 · 截图翻译 · 文档翻译 · 单词本</div>
+      <div class="mono">划词翻译 · 截图翻译 · 文档翻译 · 语音翻译 · 单词本</div>
     </div>
     <div class="mono">
       <div>翻译由阿里云百炼 qwen-mt 提供</div>
