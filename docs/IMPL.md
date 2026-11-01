@@ -2119,3 +2119,93 @@ _documents = new DocumentTranslationCoordinator(
 2. 语音会话空闲超时按上游 23s 设计（客户端恒流 100ms 静音块不会触发；中继把 CLIENT_ERROR 映射为可恢复错误）。
 3. 客户端字幕状态机确认「部分结果只更新行不投翻译队列、终稿替换」。
 4. 生产 wss 验证（探针三同款）列入 1.5.0 发布前置检查单，与 ICP 备案同步。
+## v76 语音 POC 结论与 WASAPI 回环采集（Phase P0，1.5.0）
+
+日期：2026-11-01～11-02 · 目标：回答方案评估的三问，把「能不能做」变成「怎么做、多快、贵多少」。POC 不进版本，结论进仓库。
+
+### P0 三问的实测答案
+
+1. **设备级回环能否稳定出 16k PCM——能。** `WasapiLoopbackCapture` 在本机（Realtek + Nahimic）拿到混音格式 48kHz×2ch float32（blockAlign=8），事件驱动健康度 ~60 回调/秒（100ms 包节奏），5 秒采集 1167360 字节 ≈ 有声时长×384000B/s——**回环在端点空闲时不出包**（这一点决定了服务端 usage 与客户端字节统计都不能按墙钟算）。探针全 PASS（byte-count 1.002/tone-span/tone-energy/event-driven），16k 下混重采样经 python wave 验证时长 3.08s、RMS 0.2445、过零率 856/s（440Hz 理论 880/s）。
+2. **DashScope ASR 直连语义——全部机证。** 模型 `qwen-audio-3.1-asr-flash-streaming`，`wss://dashscope.aliyuncs.com/api-ws/v1/inference`（普通域即可，不需要 workspace 前缀域）。run-task→task-started 0.40s；首句终稿延迟 = 语音发完（finish-task）后 **0.30s**；部分结果同 sentence_id、end=-1、文本会被改写，终稿整体替换——**部分结果绝不送翻译**由实测证实。1s 纯静音也出 final（空 text）+ task-finished，**无 usage**（纯静音不计费）。usage 只在终稿 result-generated 帧上（`payload.usage`，会话累计：`{"duration":7,"input_tokens":96,"output_tokens":17}`，音频秒向下取整）。**不发 finish-task 则服务端 23s 后 task-failed(CLIENT_ERROR,request timeout)**——finish-task 必发。task-failed 形状 = `header.error_code` + `header.error_message`，坏模型名 0.05s 内回包。
+3. **Caddy wss 中继——本机等价全绿。** Caddy v2.10.2 反代：WS 升级透传、50×1KB 二进制逐位无损、TLS(tls internal) 终止、**优雅 reload 不掐活连接**（10 个心跳跨越 reload 全部无恙）。生产腿（ftranslation.cn）当前无 DNS 解析、22 端口超时——ICP 备案前域名不生效，Caddyfile 的 `/v1/*` 反代与 ACME 都动不了，留待备案后用同一探针重跑。
+
+### 代码
+
+- `src/FastTranslation.Platform.Windows/WasapiLoopbackCapture.cs`（约 300 行，零依赖）：共享模式 + LOOPBACK|EVENTCALLBACK 双 0 初始化、混音格式按**字节偏移**读（WAVEFORMATEXTENSIBLE 的 SubFormat 落偏移 24，.NET 结构体 Pack 复现不出嵌套对齐）、后台线程 WaitAny(200ms) 超时兜底（个别驱动静音期不发事件）、`Failed` 走事件不跨线程抛、`DeviceInvalidated` 事件交调用方重建。
+- 探针 `publish/probe-wasapi/`、`publish/probe-asr/`、`publish/probe-wss/`（publish/ 不进仓库）：录 5 秒、直连 ASR、穿 Caddy。16k 重采样 WAV 经 python wave 人工复核。
+
+### 踩坑
+
+- `v76: COM QI 恒 E_NOINTERFACE——IMMDevice 的 IID 被我写成 IMMDeviceCollection 的（0BD7A1BE…）；真值 D666063F-1587-4E43-81F1-B948E807363F。教训：十六进制肉眼比对不可靠，一切 GUID 以 SDK 头文件（MIDL_INTERFACE）机验为准。`
+- `v76: CS0030——COM coclass 壳类必须非 sealed，C# 的显式引用转换规则禁止 sealed 类转接口，封送层的 QI 转换依赖它。`
+- `v76: CS9191——Marshal.QueryInterface 第二参签名是 in Guid，传 ref 在 TreatWarningsAsErrors 下编译失败。`
+- 探针时序：`SoundPlayer.PlaySync` 启动延迟 ~0.9s，断言窗必须由实测首末块夹逼，不能按名义时轴切窗；回环空闲不出包 ⇒ 字节数下限按有声时长算。
+## v77 Core 语音三件：重采样、字幕服务、传输协调器（1.5.0）
+
+### AudioResampler（`src/FastTranslation.Core/Audio/AudioResampler.cs`）
+
+定点相位重采样：相位累加器以 1/16000 输入帧为单位、每产一个输出 `+= sourceRate`，44.1k→16k 这类非整倍率长会话零漂移；线性插值 + 多声道均值下混 + `*32767` 截断写小端 PCM16。`Flush` 尾帧按最后一帧保持。5 测试：48k stereo→16k mono、分块与整段逐字节一致（余数跨 Process 保留）、44.1k、下混、Flush。
+
+- `v77: 缓冲消费指针被按「下一个输出位置」推进，而插值只读过 frame/frame+1——48k 下每个输出多消费 1 个采样，长流式累积成 head>tail（Array.Copy length=-1）。修复：相位位置与消费指针分开记账，发射后 `_acc += _srcRate; _acc -= 16000*(frame+1); _head += (int)(frame+1)*_ch;`——frame+2 才是下一个输出的插值下界，不能丢。`
+- `v77: 测试助手输出缓冲 4096B < 整段一次 Process 的 16000B 产出——整段被截断后与分块结果比对必然失败。缓冲按最坏产出分配。`
+
+### SpeechTranscriptService（`src/FastTranslation.Core/Speech/SpeechTranscriptService.cs`）
+
+终稿驱动：非终稿只更新行不进翻译；终稿进 500ms 防抖窗，到期把窗口内多句终稿按 `\n` 合并成**一次** MT 请求（qwen-mt 的固定 45 token 开销按批摊）；回填按 §5.2——句数对齐逐句回填、不齐整段回填第一句（不赌对齐）。有界队列容量 8 满则丢最旧批并计数；并发 SemaphoreSlim ≤2；**不复用 TranslationService**（它「新请求取消上一在途」的语义会打断并发批）。6 测试：部分结果从不进翻译、终稿不取消前句、并发上限、丢最旧、按行回填、句数不齐整段回填。
+
+### ISpeechTransport + SpeechTranslationCoordinator（`src/FastTranslation.Core/Speech/`）
+
+传输抽象只暴露 4 事件（ready/sentence/usage/error），WS 类型不进 Core。协调器状态机 Idle→Connecting→Streaming→Finishing→Failed：100ms 泵推音频（环形缓冲 2s 容量）；断线**重连一次**并从环形缓冲重放未确认音频（重连前 `_sentenceIdOffset += _maxSentenceId`，字幕主键跨会话单调）；error→Failed；StopAsync 只在 Connecting/Streaming 有效，幂等；DisposeAsync 内置 2s 超时。测试钩子 `DrainAudioForTestAsync()`。
+
+- `v77: 定时器抖动——真 100ms 定时器与测试步骤竞争，注入 SilentTimeProvider（CreateTimer 返回空转 ITimer）后 8 连跑全绿。TimeProvider.CreateTimer 的签名机验自 ref 包源码，凭记忆写成泛型版两次 CS0115。`
+- `v77: fire-and-forget 任务的一切断言必须轮询（WaitUntilAsync），`await Task.Yield()` 一次不保证后台批已跑完；`dotnet test --no-build` 在改完测试源码后会跑旧二进制，出现「修了还挂」的假信号。`
+
+Core.Tests 301 例全绿。
+## v78 服务端 /v1/asr 语音中继与语音独立额度（1.5.0）
+
+### 形状
+
+- `Gateway/SpeechEndpoints.cs`：`Map("/v1/asr")`。**升级前跑全链闸门**：未配置→503 `speech_disabled`；限流→429；语音日预算→429 `budget_exhausted`；账号禁用→403；额度不足→429 + `X-FT-Quota-Reason`（故意 429，客户端静默切自有 Key）；全过后非 WS 请求→400（这个 400 同时是客户端升级前探测的「绿灯」）。
+- `Gateway/DashScopeSpeechGateway.cs`：双向泵。客户端首帧 start→`run-task`（`run_task_id` 全会话复用），二进制原样转发（服务端不解析音频），stop→`finish-task`；上游 task-started→`{"type":"ready"}`、result-generated→`{"type":"sentence",…}`（防御式解析：sentence_id/text 可空、sentence_end 判 final）、usage 帧透传、task-failed→`{"type":"error"}`。`Task.WhenAll` + `MaxSecondsPerSession=1800` 硬超时。
+- **记账在 finally**：usage 只出现在终稿帧，task-finished 帧没有；客户端半路断开也要照记——`RecordUsage(source: "speech")`，额度字符 = `max(秒,10)×20`，成本按 ASR 真实 token 计微元。
+
+### 配套改动
+
+- `GatewayOptions.cs` 增 `SpeechOptions` 8 键（配置路径必须写全 `Server:Gateway:Speech:*`，少一层会静默绑不上）：Enabled/WsUrl/WorkspaceId/Model/QuotaCharsPerSecond=20/MinSeconds=10/MaxSecondsPerSession=1800/`DailyBudgetMicros=2_000_000`。**语音独立预算桶**：全站 5 元桶只够 ~5.8h 语音且烧完连文本翻译一起 429；2 元 ≈ 2.3h/日。
+- `AccountStore.RecordUsage` 增 `source` 参数（替换 SQL 字面量 `'gateway'`），`ReadTodayCostMicros(string source)` 带过滤——预算桶按来源分账。
+- `Pricing` 补 `qwen-audio-3.1-asr-flash-streaming` 6/4.5 元每百万 token（PerImage=0）——不入表会静默回落 flash 价少收钱。
+
+### 测试（5 条）
+
+未带 token 401 / 超额 429+`X-FT-Quota-Reason` / 未启用 503（DisabledSpeechFactory：`GatewayFactory` 硬编码 Enabled=true，子类覆写虚属性）/ 客户端断连仍记账（不走 HTTP：假上游 `connect` 注入 + 内存 WebSocket 对 + 真库）/ ASR 价不是 flash 回落。Server.Tests 198 全绿。
+
+### 踩坑
+
+- `v78: catch (WebSocketException) 挂 when (!timeoutCTS.IsCancellationRequested) 会把正常断连误报 500——requestAborted 取消会连带 linked CTS，守卫永远为假。守卫只用于真超时分支。`
+- `v78: 嵌套 record struct 误写在命名空间层（CS1527/CS0051/CS0057）——移进类内。`
+- `v78: SpeechGatewayFactory 手打锚点两处漂移（类名/虚属性名），python 断言拦住未写盘——改生成代码前先 grep 真锚点。`
+## v79 客户端语音界面与额度降级（1.5.0）
+
+### 界面
+
+- 侧栏新增「语音」页（`Pages/SpeechPage.xaml`，Review 与 Account 之间）：开始卡（主按钮 + 一句隐私说明）、设置卡（目标语言下拉[首项手工补「自动（中英互译）」，语言表没有 auto 项]、显示原文开关、字幕条数 100/200/500）、快捷键卡（复用 `HotkeyGesture.TryParse`，失焦校验失败保留原值）、额度提示行（App 取数后经 `MainWindow.SetSpeechQuota` 转发，页面不碰账号）。设置项实时落盘（`SpeechHotkey/SpeechTargetLanguage/SpeechShowSource/SpeechMaxSentences`）。
+- 字幕浮窗 `Speech/SpeechWindow.xaml`：720×320 无边框圆角 12、可激活（要拖动与点关闭，不上 NOACTIVATE）、`ContentRendered` 后再定位底部居中（SourceInitialized 时 ActualWidth=0 会错位）；头部状态点 + 计时 + 「已用 N 字符」；字幕流按 sentence_id 原地替换/追加 + 环形裁剪 + 自动滚底，非终稿 55% 透明度；底部「结束/清空」。`BooleanToVisibilityConverter` 必须在 XAML 资源里声明（ctor 里塞 Resources 晚于 InitializeComponent，绑定会拿不到）。
+- 入口三件：托盘 id 1008「语音翻译」、热键 Ctrl+Alt+V（第三个 HotkeyService 实例——每实例自建 message-only 窗口，RegisterHotKey 按 (hwnd,id) 唯一，HotkeyId 可共用）、`FT_UITEST=speech / speech-window / speech-window-failed` 三形态 + `tools/qa/shot-speech.ps1`（PrintWindow PW_RENDERFULLCONTENT，浅/深 × 页面/浮窗/失败 共 8 张）。
+
+### 会话组装（App.xaml.cs）
+
+`RunSpeechTranslation`（在会话中→前置浮窗；未登录→气泡提醒）→ `StartSpeechSessionAsync`：**额度预检**（`AccountCoordinator.ReadUsageAsync`，剩余 <1 分钟直接气泡拒绝，免得窗口开了、会话建了才开始 429）→ 建窗 → GatewaySpeechTransport（Bearer + X-FT-Device，wss 由 https 基址推导）+ SpeechTranscriptService（翻译走文档链路的组合 provider，**绝不经 `_translation`**）+ SpeechTranslationCoordinator → `StartSpeechCapture`（WasapiLoopbackCapture → AudioResampler 48k float32→16k PCM16 → PushAudio）。usage 事件按服务端口径换算「已用 N 字符」（max(秒,10)×20）。`EndSpeechSession` 统一释放：采集 Stop/Dispose → 协调器 StopAsync → **fire-and-forget DisposeAsync（UI 线程同步等待会死锁）** → 浮窗 EndSession。
+
+### 额度与降级
+
+- **升级前探测**（GatewaySpeechTransport.ConnectAsync）：先发普通 GET `/v1/asr`，400=闸门全过的绿灯；503→「语音服务暂未开启」、403→「账号状态异常」、401→「登录已过期」、429+`X-FT-Quota-Reason`→「语音额度已用完…」、429 budget→「今日语音额度已用完…」、其余 429→「请求太频繁」。拒绝文案以 InvalidOperationException 抛出，协调器**原样上屏**（新增 Core 测试锁住这一语义，不能被「无法连接语音服务」盖掉）。
+- **设备切换不结束会话**：`DeviceInvalidated` → 停旧采集 → 1.5s 后重建（音频引擎端点切换需要时间，立刻重开常拿不到新端点）；字幕、网络连接、计时全部保留，用户感知只是字幕停顿一下。
+- **浮窗点 X = 结束会话**：不能让会话在看不见的窗口里继续烧额度。
+
+### 验证
+
+build 0 警告 0 错误；四项目 301/97/95/198 全绿；8 张截图（`assets/qa/speech-*`）；本机起 Release 版人工确认托盘菜单、热键注册、页面四态。
+
+### 残留
+
+端到端真声音（播视频→看字幕）需要真实 DashScope Key 在网关转发下验证，留到部署联调；额度预检依赖 `/api/v1/account/usage`，离线或后端 5xx 时提示「暂时读不到额度信息」并放弃本次会话。
