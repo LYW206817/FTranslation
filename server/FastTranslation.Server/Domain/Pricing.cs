@@ -24,6 +24,10 @@ public static class Pricing
         // 数字来自 2026-10 百炼价目表；发版前要再核对一遍价目表，因为
         // 过期条目不会让任何东西崩溃，只会让成本账本失真。
         ["qwen-vl-ocr"] = new("qwen-vl-ocr", 0.043m, 0.072m, 0m),
+
+        // 实时语音识别(POC 实测 7.66s 音频报 usage=96+17 token,约 40 token/音频秒)。
+        // 必须进表:For() 对未知模型会静默回落 flash 价,语音用量大,错价就是真金白银。
+        ["qwen-audio-3.1-asr-flash-streaming"] = new("qwen-audio-3.1-asr-flash-streaming", 6m, 4.5m, 0m),
     };
 
     public static ModelPrice For(string? model) =>

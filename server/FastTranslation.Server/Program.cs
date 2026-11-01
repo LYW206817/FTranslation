@@ -55,12 +55,16 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// 语音中继要升级成 WebSocket;UseWebSockets 只开通道,鉴权仍由 /v1/asr 端点在升级前完成。
+app.UseWebSockets();
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapNotesEndpoints();
 app.MapRedeemEndpoints();
 app.MapGatewayEndpoints();
+app.MapSpeechEndpoints();
 app.MapAdminEndpoints();
 app.MapRedeemAdminEndpoints();
 

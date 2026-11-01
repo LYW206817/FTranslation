@@ -111,6 +111,17 @@ public sealed class AccountStore(ServerDatabase database)
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    /// <summary>今天某个来源已花掉的成本(微元)。语音有独立日预算,要按 source 单独算一个桶。</summary>
+    public long ReadTodayCostMicros(string source)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(SUM(cost_micros), 0) FROM usage_events WHERE created_at >= $since AND source = $source";
+        command.Parameters.AddWithValue("$since", database.NowUnix - (database.NowUnix % 86_400));
+        command.Parameters.AddWithValue("$source", source);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     /// <summary>返回该指纹对应的设备；账号未达设备上限时会创建。</summary>
     public DeviceResult RegisterDevice(Guid userId, string fingerprint, string name)
     {
@@ -236,7 +247,7 @@ public sealed class AccountStore(ServerDatabase database)
         return new UsageSnapshot(monthly, daily, database.ThisMonthKey, database.TodayKey);
     }
 
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now)
+    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source = "gateway")
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
@@ -272,7 +283,7 @@ public sealed class AccountStore(ServerDatabase database)
             entry.Transaction = transaction;
             entry.CommandText = """
                 INSERT INTO usage_events (user_id, device_id, model, chars, tokens_in, tokens_out, cost_micros, source, created_at)
-                VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, $cost, 'gateway', $now)
+                VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, $cost, $source, $now)
                 """;
             entry.Parameters.AddWithValue("$userId", userId.ToString("D"));
             entry.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
@@ -281,6 +292,7 @@ public sealed class AccountStore(ServerDatabase database)
             entry.Parameters.AddWithValue("$tokensIn", tokensIn);
             entry.Parameters.AddWithValue("$tokensOut", tokensOut);
             entry.Parameters.AddWithValue("$cost", costMicros);
+        entry.Parameters.AddWithValue("$source", source);
             entry.Parameters.AddWithValue("$now", now);
             entry.ExecuteNonQuery();
         }

@@ -260,7 +260,7 @@ public static class GatewayEndpoints
         return null;
     }
 
-    private static (Guid DeviceId, Guid UserId) Device(
+    internal static (Guid DeviceId, Guid UserId) Device(
         HttpContext context,
         ClaimsPrincipal principal,
         AccountStore store)

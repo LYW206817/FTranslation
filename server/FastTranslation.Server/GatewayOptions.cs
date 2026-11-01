@@ -49,6 +49,10 @@ public sealed class GatewayOptions
 
     public bool IsConfigured => Enabled && !string.IsNullOrWhiteSpace(ApiKey);
 
+    /// <summary>语音中继的开关与参数。配置路径必须写全 Server:Gateway:Speech:*(根节是 Server,
+    /// 只写 Gateway:Speech:* 会静默绑不上——这是最小 API 选项绑定的既有约定)。</summary>
+    public SpeechOptions Speech { get; set; } = new();
+
     public string EffectiveBaseUrl =>
         string.IsNullOrWhiteSpace(BaseUrl) ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : BaseUrl.TrimEnd('/');
 
@@ -57,4 +61,32 @@ public sealed class GatewayOptions
         string.IsNullOrWhiteSpace(OcrBaseUrl)
             ? "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
             : OcrBaseUrl.Trim();
+}
+
+
+/// <summary>语音中继配置(设计 §6.2)。WsUrl 整串可配,避免代码里拼 WorkspaceId。</summary>
+public sealed class SpeechOptions
+{
+    public bool Enabled { get; set; }
+
+    public string WsUrl { get; set; } = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
+
+    /// <summary>DashScope 工作空间 id。空则不带工作空间头。</summary>
+    public string WorkspaceId { get; set; } = string.Empty;
+
+    /// <summary>实时 ASR 模型。POC 已实证 qwen-audio-3.1-asr-flash-streaming 可用。</summary>
+    public string Model { get; set; } = "qwen-audio-3.1-asr-flash-streaming";
+
+    /// <summary>额度折算:一秒音频折成多少字符(与文本翻译同池子,只是换算口径)。</summary>
+    public int QuotaCharsPerSecond { get; set; } = 20;
+
+    /// <summary>最短按多少秒起算:讲半秒也说了一句话,不能按 0 记。</summary>
+    public int MinSeconds { get; set; } = 10;
+
+    /// <summary>单会话硬顶秒数:到点由服务端发 finish-task 关流,防连接挂着烧钱。</summary>
+    public int MaxSecondsPerSession { get; set; } = 1800;
+
+    /// <summary>语音独立日预算(微元)。默认 2 元/日≈2.3 小时:全站 5 元桶只够 5.8 小时
+    /// 且语音烧完会把文本翻译一起 429,所以单独一个桶,先撞预算是刻意的。</summary>
+    public long DailyBudgetMicros { get; set; } = 2_000_000;
 }
