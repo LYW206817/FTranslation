@@ -1335,6 +1335,7 @@ public partial class App : Application, IResultPresenter
     {
         ShowMainWindow();
         _mainWindow?.ShowPage(page);
+        if (page == MainPageId.Speech) _ = RefreshSpeechQuotaHintAsync();
     }
 
     /// <summary>
@@ -1382,17 +1383,34 @@ public partial class App : Application, IResultPresenter
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
             return;
         }
-        _speechWindow ??= new SpeechWindow();
-        _speechWindow.StopRequested += OnSpeechStopRequested;
-        _speechWindow.ClearRequested += () => { };
-        _speechWindow.Closed += (_, _) => { _speechWindow = null; };
-        _speechWindow.BeginSession();
         _ = StartSpeechSessionAsync();
     }
 
     private async Task StartSpeechSessionAsync()
     {
         var account = _account!;
+        // 额度预检：语音按 20 字符/秒计，剩余不足 1 分钟直接拒绝，
+        // 免得窗口开了、会话建了才开始 429
+        var usage = await account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
+        if (!usage.Succeeded || usage.Value is null)
+        {
+            _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息,请稍后再试");
+            return;
+        }
+        SetSpeechQuotaHint(usage.Value.RemainingMonthlyChars);
+        if (usage.Value.RemainingMonthlyChars < 20 * 60)
+        {
+            _tray?.ShowBalloon("语音翻译", "语音额度不足,本月剩余不够 1 分钟,下月恢复");
+            return;
+        }
+
+        _speechWindow ??= new SpeechWindow();
+        _speechWindow.StopRequested += OnSpeechStopRequested;
+        _speechWindow.ClearRequested += () => { };
+        // 浮窗被点 X 就收尾整个会话，不能让会话在看不见的窗口里继续烧额度
+        _speechWindow.Closed += (_, _) => { _speechWindow = null; EndSpeechSession(null); };
+        _speechWindow.BeginSession();
+
         // 传输与字幕服务的生命周期都挂在会话上，EndSpeechSession 统一释放
         var transport = new GatewaySpeechTransport(
             async () => account is { IsSignedIn: true } a
@@ -1415,9 +1433,24 @@ public partial class App : Application, IResultPresenter
             DispatcherPriority.Background,
             () => _speechWindow?.ShowLine(line, _settings.SpeechShowSource, _settings.SpeechMaxSentences));
         coordinator.Failed += message => Dispatcher.BeginInvoke(() => EndSpeechSession(message));
-        coordinator.UsageObserved += _ => { };  // 用量展示接 Task 20 的额度预检一起做
+        // 服务端按 max(秒,10)*20 记额度，这里同口径换算成「已用 N 字符」
+        coordinator.UsageObserved += seconds => Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            () => _speechWindow?.SetUsage((long)(Math.Max(seconds, 10) * 20)));
 
-        // 回环采集：设备给的是混音格式（典型 48k×2ch float32），重采样成 16k mono PCM16 喂给协调器
+        StartSpeechCapture();
+
+        await coordinator.StartAsync(options).ConfigureAwait(true);
+        if (coordinator.State == SpeechCoordinatorState.Failed)
+        {
+            EndSpeechSession("无法连接语音服务,请稍后再试");
+        }
+    }
+
+    // 回环采集：设备给的是混音格式（典型 48k×2ch float32），重采样成 16k mono PCM16 喂给协调器。
+    // 独立成方法是为了设备切换时只重建采集，字幕与网络连接都保得住
+    private void StartSpeechCapture()
+    {
         var capture = new WasapiLoopbackCapture();
         _speechCapture = capture;
         capture.Started += format =>
@@ -1425,16 +1458,41 @@ public partial class App : Application, IResultPresenter
             _speechResampler = new AudioResampler(format.SampleRate, format.Channels);
         };
         capture.DataAvailable += block => PumpSpeechAudio(block);
-        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(() =>
-            EndSpeechSession("音频设备已切换,本轮语音翻译结束"));
+        // v79: 切换默认播放设备时旧回环会话必然失效——重建采集而不是结束会话，
+        // 用户感知只是字幕停顿一秒多
+        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(() => _ = RestartSpeechCaptureAsync());
         capture.Failed += ex => Dispatcher.BeginInvoke(() =>
             EndSpeechSession("无法采集系统声音: " + ex.Message));
         capture.Start();
+    }
 
-        await coordinator.StartAsync(options).ConfigureAwait(false);
-        if (coordinator.State == SpeechCoordinatorState.Failed)
+    private async Task RestartSpeechCaptureAsync()
+    {
+        if (_speechCoordinator is null) return;
+        var stale = _speechCapture;
+        _speechCapture = null;
+        _speechResampler = null;
+        stale?.Stop();
+        stale?.Dispose();
+        // 给音频引擎留出端点切换的时间；设备失效后立刻重开常常拿不到新端点
+        await Task.Delay(1500).ConfigureAwait(true);
+        if (_speechCoordinator is null) return;
+        StartSpeechCapture();
+    }
+
+    private void SetSpeechQuotaHint(int remainingChars)
+    {
+        var minutes = remainingChars / (20 * 60);
+        _mainWindow?.SetSpeechQuota($"语音按 20 字符/秒计费,本月剩余可讲约 {minutes} 分钟");
+    }
+
+    private async Task RefreshSpeechQuotaHintAsync()
+    {
+        if (_account is not { IsSignedIn: true }) return;
+        var usage = await _account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
+        if (usage.Succeeded && usage.Value is not null)
         {
-            EndSpeechSession("无法连接语音服务,请稍后再试");
+            SetSpeechQuotaHint(usage.Value.RemainingMonthlyChars);
         }
     }
 

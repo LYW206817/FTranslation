@@ -77,7 +77,13 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
         {
             await _transport.ConnectAsync(options, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is WebSocketException or InvalidOperationException or OperationCanceledException)
+        catch (InvalidOperationException ex)
+        {
+            // 传输层主动抛的 InvalidOperationException 带业务文案(额度用完/服务未开),原样上屏
+            OnFatal(ex.Message);
+            return;
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
         {
             OnFatal("无法连接语音服务,请稍后再试。");
             return;

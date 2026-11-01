@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Text;
 using FastTranslation.Core.Speech;
@@ -33,6 +36,21 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
     {
         var token = await _accessToken().ConfigureAwait(false)
             ?? throw new InvalidOperationException("speech requires sign-in");
+        // 升级前先发一次普通 GET:网关把 401/403/429/503 以普通 HTTP 状态给出,
+        // 400(非 WS 请求)才是闸门全过的绿灯——额度类失败在这里就能拿到明确文案,
+        // 不用等 WS 握手莫名其妙地失败
+        var asr = AsrUri();
+        var probeUri = new UriBuilder(asr) { Scheme = asr.Scheme == "wss" ? "https" : "http" }.Uri;
+        using var probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var probe = new HttpRequestMessage(HttpMethod.Get, probeUri);
+        probe.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        probe.Headers.Add("X-FT-Device", _deviceFingerprint);
+        using var probeResponse = await probeClient.SendAsync(probe, ct).ConfigureAwait(false);
+        if (probeResponse.StatusCode != HttpStatusCode.BadRequest)
+        {
+            throw new InvalidOperationException(await DescribeRefusalAsync(probeResponse).ConfigureAwait(false));
+        }
+
         var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
         socket.Options.SetRequestHeader("X-FT-Device", _deviceFingerprint);
@@ -85,6 +103,22 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
         var scheme = _gatewayBaseUri.Scheme == "https" ? "wss" : "ws";
         var path = _gatewayBaseUri.AbsolutePath.TrimEnd('/') + "/v1/asr";
         return new UriBuilder(_gatewayBaseUri) { Scheme = scheme, Path = path }.Uri;
+    }
+
+    // 把网关在升级前给的状态码翻译成用户能懂的话;400 之外都视为拒绝
+    private static async Task<string> DescribeRefusalAsync(HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.ServiceUnavailable) return "语音服务暂未开启";
+        if (response.StatusCode == HttpStatusCode.Forbidden) return "账号状态异常,请重新登录";
+        if (response.StatusCode == HttpStatusCode.Unauthorized) return "登录已过期,请重新登录";
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (response.Headers.Contains("X-FT-Quota-Reason")) return "语音额度已用完,请下月再来或升级套餐";
+            if (body.Contains("budget_exhausted", StringComparison.Ordinal)) return "今日语音额度已用完,明天再试";
+            return "语音请求太频繁,请稍后再试";
+        }
+        return "无法连接语音服务(HTTP " + (int)response.StatusCode + ")";
     }
 
     private async Task PumpAsync(ClientWebSocket socket)

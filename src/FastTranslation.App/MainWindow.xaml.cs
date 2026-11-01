@@ -38,6 +38,9 @@ public partial class MainWindow : Window
     private ReviewPage? _reviewPage;
     private DocumentPage? _documentPage;
     private SpeechPage? _speechPage;
+
+    // 额度提示由 App 取数后转发，页面自己不碰账号
+    public void SetSpeechQuota(string text) => _speechPage?.SetQuota(text);
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;

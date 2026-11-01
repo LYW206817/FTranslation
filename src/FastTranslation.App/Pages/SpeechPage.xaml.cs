@@ -40,6 +40,9 @@ public sealed partial class SpeechPage : UserControl
         Dispatcher.BeginInvoke(() => StateText.Text = text);
     }
 
+    // 额度提示由 App 异步取数后推进来,页面自己不碰账号
+    public void SetQuota(string text) => QuotaText.Text = text;
+
     private void LoadLanguages()
     {
         // 语音的源语言永远由识别决定，这里选的只是译成哪种；「自动」=目标语言跟语言对自动配对

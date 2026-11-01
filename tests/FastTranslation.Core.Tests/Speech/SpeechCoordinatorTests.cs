@@ -84,6 +84,22 @@ public sealed class SpeechCoordinatorTests
     }
 
     [Fact]
+    public async Task Transport_refusal_message_is_reported_verbatim()
+    {
+        // 网关在升级前以普通 HTTP 拒绝(额度用完/服务未开)，传输层把它翻成带语义的
+        // InvalidOperationException；协调器必须原样上屏，不能换成「无法连接」蒙混
+        var transport = new FakeTransport { ConnectFailure = "语音额度已用完,请下月再来" };
+        using var subtitles = MakeSubtitles(new List<string>());
+        await using var coordinator = new SpeechTranslationCoordinator(transport, subtitles, SilentTime);
+        var failures = new List<string>();
+        coordinator.Failed += failures.Add;
+
+        await coordinator.StartAsync(Options());
+        await WaitUntilAsync(() => coordinator.State == SpeechCoordinatorState.Failed);
+        Assert.Equal(["语音额度已用完,请下月再来"], failures);
+    }
+
+    [Fact]
     public async Task Reconnects_once_and_replays_pending_audio_in_order()
     {
         var transport = new FakeTransport();
@@ -150,6 +166,7 @@ public sealed class SpeechCoordinatorTests
     {
         public bool FailNextSend;
         public int ConnectCount;
+        public string? ConnectFailure;
         public bool StopCalled;
         public readonly List<byte[]> SentAudio = new();
         private readonly List<TaskCompletionSource> _connected = new();
@@ -161,6 +178,7 @@ public sealed class SpeechCoordinatorTests
         public Task ConnectAsync(SpeechSessionOptions options, CancellationToken ct = default)
         {
             ConnectCount++;
+            if (ConnectFailure is not null) throw new InvalidOperationException(ConnectFailure);
             Emit(new SpeechTransportEvent(SpeechTransportKind.Ready));
             return Task.CompletedTask;
         }
