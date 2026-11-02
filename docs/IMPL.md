@@ -2714,3 +2714,27 @@ v90 只把三页的版式换了顺序，视觉仍是 v85 雾光那一套（13px 
 - 未登录或用量为 0 时 hero 左列的用量环是空的，那仍是数据状态不是样式问题。
 
 踩坑：用 bash 的 `head` / `tail` 拼接替换 XAML 时，把每张卡的文案写成 `'单词本|单词、短语…'` 这种字符串再用 `([t, d], i) =>` 解构，拿到的是首两个字——面板上真的只剩「单」「词」；三张卡都中招，已改回成对数组。
+
+## v93 结果卡：删掉设置页重复的页面标题，修好文档页「翻译成」里被裁掉的字
+
+两个都是「照抄旧结构留下的半截」：设置页在 v91 换成 `PageTitle` 之后，原来那行 17px 的标题没人删；文档页的顶栏药丸是照着主页面抄的，但只抄了壳、没抄里面下拉框的尺寸约定。
+
+**设置页**：`src/FastTranslation.App/Pages/SettingsPage.xaml` 的 `Grid` 第 0 行原本是 `TextBlock Text="设置" FontSize="17" Margin="24,18,24,12"`，而滚动区第一行又一次 `Style="{StaticResource PageTitle}" Text="设置"` —— 页面上同时出现一大一小两个「设置」。删掉第 0 行那个旧标题，并把三段行定义收成两段（`*` + `Auto`），`ScrollViewer` 的 `Grid.Row` 1→0、底部 savebar 2→1。行定义不一起收掉会留下一条空的高度 Auto 行，虽然只贡献 0 高度，但下一个人会以为那里本该有东西。
+
+**文档页**：`src/FastTranslation.App/Pages/DocumentPage.xaml` 的下拉框写的是 `Width="132" Height="26"`，而 `FtComboBox` 的隐式样式默认 `Padding="12,8"`（`src/FastTranslation.App/App.xaml:361`）。26 高减去上下各 8 的内边距只剩 10 逻辑像素，12.5px 的字放不进去，上下被 `ContentPresenter` 裁掉——截图上「英语」看着像半个字。改成 `MinWidth="96"` + `Height="26"`（只用来跟同一行标签对齐）+ `Padding="0,0,24,0"`，右边留的 24 是给模板里那个右对齐的 chevron，不然字会压到箭头上；同时按 `src/FastTranslation.App/Pages/MainPage.xaml:19-21` 的做法把下拉框自己的底和描边关掉（`Background="Transparent"` / `BorderThickness="0"`），让药丸当外壳——原来药丸里还套着一个带描边的白框，两层壳叠着。宽度不写死：`ContentPresenter` 是左对齐的，自动宽度跟着语言名走，长名字（如「自动(中英互译)」）不会再被挤断。
+
+验证：
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- UIA 几何（`publish/v93-geom.ps1`，输出落 `publish/v93-geom.txt`）：设置页 `ControlType.Text` 且名字为「设置」的元素 **count=2**，一个是侧栏 (120,804)，一个是页面标题 (472,114)——旧的那行已不在；文档页标题 (660,114) 与设置页标题 (472,114) **y 相同**，两页的首行回到同一基线。
+- 文字不再被裁的像素证据（`publish/v93-pill.ps1` 在截图上按亮度 < 165 求每一列墨迹、再按列间隙切成若干 run）：v92 的「翻译成」(x1455..1519) 墨迹高 **21**，同一行的「英语」(x1556..1600) 只有 **12**（y143..154，上下都被切）；v93 两者都是 **21**（都是 y137..157）——同一行里 12.5px 的标签和下拉框文字现在一样高。
+- 截图 `publish/ui-v93/`（双主题九页，2310x1505）。
+
+残留风险：
+
+- 下拉框宽度改成自动后，切换目标语言时药丸会随语言名宽度轻微伸缩（最长约 `MinWidth` 96 逻辑像素之外再多二十几像素），不影响下方投放台的对齐。
+- 设置页标题上移之后，右侧「本机设置 · 不随账号同步」药丸仍与标题顶部对齐，视觉重心比原来高了一档；要再压下去得单独调它，本轮没动。
+
+注释:
+- `src/FastTranslation.App/Pages/DocumentPage.xaml:51` — 为什么高度保留 26、内边距改成 0,0,24,0，24 是给 chevron 的

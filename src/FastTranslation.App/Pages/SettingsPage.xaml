@@ -89,19 +89,14 @@
 
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- 只有页面标题：页面在外壳内部没有自己的边框 -->
-    <TextBlock Grid.Row="0" Text="设置" FontSize="17" FontWeight="SemiBold"
-               Foreground="{DynamicResource TextPrimaryBrush}" Margin="24,18,24,12"/>
-
     <!-- ===== 可滚动主体：每个关注点一张卡，分组按主题而不是按高度——左列是「它怎么为我
          翻译」，右列是「它在跟谁通信」；具体哪张卡进哪一列由 CardBoard 按最短列决定。
          小标题与它的卡包在同一个 StackPanel 里，否则会被分列拆成两半。 ===== -->
-    <ScrollViewer x:Name="Body" Grid.Row="1"
+    <ScrollViewer x:Name="Body" Grid.Row="0"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   HorizontalContentAlignment="Stretch"
                   Focusable="False" PreviewMouseWheel="Body_PreviewMouseWheel">
@@ -433,7 +428,7 @@
     <!-- ===== 固定底栏：保存/取消 永远不会滚走，细线标出边界。它在卡片区之外，
          所以不分列、整宽贴着窗口底；左边那行提示说的是：对一个绑定了账号的设置页，
          人们唯一会想错的那件事。 ===== -->
-    <Border Grid.Row="2" BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
+    <Border Grid.Row="1" BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
             Padding="24,11,24,12">
       <Grid MaxWidth="1440" HorizontalAlignment="Center">
         <Grid.ColumnDefinitions>

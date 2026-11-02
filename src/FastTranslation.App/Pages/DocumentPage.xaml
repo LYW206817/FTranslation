@@ -48,7 +48,13 @@
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="翻译成" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,8,0"
                        Foreground="{DynamicResource TextSecondaryBrush}"/>
-            <local:FtComboBox x:Name="TargetCombo" Width="132" Height="26"
+            <!-- v93：药丸当外壳，下拉框自己不再带底和描边；宽度跟着语言名走，
+                 原来写死 132x26 撞上样式默认的 Padding="12,8"，26 高只剩 10 给字，
+                 文字被上下裁掉。高度只用来和其他药丸对齐。 -->
+            <local:FtComboBox x:Name="TargetCombo" MinWidth="96" Height="26"
+                              Background="Transparent" BorderThickness="0"
+                              Padding="0,0,24,0" VerticalAlignment="Center"
+                              FontSize="12.5"
                               SelectionChanged="TargetCombo_SelectionChanged"/>
           </StackPanel>
         </Border>
