@@ -54,12 +54,17 @@ public sealed partial class SpeechWindow : Window
     }
 
     /// <summary>会话结束（正常或失败）：停计时、灰状态点、可再点一次结束关闭窗口。</summary>
-    public void EndSession(string? error)
+    public void EndSession(string? error, int dropped = 0)
     {
         _running = false;
         _timer.Stop();
         LiveDot.Fill = (Brush)FindResource("TextMutedBrush");
-        StateText.Text = string.IsNullOrEmpty(error) ? "已结束" : error;
+        // 被丢弃的句子必须说出来：否则用户只看到字幕少了几个词，以为模型漏译
+        StateText.Text = !string.IsNullOrEmpty(error)
+            ? error
+            : dropped > 0
+                ? $"已结束({dropped} 句因处理不过来被丢弃)"
+                : "已结束";
         StopButton.Content = "关闭";
         UsageText.Text = "";
         UpdateElapsed();

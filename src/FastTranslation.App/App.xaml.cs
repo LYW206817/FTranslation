@@ -1383,7 +1383,7 @@ public partial class App : Application, IResultPresenter
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
             return;
         }
-        _ = StartSpeechSessionAsync();
+        Observe(StartSpeechSessionAsync(), "语音启动失败");
     }
 
     private async Task StartSpeechSessionAsync()
@@ -1460,7 +1460,8 @@ public partial class App : Application, IResultPresenter
         capture.DataAvailable += block => PumpSpeechAudio(block);
         // v79: 切换默认播放设备时旧回环会话必然失效——重建采集而不是结束会话，
         // 用户感知只是字幕停顿一秒多
-        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(() => _ = RestartSpeechCaptureAsync());
+        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(
+            () => Observe(RestartSpeechCaptureAsync(), "切换音频设备后恢复失败"));
         capture.Failed += ex => Dispatcher.BeginInvoke(() =>
             EndSpeechSession("无法采集系统声音: " + ex.Message));
         capture.Start();
@@ -1531,37 +1532,78 @@ public partial class App : Application, IResultPresenter
 
     private void OnSpeechStopRequested() => EndSpeechSession(null);
 
+    /// <summary>观察后台任务的异常。</summary>
+    /// <remarks>fire-and-forget 的 Task 无人 await 时异常会被静默丢弃，语音链路一静默失败用户只看到窗口一直转圈，
+    /// 所以统一收口到 EndSpeechSession 显示原因。</remarks>
+    private void Observe(Task task, string failureMessage) =>
+        _ = task.ContinueWith(
+            t => Dispatcher.BeginInvoke(() =>
+                EndSpeechSession(failureMessage + ":" + t.Exception!.GetBaseException().Message)),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+
     private void EndSpeechSession(string? error)
     {
         var coordinator = _speechCoordinator;
+        var resampler = _speechResampler;
+        var subtitles = _speechSubtitles;
         _speechCoordinator = null;
         _speechResampler = null;
         var capture = _speechCapture;
         _speechCapture = null;
+        if (resampler is not null && coordinator is not null)
+        {
+            // 重采样器内部还压着不足一块的样本（最多 100ms），收尾时补发一次，
+            // 否则每段话的尾巴都会被吞掉，字幕末尾缺字。
+            try
+            {
+                var tail = new byte[resampler.MaxOutputBytes(1600 * 4)];
+                var count = resampler.Flush(tail);
+                if (count > 0) coordinator.PushAudio(tail[..count]);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // 协调器已进入 Finishing 时 PushAudio 会拒绝，收尾补发失败不影响结束流程
+            }
+        }
+
         if (capture is not null)
         {
             // Stop() 内部 Join 等采集线程退出（最多 2s）。这是 UI 线程，同步等会把窗口冻住，
             // 所以甩到后台；采集线程之后的回调因 _speechResampler/_speechCoordinator 已置空而直接返回
             _ = Task.Run(() =>
             {
-                capture.Stop();
-                capture.Dispose();
+                try
+                {
+                    capture.Stop();
+                    capture.Dispose();
+                }
+                catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+                {
+                    // 采集设备已被拔掉或已释放时 Stop/Dispose 会抛，收尾阶段吞掉
+                }
             });
         }
 
-        coordinator?.StopAsync();
-        // 不等 DisposeAsync：协调器内部对停传已有 2s 超时；这里是 UI 线程，同步等待会死锁
-        _ = coordinator?.DisposeAsync().AsTask();
+        if (coordinator is not null)
+        {
+            Observe(coordinator.StopAsync(), "语音结束失败");
+            // 不等 DisposeAsync：协调器内部对停传已有 2s 超时；这里是 UI 线程，同步等待会死锁
+            Observe(coordinator.DisposeAsync().AsTask(), "语音资源释放失败");
+        }
+
         _speechTransport = null;
         _speechSubtitles = null;
-        _speechWindow?.EndSession(error);
+        _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
     }
 
     private void ShowSpeechWindow()
     {
         if (_speechWindow is null) return;
+        // 不调 Activate()：开始语音时用户多半正在打字，抢焦点会把输入打断；
+        // 用户要拖动或点关闭时自己会点它，Show() 已足够可见（置顶）。
         _speechWindow.Show();
-        _speechWindow.Activate();
     }
 
     private void ExitApp()
