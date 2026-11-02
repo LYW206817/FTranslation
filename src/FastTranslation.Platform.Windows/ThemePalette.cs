@@ -73,7 +73,20 @@ public sealed record ThemeColors(
     string BoltFrom,
     string BoltTo,
     // 悬停抬起时那层很淡的投影（#AARRGGBB）
-    string Shadow);
+    string Shadow,
+    // ===== v85 雾光布局新增的四支令牌 =====
+    // 页底渐变的第三站：155° 的三段渐变收在一点暖色上，避免整片冷蓝显得像办公软件。
+    string PageEnd = "#FFFFFF",
+    // 侧栏浮卡的半透明白（#AARRGGBB）。卡是浮在渐变底上的，必须透出底下的雾色，
+    // 否则和页面底色之间只剩一圈阴影在分区。
+    string Glass = "#BDFFFFFF",
+    // 浮卡 1px 描边：浅色下是纯白（模拟玻璃的边缘反光），深色下换成一点白。
+    string GlassEdge = "#FFFFFF",
+    // 右上角蓝光晕、左下角暖光晕的径向渐变起点色（#AARRGGBB）。
+    string GlowBrand = "#382F62FF",
+    string GlowWarm = "#26FF7A59",
+    // 光晕那支暖色的实色版本：模型药丸上的小圆点用它，直接拿 GlowWarm 太淡看不见。
+    string Warm = "#FF7A59");
 
 /// <summary>一支强调色替换掉的那一族品牌色。九项之外的颜色都沿用它所属的主题。</summary>
 internal readonly record struct AccentColors(
@@ -139,13 +152,18 @@ public static class ThemePalette
         GradeForgot: "#A9453B",
         GradeForgotFill: "#FAEAE7",
         GradeForgotBorder: "#EDCBC4",
-        PageFrom: "#FDFEFF",
-        PageTo: "#E7EEF9",
+        PageFrom: "#E5EDFE",
+        PageTo: "#F8FBFF",
         SidebarFrom: "#FAFCFF",
         SidebarTo: "#F0F5FC",
         BoltFrom: "#4B7BFF",
         BoltTo: "#2450E8",
-        Shadow: "#1F1B2536");
+        Shadow: "#1F1B2536",
+        PageEnd: "#FFF4EF",
+        Glass: "#BDFFFFFF",
+        GlassEdge: "#FFFFFF",
+        GlowBrand: "#382F62FF",
+        GlowWarm: "#26FF7A59");
 
     public static ThemeColors Dark { get; } = new(
         Brand: "#4A82FF",
@@ -180,13 +198,19 @@ public static class ThemePalette
         GradeForgot: "#E38F84",
         GradeForgotFill: "#2F1F1D",
         GradeForgotBorder: "#54332E",
-        PageFrom: "#121620",
-        PageTo: "#1B2431",
+        PageFrom: "#1B2233",
+        PageTo: "#16191F",
         SidebarFrom: "#171C25",
         SidebarTo: "#1B212B",
         BoltFrom: "#4A82FF",
         BoltTo: "#5BB4FF",
-        Shadow: "#99000000");
+        Shadow: "#99000000",
+        PageEnd: "#1D1712",
+        Glass: "#B31B2029",
+        GlassEdge: "#1FFFFFFF",
+        GlowBrand: "#3A4A82FF",
+        GlowWarm: "#1FFF7A59",
+        Warm: "#FF8F73");
 
     // 强调色表。电光蓝不在这里：基底 Light/Dark 本身就是电光蓝——少一次 with 复制，
     // 并且 Use(Light, electro) 仍返回同一个实例（测试据此断言，见 ThemePaletteTests）。

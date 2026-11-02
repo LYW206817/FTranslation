@@ -34,7 +34,9 @@ public class ThemeResourceKeysTests
         var declared = xamlFiles
             .SelectMany(file => Regex.Matches(File.ReadAllText(file), "x:Key=\"([A-Za-z0-9]+)\"")
                 .Select(m => m.Groups[1].Value));
-        var injected = Regex.Matches(bridge, "\"([A-Za-z0-9]+Brush)\"")
+        // v85：雾光布局往资源里塞了三支 DropShadowEffect（CardShadowEffect 等），
+        // 它们和画刷一样只在 ThemeBridge 里出现，所以键名后缀也要认 Effect。
+        var injected = Regex.Matches(bridge, "\"([A-Za-z0-9]+(?:Brush|Effect))\"")
             .Select(m => m.Groups[1].Value)
             .Concat(GeneratedKeys);
         var known = declared.Concat(injected).ToHashSet(StringComparer.Ordinal);

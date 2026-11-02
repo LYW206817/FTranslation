@@ -8,109 +8,181 @@
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType">
   <Grid>
-    <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="172"/>
-      <ColumnDefinition Width="*"/>
-    </Grid.ColumnDefinitions>
+    <!-- v85 雾光：两团光画在整扇窗的最底层。它们只是底色的一层雾，必须
+         IsHitTestVisible=False，否则会挡住底下所有按钮。 -->
+    <Ellipse Width="380" Height="380" HorizontalAlignment="Right" VerticalAlignment="Top"
+             Margin="0,-120,-90,0" Fill="{DynamicResource GlowBrandBrush}"
+             IsHitTestVisible="False"/>
+    <Ellipse Width="320" Height="320" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+             Margin="120,0,0,-160" Fill="{DynamicResource GlowWarmBrush}"
+             IsHitTestVisible="False"/>
 
-    <!-- 侧边栏 -->
-    <Border Grid.Column="0" Background="{DynamicResource SidebarGradientBrush}"
-            BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,0,1,0">
-      <DockPanel Margin="10,16,10,12">
-        <!-- 品牌区 -->
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,18">
-          <Image Source="/icon-master.png" Width="22" Height="22" VerticalAlignment="Center"
-                 RenderOptions.BitmapScalingMode="HighQuality"/>
-          <TextBlock Text="Fast Translation" FontSize="13" FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextPrimaryBrush}" Margin="8,0,0,0"
-                     VerticalAlignment="Center"/>
-        </StackPanel>
+    <Grid Margin="14">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="200"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
 
-        <!-- 底部区块：取词开关 + 账号 -->
-        <StackPanel DockPanel.Dock="Bottom">
-          <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,10"/>
-          <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
-                    IsChecked="True" Margin="8,0,0,8"
-                    Checked="CaptureToggle_Changed" Unchecked="CaptureToggle_Changed"/>
-          <TextBlock x:Name="AccountStatus" Text="账号:未登录" Margin="8,0,0,0"
-                     TextTrimming="CharacterEllipsis"
-                     Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
-        </StackPanel>
+      <!-- 侧栏是一张浮在雾上的半透明卡：底色带 alpha，透出底下渐变的冷暖，
+           1px 白描边模拟玻璃边缘的反光。 -->
+      <Border Background="{DynamicResource GlassBrush}" BorderBrush="{DynamicResource GlassEdgeBrush}"
+              BorderThickness="1" CornerRadius="14" Effect="{DynamicResource GlassShadowEffect}">
+        <DockPanel Margin="10,16,10,12">
+          <!-- 品牌区：渐变方块里一个「译」字，和托盘图标是同一套视觉 -->
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,2,0,18">
+            <Border Width="26" Height="26" CornerRadius="9" Background="{DynamicResource BrandGradientBrush}"
+                    Effect="{DynamicResource NavGlowEffect}">
+              <TextBlock Text="译" FontSize="13" FontWeight="Bold"
+                         Foreground="{DynamicResource OnBrandTextBrush}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="Fast Translation" FontSize="13" FontWeight="Bold" Margin="9,0,0,0"
+                       VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"/>
+          </StackPanel>
 
-        <!-- 八个页面 -->
-        <StackPanel x:Name="SidebarItems">
-          <Button x:Name="HomeButton" Style="{StaticResource SidebarItemActive}" Tag="Home" Click="Nav_Click">
-            <TextBlock Text="首页"/>
-          </Button>
-          <Button x:Name="WordButton" Style="{StaticResource SidebarItem}" Tag="Word" Click="Nav_Click" Margin="0,2,0,0">
-            <DockPanel>
-              <Border x:Name="WordBadge" DockPanel.Dock="Right" Style="{StaticResource SidebarBadge}"
-                      Visibility="Collapsed">
-                <TextBlock x:Name="WordBadgeText" Foreground="{DynamicResource OnBrandTextBrush}" FontSize="10" HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-              </Border>
-              <TextBlock Text="单词" VerticalAlignment="Center"/>
-            </DockPanel>
-          </Button>
-          <Button x:Name="PhraseButton" Style="{StaticResource SidebarItem}" Tag="Phrase" Click="Nav_Click" Margin="0,2,0,0">
-            <DockPanel>
-              <Border x:Name="PhraseBadge" DockPanel.Dock="Right" Style="{StaticResource SidebarBadge}"
-                      Visibility="Collapsed">
-                <TextBlock x:Name="PhraseBadgeText" Foreground="{DynamicResource OnBrandTextBrush}" FontSize="10" HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-              </Border>
-              <TextBlock Text="短语" VerticalAlignment="Center"/>
-            </DockPanel>
-          </Button>
-          <Button x:Name="SentenceButton" Style="{StaticResource SidebarItem}" Tag="Sentence" Click="Nav_Click" Margin="0,2,0,0">
-            <DockPanel>
-              <Border x:Name="SentenceBadge" DockPanel.Dock="Right" Style="{StaticResource SidebarBadge}"
-                      Visibility="Collapsed">
-                <TextBlock x:Name="SentenceBadgeText" Foreground="{DynamicResource OnBrandTextBrush}" FontSize="10" HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-              </Border>
-              <TextBlock Text="语句" VerticalAlignment="Center"/>
-            </DockPanel>
-          </Button>
-          <Button x:Name="ReviewButton" Style="{StaticResource SidebarItem}" Tag="Review" Click="Nav_Click" Margin="0,2,0,0">
-            <DockPanel>
-              <Border x:Name="ReviewBadge" DockPanel.Dock="Right" Style="{StaticResource SidebarBadge}"
-                      Visibility="Collapsed">
-                <TextBlock x:Name="ReviewBadgeText" Foreground="{DynamicResource OnBrandTextBrush}" FontSize="10" HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-              </Border>
-              <TextBlock Text="复习" VerticalAlignment="Center"/>
-            </DockPanel>
-          </Button>
-          <Button x:Name="DocumentButton" Style="{StaticResource SidebarItem}" Tag="Document" Click="Nav_Click" Margin="0,2,0,0">
-            <TextBlock Text="文档"/>
-          </Button>
-          <Button x:Name="SpeechButton" Style="{StaticResource SidebarItem}" Tag="Speech" Click="Nav_Click" Margin="0,2,0,0">
-            <TextBlock Text="语音"/>
-          </Button>
+          <!-- 底部区块：取词开关 + 账号 -->
+          <StackPanel DockPanel.Dock="Bottom">
+            <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,8,6,10"/>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="11" Padding="10,6"
+                    Effect="{DynamicResource GlassShadowEffect}">
+              <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
+                        IsChecked="True" Checked="CaptureToggle_Changed" Unchecked="CaptureToggle_Changed"/>
+            </Border>
+            <TextBlock x:Name="AccountStatus" Text="账号:未登录" Margin="6,9,6,2"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"/>
+          </StackPanel>
 
-          <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,10,6,8"/>
+          <!-- 八个页面。SyncSidebar 只认这里的直接 Button 子项，分隔条不是 Button，
+               所以可以放在同一个 StackPanel 里。 -->
+          <StackPanel x:Name="SidebarItems">
+            <Button x:Name="HomeButton" AutomationProperties.Name="首页" Style="{StaticResource SidebarItemActive}" Tag="Home" Click="Nav_Click">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE80F;"/>
+                <TextBlock Grid.Column="1" Text="首页" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="WordButton" AutomationProperties.Name="单词" Style="{StaticResource SidebarItem}" Tag="Word" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE8F1;"/>
+                <TextBlock Grid.Column="1" Text="单词" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="PhraseButton" AutomationProperties.Name="短语" Style="{StaticResource SidebarItem}" Tag="Phrase" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE8FD;"/>
+                <TextBlock Grid.Column="1" Text="短语" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="SentenceButton" AutomationProperties.Name="语句" Style="{StaticResource SidebarItem}" Tag="Sentence" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE7C3;"/>
+                <TextBlock Grid.Column="1" Text="语句" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="ReviewButton" AutomationProperties.Name="复习" Style="{StaticResource SidebarItem}" Tag="Review" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE72C;"/>
+                <TextBlock Grid.Column="1" Text="复习" VerticalAlignment="Center"/>
+                <Border x:Name="ReviewBadge" Grid.Column="2" Style="{StaticResource SidebarBadge}"
+                        Visibility="Collapsed">
+                  <TextBlock x:Name="ReviewBadgeText" FontSize="10.5" HorizontalAlignment="Center"
+                             VerticalAlignment="Center" Foreground="{DynamicResource BrandTextBrush}"/>
+                </Border>
+              </Grid>
+            </Button>
+            <Button x:Name="DocumentButton" AutomationProperties.Name="文档" Style="{StaticResource SidebarItem}" Tag="Document" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE8A5;"/>
+                <TextBlock Grid.Column="1" Text="文档" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="SpeechButton" AutomationProperties.Name="语音" Style="{StaticResource SidebarItem}" Tag="Speech" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE720;"/>
+                <TextBlock Grid.Column="1" Text="语音" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
 
-          <!-- 套餐 排在 账号 之前：先看买什么，再看自己是谁；套餐名挂在 套餐 那一行，读作「当前套餐」 -->
-          <Button x:Name="PlanButton" Style="{StaticResource SidebarItem}" Tag="Plan" Click="Nav_Click">
-            <DockPanel>
-              <TextBlock x:Name="PlanLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
-                         Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
-              <TextBlock Text="套餐" VerticalAlignment="Center"/>
-            </DockPanel>
-          </Button>
-          <Button x:Name="AccountButton" Style="{StaticResource SidebarItem}" Tag="Account" Click="Nav_Click" Margin="0,2,0,0">
-            <TextBlock Text="账号"/>
-          </Button>
-          <Button x:Name="SettingsButton" Style="{StaticResource SidebarItem}" Tag="Settings" Click="Nav_Click" Margin="0,2,0,0">
-            <TextBlock Text="设置"/>
-          </Button>
-        </StackPanel>
-      </DockPanel>
-    </Border>
+            <Border Height="1" Background="{DynamicResource HairBrush}" Margin="10,10,10,10"/>
 
-    <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
-         页面自己不带底色（Transparent），底下的渐变由窗口提供——换页时整块渐变不闪。 -->
-    <ContentControl Grid.Column="1" x:Name="PageHost" Background="Transparent"/>
+            <Button x:Name="PlanButton" AutomationProperties.Name="套餐" Style="{StaticResource SidebarItem}" Tag="Plan" Click="Nav_Click">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE8C7;"/>
+                <TextBlock Grid.Column="1" Text="套餐" VerticalAlignment="Center"/>
+                <TextBlock x:Name="PlanLabel" Grid.Column="2" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"/>
+              </Grid>
+            </Button>
+            <Button x:Name="AccountButton" AutomationProperties.Name="账号" Style="{StaticResource SidebarItem}" Tag="Account" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE77B;"/>
+                <TextBlock Grid.Column="1" Text="账号" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button x:Name="SettingsButton" AutomationProperties.Name="设置" Style="{StaticResource SidebarItem}" Tag="Settings" Click="Nav_Click" Margin="0,1,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE713;"/>
+                <TextBlock Grid.Column="1" Text="设置" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
+           页面自己不带底色（Transparent），底下的雾色由窗口提供——换页时整块渐变不闪。 -->
+      <ContentControl Grid.Column="1" x:Name="PageHost" Background="Transparent" Margin="20,0,0,0"/>
+    </Grid>
   </Grid>
 </Window>

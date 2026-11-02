@@ -129,9 +129,9 @@
                    如果 Padding 留在 Border 上，蓝色底会缩在描边里面一圈 -->
               <Border x:Name="bd" BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="8" Effect="{x:Null}">
+                      CornerRadius="10" Effect="{DynamicResource NavGlowEffect}">
                 <Grid>
-                  <Border x:Name="fill" Background="{DynamicResource BrandBrush}" CornerRadius="7"/>
+                  <Border x:Name="fill" Background="{DynamicResource BrandGradientBrush}" CornerRadius="9"/>
                   <!-- 顶部高光：一条 20% 白的细边，给纯色按钮一点厚度 -->
                   <Border x:Name="gloss" Height="1" VerticalAlignment="Top" Margin="1,1,1,0"
                           CornerRadius="7,7,0,0" Background="#33FFFFFF"/>
@@ -141,8 +141,10 @@
               </Border>
             </Grid>
             <ControlTemplate.Triggers>
+              <!-- v85：底色已经是渐变，悬停改用透明度压暗——渐变画刷一旦被替换成纯色，
+                   按钮就会和侧栏活动项那块渐变色块脱节。 -->
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandHoverBrush}"/>
+                <Setter TargetName="fill" Property="Opacity" Value="0.90"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandPressedBrush}"/>
@@ -442,13 +444,15 @@
 
     <!-- 侧边栏（v48 单窗口外壳） -->
     <Style x:Key="SidebarItem" TargetType="Button">
-      <Setter Property="Height" Value="38"/>
-      <Setter Property="Padding" Value="12,0"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <!-- v85：十项要在 660 高的窗口里全部露出来。v48 的 40 高在旧版（侧栏贴边、
+           没有品牌区）刚好，加了两团光与浮卡内边距后第 10 项会被底部的取词开关切掉。 -->
+      <Setter Property="Height" Value="35"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontSize" Value="13.5"/>
       <Setter Property="Cursor" Value="Hand"/>
       <!-- 默认的虚线焦点框会叠在活动高亮上面，看起来像 bug；
            高亮本身已经说明了你在哪个页面。v69：换成外面一圈 2px 品牌色环，
@@ -457,33 +461,21 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <!-- v60：悬停时整行向右挪 2px，读起来像"被手推了一下"；只挪不缩放，
-                 侧栏很窄，缩放会挤到右边的角标 -->
             <Grid x:Name="root">
               <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
-                      CornerRadius="9" Margin="-1"/>
-              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="8">
-                <Grid>
-                  <Border x:Name="marker" Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
-                          Background="Transparent" Margin="0,9,0,9"/>
-                  <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
-                </Grid>
+                      CornerRadius="12" Margin="-1"/>
+              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="11">
+                <ContentPresenter Margin="10,0" VerticalAlignment="Center"/>
               </Border>
             </Grid>
             <ControlTemplate.Triggers>
-              <!-- v70：悬停给出和点下去同一圈 2px 品牌色环。点侧栏时那圈蓝是焦点环，
-                   一闪就没了（选中后换成活动项样式，那支模板没有环），用户觉得好看，
-                   要求悬停也这样。底色仍是原来的 HoverBrush，不动。
-                   v70 返工：右移动画原先只加在 fill 上，fill 被推走后把环的右边整个盖住，
-                   截图上只剩左/上/下三段。改挂到 root，环与填充一起挪，四边等宽。 -->
+              <!-- v85 雾光：悬停底色换成纯白——浮卡本身是半透明白，只有纯白块才托得住；
+                   配 v70 用户点名要的那圈 2px 品牌色环。v60 的 2px 右移取消：
+                   新侧栏左右各 10px 内边距，再挪就顶到浮卡边上了。 -->
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
-                <Setter TargetName="fill" Property="Background" Value="{DynamicResource HoverBrush}"/>
-                <Setter TargetName="root" Property="RenderTransform">
-                  <Setter.Value>
-                    <TranslateTransform X="2"/>
-                  </Setter.Value>
-                </Setter>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
@@ -494,48 +486,159 @@
       </Setter>
     </Style>
 
-    <!-- 活动项故意重复整个模板：控件模板无法只覆盖继承模板里的某一个元素，
-         而这里变的只有左侧那条标记。 -->
+    <!-- 活动项重复整个模板：控件模板无法只覆盖继承模板里的某一个元素。
+         v85 雾光：从"浅蓝底 + 左侧竖条"换成品牌渐变的实色块，底下垫一圈同色辉光——
+         整条侧栏里只有它是重色块，一眼就能定位。 -->
     <Style x:Key="SidebarItemActive" TargetType="Button" BasedOn="{StaticResource SidebarItem}">
-      <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-      <!-- v69：压在 BrandFill 上的文字用 BrandText，Brand 在这里只有 3.71:1。 -->
-      <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="7">
-              <Grid>
-                <Border Width="3" HorizontalAlignment="Left" CornerRadius="1.5"
-                        Background="{DynamicResource BrandBrush}" Margin="0,9,0,9"/>
-                <ContentPresenter Margin="14,0,10,0" VerticalAlignment="Center"/>
-              </Grid>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="12" Margin="-1"/>
+              <Border x:Name="fill" Background="{DynamicResource BrandGradientBrush}" CornerRadius="11"
+                      Effect="{DynamicResource NavGlowEffect}">
+                <ContentPresenter Margin="10,0" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <!-- 实色块上不再叠悬停底色，只留焦点环：在一整块品牌渐变上再压白会显脏。 -->
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
 
-    <!-- 侧边栏项上的计数气泡；一位数是圆，三位数会撑成胶囊形 -->
+    <!-- v85：计数从"红点胶囊"换成品牌浅底药丸。侧栏现在是一张半透明浮卡，
+         红色小方块在冷暖两色之间跳得太凶；数字读得清就够了，不需要嚷。 -->
     <Style x:Key="SidebarBadge" TargetType="Border">
-      <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="MinWidth" Value="16"/>
-      <Setter Property="Height" Value="16"/>
-      <Setter Property="Padding" Value="5,0"/>
+      <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="MinWidth" Value="18"/>
+      <Setter Property="Height" Value="18"/>
+      <Setter Property="Padding" Value="6,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
 
-    <!-- v61：卡片不加投影。白底、细边框与页面渐变的明度差已经足够分区；
-         一圈灰色外发光在浅底上会显脏。 -->
+    <!-- v85 改掉 v61 的判断：当年去掉投影的理由是"浅底上一圈灰外发光会显脏"。雾光布局的底
+         不是纯白而是一片冷雾渐变，卡片不带影子就贴不住纸面；脏的根源是**中性灰**影子，
+         所以阴影色相跟着 Shadow 令牌走，落在蓝底上是加深而不是发灰。 -->
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="12"/>
-      <Setter Property="Padding" Value="16,14,16,16"/>
-      <Setter Property="Margin" Value="0,0,0,14"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
+      <Setter Property="Padding" Value="18,16,18,18"/>
+      <Setter Property="Margin" Value="0,0,0,16"/>
+    </Style>
+
+    <!-- ===== v85 雾光布局的构件 ===== -->
+
+    <!-- 侧栏线性图标：用 Segoe MDL2 Assets 的字形而不是十个 Path——图标只是装饰，
+         字形由一个字体统一给出笔画粗细，比手画路径更容易保持一致。Win11 上同名字形
+         由 Segoe Fluent Icons 提供，两个字体都列上。颜色不在这里定，让它继承
+         Button.Foreground，活动项变成白字时图标跟着变白。 -->
+    <Style x:Key="NavIcon" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Width" Value="26"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- 主内容区的大卡：没有默认内边距，标题栏/正文/底栏各自由页面摆位。
+         ClipToBounds 是为了圆角能把卡片内贴边的色块切齐（译文左侧那道竖线）。 -->
+    <Style x:Key="CardSurface" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
+      <Setter Property="ClipToBounds" Value="True"/>
+    </Style>
+
+    <!-- 顶栏那几枚白色药丸（语言、模型、积分）。影子比卡片轻一档，
+         它们是贴在纸面上的小标签，不该和卡片抢层次。 -->
+    <Style x:Key="TopPill" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="Padding" Value="12,5"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Effect" Value="{DynamicResource GlassShadowEffect}"/>
+    </Style>
+
+    <Style x:Key="PillDot" TargetType="Ellipse">
+      <Setter Property="Width" Value="7"/>
+      <Setter Property="Height" Value="7"/>
+      <Setter Property="Margin" Value="0,0,7,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Fill" Value="{DynamicResource BrandBrush}"/>
+    </Style>
+
+    <!-- 快捷键帽：Ctrl / Enter 各一枚，读起来像键盘上的键 -->
+    <Style x:Key="Kbd" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="7,3"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- 译文下面那排软胶囊（复制译文 / 存到单词本）。它们是动作，不做成描边按钮，
+         免得和主按钮抢注意力。 -->
+    <Style x:Key="ChipButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Padding" Value="11,5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="20"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillHoverBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 页脚那种纯文字动作（截图翻译 / 配置 Key）：没有底色，悬停才亮 -->
+    <Style x:Key="FlatLinkButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Padding" Value="2,2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <!-- ===== 四档自评（v61） =====

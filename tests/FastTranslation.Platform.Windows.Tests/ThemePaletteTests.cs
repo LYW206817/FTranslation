@@ -50,9 +50,11 @@ public class ThemePaletteTests
                 palette.Surface, palette.Hair, palette.HairStrong, palette.BorderStrong,
                 palette.Hover, palette.TextPrimary, palette.TextSecondary, palette.TextMuted,
                 palette.Danger, palette.Notice, palette.BoltFrom, palette.BoltTo,
-                palette.BrandText,
+                palette.BrandText, palette.PageFrom, palette.PageTo, palette.PageEnd,
+                palette.Glass, palette.GlassEdge, palette.GlowBrand, palette.GlowWarm,
+                palette.Warm,
             };
-            Assert.Equal(21, values.Length);
+            Assert.Equal(29, values.Length);
             Assert.All(values, v =>
             {
                 Assert.False(string.IsNullOrWhiteSpace(v));

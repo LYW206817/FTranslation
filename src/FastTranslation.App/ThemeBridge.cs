@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using FastTranslation.Platform.Windows;
 
 namespace FastTranslation.App;
@@ -54,11 +55,93 @@ internal static class ThemeBridge
         // 深色主题的档位色是亮色，选中实底时必须配深字；浅色则相反。
         Set(r, "GradeSelectedTextBrush", ThemePalette.Current == AppTheme.Dark ? "#101820" : "#FFFFFF");
 
-        // 页面底色：左上到右下。侧栏是同一套色相的更窄一段，用来和内容区分开。
-        SetGradient(r, "PageGradientBrush", c.PageFrom, c.PageTo, 0.15, 0.85);
+        // v85 雾光：页底改成三段——冷雾起手、近白在中段 58% 收住、右下一角压一点暖色。
+        // 两段渐变的过渡在中段附近会形成一条可见的软边，所以中段必须取「几乎无色」的那一档。
+        SetGradient(
+            r, "PageGradientBrush",
+            (c.PageFrom, 0d), (c.PageTo, 0.58), (c.PageEnd, 1d),
+            new Point(0, 0), new Point(1, 1));
         SetGradient(r, "SidebarGradientBrush", c.SidebarFrom, c.SidebarTo, 0.0, 1.0);
+        // 品牌渐变只给两处用：侧栏活动项与主按钮。光从左上打进来，所以从 Brand 走到 BrandPressed。
+        SetGradient(r, "BrandGradientBrush", c.Brand, c.BrandPressed, new Point(0, 0), new Point(1, 1));
         // 引文线那道窄渐变斜着走（0,0 → 0.35,1），不是上下铺满，所以单独给端点。
         SetGradient(r, "BoltRuleBrush", c.BoltFrom, c.BoltTo, new Point(0, 0), new Point(0.35, 1));
+        // 窗口里那两团光：右上冷、左下暖。各自都是一个径向渐变，压得很淡，
+        // 只在整片雾色底上透出来，落在卡片底下时因为卡片是不透明的而被挡住。
+        SetGlow(r, "GlowBrandBrush", c.GlowBrand);
+        SetGlow(r, "GlowWarmBrush", c.GlowWarm);
+        Set(r, "GlassBrush", c.Glass);
+        Set(r, "GlassEdgeBrush", c.GlassEdge);
+        Set(r, "WarmBrush", c.Warm);
+        // 投影强度的系数按主题分两档：深色底下黑影子本来就显眼，同样的 alpha 会糊成一团。
+        var dark = ThemePalette.Current == AppTheme.Dark;
+        SetDropShadow(r, "CardShadowEffect", c.Shadow, dark ? 0.70 : 0.85, 34, 9);
+        SetDropShadow(r, "GlassShadowEffect", c.Shadow, dark ? 0.60 : 0.70, 30, 7);
+        // 侧栏活动项与主按钮下面那圈品牌色辉光，颜色跟着强调色走，不能写死在 XAML 里。
+        SetDropShadow(r, "NavGlowEffect", c.Brand, dark ? 0.30 : 0.34, 18, 6);
+    }
+
+    private static Color Parse(string hex) => (Color)ColorConverter.ConvertFromString(hex);
+
+    /// <summary>三段线性渐变。中段的 stop 位置由调用方给，用来把冷暖两半的分界推开一点。</summary>
+    private static void SetGradient(
+        ResourceDictionary resources,
+        string key,
+        (string Hex, double At) from,
+        (string Hex, double At) mid,
+        (string Hex, double At) to,
+        Point start,
+        Point end)
+    {
+        var brush = new LinearGradientBrush { StartPoint = start, EndPoint = end };
+        brush.GradientStops.Add(new GradientStop(Parse(from.Hex), from.At));
+        brush.GradientStops.Add(new GradientStop(Parse(mid.Hex), mid.At));
+        brush.GradientStops.Add(new GradientStop(Parse(to.Hex), to.At));
+        brush.Freeze();
+        resources[key] = brush;
+    }
+
+    /// <summary>
+    /// 径向光晕：中心偏左上，颜色在外圈渐隐成同色全透明。
+    /// 用径向而不是线性，是因为它要看起来像"一团光打在窗口角上"，线性会留下一条直边。
+    /// </summary>
+    private static void SetGlow(ResourceDictionary resources, string key, string hex)
+    {
+        var color = Parse(hex);
+        var brush = new RadialGradientBrush
+        {
+            Center = new Point(0.35, 0.35),
+            GradientOrigin = new Point(0.35, 0.35),
+            RadiusX = 0.68,
+            RadiusY = 0.68,
+        };
+        brush.GradientStops.Add(new GradientStop(color, 0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0, color.R, color.G, color.B), 1));
+        brush.Freeze();
+        resources[key] = brush;
+    }
+
+    /// <summary>
+    /// 投影。颜色与 alpha 都来自 Shadow 令牌，alpha 再乘一个「这一层该有多重」的系数：
+    /// 同一条 Shadow 要同时支撑窗口里的大卡、侧栏浮卡和按钮下面那圈辉光，
+    /// 只用 alpha 的话三者会一样重。RenderingBias 取 Performance——这些影子铺满整窗，
+    /// 质量档在大尺寸模糊上换不来肉眼可见的差别。
+    /// </summary>
+    private static void SetDropShadow(
+        ResourceDictionary resources, string key, string hex, double weight, double blur, double depth)
+    {
+        var color = Parse(hex);
+        var effect = new DropShadowEffect
+        {
+            Color = Color.FromRgb(color.R, color.G, color.B),
+            Opacity = color.A / 255d * weight,
+            BlurRadius = blur,
+            ShadowDepth = depth,
+            Direction = 270,
+            RenderingBias = RenderingBias.Performance,
+        };
+        effect.Freeze();
+        resources[key] = effect;
     }
 
     private static void Set(ResourceDictionary resources, string key, string hex)

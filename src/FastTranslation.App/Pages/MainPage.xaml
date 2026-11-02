@@ -3,75 +3,117 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:FastTranslation.App"
              Background="Transparent" FontFamily="Segoe UI, Microsoft YaHei UI">
-  <Grid Margin="24,18,24,14">
+  <Grid Margin="4,6,2,2">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- 输入纸张：安静的一张纸，里面没有别的东西 -->
-    <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
-            BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="4">
-      <Grid MinHeight="96">
-        <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0"
-                 Padding="14,12,14,10" FontSize="14" AcceptsReturn="True" TextWrapping="Wrap"
-                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
-                 TextChanged="InputBox_TextChanged" KeyDown="InputBox_KeyDown"/>
-        <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="14"
-                   Foreground="{DynamicResource TextMutedBrush}"
-                   Margin="15,13,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
-                   Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
-      </Grid>
-    </Border>
+    <!-- 顶栏：白药丸里是语言与模型。药丸比卡片轻一档影子，读起来像贴在雾上的标签 -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,2,14">
+      <Border Style="{StaticResource TopPill}">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Style="{StaticResource PillDot}"/>
+          <!-- 下拉框自己的底与描边都关掉，让药丸当它的外壳 -->
+          <local:FtComboBox x:Name="TargetCombo" Width="150" Background="Transparent"
+                            BorderThickness="0" Padding="0" FontSize="12"
+                            SelectionChanged="TargetCombo_SelectionChanged"/>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource TopPill}" Margin="8,0,0,0">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Style="{StaticResource PillDot}" Fill="{DynamicResource WarmBrush}"/>
+          <TextBlock x:Name="ModelLabel" FontSize="12" VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+      </Border>
+    </StackPanel>
 
-    <!-- 工具栏浮在桌面上，与纸张保持距离 -->
-    <DockPanel Grid.Row="1" Margin="2,12,2,0">
-      <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-        <local:FtComboBox x:Name="TargetCombo" Width="180"
-                          SelectionChanged="TargetCombo_SelectionChanged"/>
-        <Border Margin="10,0,0,0" VerticalAlignment="Center"
-                Background="{DynamicResource BrandFillBrush}" CornerRadius="9" Padding="10,3">
-          <TextBlock x:Name="ModelLabel" FontSize="11" Foreground="{DynamicResource BrandTextBrush}"/>
-        </Border>
+    <!-- 主区：原文一卡、译文一卡。比例 0.85 / 1.15 让译文有更多行距空间 -->
+    <Grid Grid.Row="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="0.85*"/>
+        <RowDefinition Height="1.15*"/>
+      </Grid.RowDefinitions>
+
+      <Border Grid.Row="0" Style="{StaticResource CardSurface}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="原文" FontSize="11.5" Margin="16,13,16,0"
+                     Foreground="{DynamicResource TextMutedBrush}"/>
+
+          <DockPanel DockPanel.Dock="Bottom" Margin="16,0,16,14">
+            <Button x:Name="TranslateButton" Style="{StaticResource PrimaryButton}"
+                    Content="翻译" Padding="24,9" HorizontalAlignment="Right"
+                    Click="Translate_Click"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Border Style="{StaticResource Kbd}">
+                <TextBlock Text="Ctrl" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </Border>
+              <Border Style="{StaticResource Kbd}" Margin="6,0,0,0">
+                <TextBlock Text="Enter" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </Border>
+              <TextBlock Text="快速翻译" FontSize="11" Margin="9,0,0,0" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextMutedBrush}"/>
+            </StackPanel>
+          </DockPanel>
+
+          <Grid Margin="16,8,16,0">
+            <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0" Padding="0"
+                     FontSize="15.5" AcceptsReturn="True" TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     TextChanged="InputBox_TextChanged" KeyDown="InputBox_KeyDown"/>
+            <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="15.5" LineHeight="26"
+                       TextWrapping="Wrap" VerticalAlignment="Top"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
+          </Grid>
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Row="1" Style="{StaticResource CardSurface}" Margin="0,14,0,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="译文" FontSize="11.5" Margin="16,13,16,0"
+                     Foreground="{DynamicResource TextMutedBrush}"/>
+
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="16,0,16,14">
+            <Button x:Name="CopyResultButton" Style="{StaticResource ChipButton}" Content="复制译文"
+                    Click="CopyResult_Click" IsEnabled="False"/>
+            <Button x:Name="SaveButton" Style="{StaticResource ChipButton}" Content="存到单词本"
+                    Margin="7,0,0,0" Click="Save_Click" IsEnabled="False"/>
+          </StackPanel>
+
+          <ScrollViewer Margin="16,8,16,0" VerticalScrollBarVisibility="Auto">
+            <Grid VerticalAlignment="Top">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
+                         Fill="{DynamicResource BoltRuleBrush}" Margin="0,6,14,6"
+                         VerticalAlignment="Stretch"/>
+              <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="16.5"
+                         LineHeight="31" Foreground="{DynamicResource TextPrimaryBrush}"
+                         Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
+            </Grid>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <!-- 页脚：左边是快捷键提示与 Key 状态，右边两个去处 -->
+    <DockPanel Grid.Row="2" Margin="8,12,8,2">
+      <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+        <Button x:Name="ScreenshotButton" Style="{StaticResource FlatLinkButton}"
+                Content="截图翻译" Click="Screenshot_Click"/>
+        <Button x:Name="KeyButton" Style="{StaticResource FlatLinkButton}"
+                Content="配置 Key" Margin="12,0,0,0" Click="KeyButton_Click"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-        <Button x:Name="CopyResultButton" Content="复制译文" Padding="12,5" Margin="0,0,8,0"
-                Click="CopyResult_Click" IsEnabled="False"/>
-        <Button x:Name="SaveButton" Content="存到单词本" Padding="12,5" Margin="0,0,8,0"
-                Click="Save_Click" IsEnabled="False"/>
-        <Button x:Name="TranslateButton" Style="{StaticResource PrimaryButton}"
-                Content="翻译" Padding="24,6" Margin="0" Click="Translate_Click"/>
-      </StackPanel>
-    </DockPanel>
-
-    <!-- 译文：写在桌面上的一段引文 -->
-    <ScrollViewer Grid.Row="2" Margin="2,18,2,0" VerticalScrollBarVisibility="Auto">
-      <Grid VerticalAlignment="Top">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Rectangle Grid.Column="0" Width="3" RadiusX="1.5" RadiusY="1.5"
-                   Fill="{DynamicResource BoltRuleBrush}" Margin="0,5,16,5" VerticalAlignment="Stretch"/>
-        <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="14" LineHeight="26"
-                   Foreground="{DynamicResource TextPrimaryBrush}"
-                   Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
-      </Grid>
-    </ScrollViewer>
-
-    <!-- 底栏：本页能去到的两个去处 -->
-    <DockPanel Grid.Row="3" Margin="2,12,2,0">
-      <Button x:Name="KeyButton" Content="配置 Key" DockPanel.Dock="Right" HorizontalAlignment="Right"
-              Padding="10,4" FontSize="12" Margin="0" Click="KeyButton_Click"/>
-      <Button x:Name="ScreenshotButton" Content="截图翻译" DockPanel.Dock="Right"
-              HorizontalAlignment="Right" Padding="10,4" FontSize="12" Margin="0,0,8,0"
-              Click="Screenshot_Click"/>
-      <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Right" VerticalAlignment="Center"
-                 Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,0,12,0"/>
+      <TextBlock x:Name="HotkeyHint" DockPanel.Dock="Left" VerticalAlignment="Center"
+                 Foreground="{DynamicResource TextMutedBrush}" FontSize="11.5" Margin="0,0,14,0"/>
       <TextBlock x:Name="KeyStatus" VerticalAlignment="Center"
-                 Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+                 Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5"/>
     </DockPanel>
   </Grid>
 </UserControl>

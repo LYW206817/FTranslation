@@ -2443,3 +2443,50 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
 - 预览只覆盖主题与强调色。同一张卡里的目标语言、模型、热键、开机自启仍是「保存才动」，读起来是一致的（提示语写明了热键）。
 - `Unloaded` 里的回退依赖页面被移出可视树。若将来把设置做成独立窗口或用 `Visibility` 隐藏，这条回退就失效，得改成显式的 `Closed`。
 - 切换时没有过渡动画：整屏颜色瞬间跳变。要顺滑得给窗口做交叉淡入，代价是一次全屏重绘，暂不做。
+
+## v85 · 雾光布局真正落进 WPF：浮卡侧栏、三段渐变底、双卡片主区（1.5.0）
+
+v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊，你只改了个颜色，样式一点没变」（m06129）。
+这一版把 `publish/ui-redesign/v3b-haze-blue.html` 那版设计稿的**结构**搬进 WPF：渐变底 + 两团光、玻璃浮卡侧栏、线性图标、白色药丸、上下两张卡片、渐变主按钮。
+
+**设计令牌（`src/FastTranslation.Platform.Windows/ThemePalette.cs`）**：新增六支，全部带默认值并追加在 record 末尾，`Compose` 的 `with` 表达式不受影响。
+
+- `PageEnd`：三段渐变的第三站，浅 `#FFF4EF` / 深 `#1D1712`。155° 渐变收在一点暖色上，避免整片冷蓝读起来像办公软件。
+- `Glass` / `GlassEdge`：侧栏浮卡的半透明白（浅 `#BDFFFFFF` / 深 `#B31B2029`）与 1px 描边（浅 `#FFFFFF` / 深 `#1FFFFFFF`）。卡必须透出底下的雾色，否则和页面底色之间只剩一圈阴影在分区。
+- `GlowBrand` / `GlowWarm`：右上冷光、左下暖光的径向起点（浅 `#382F62FF` / `#26FF7A59`，深 `#3A4A82FF` / `#1FFF7A59`）。
+- `Warm`：光晕那支暖色的实色版（浅 `#FF7A59` / 深 `#FF8F73`），顶栏模型药丸的圆点用它——直接拿 `GlowWarm` 太淡，看不见。
+
+**`src/FastTranslation.App/ThemeBridge.cs`** 相应新增 `PageGradientBrush`（`PageFrom` 0 → `PageTo` 0.58 → `PageEnd` 1，(0,0)→(1,1)）、`BrandGradientBrush`、`GlowBrandBrush` / `GlowWarmBrush`（径向，Center 与 GradientOrigin 都是 0.35,0.35，外圈同色 alpha 0）、`GlassBrush` / `GlassEdgeBrush` / `WarmBrush`，以及三支 `DropShadowEffect`：`CardShadowEffect`（模糊 34 / 纵深 9）、`GlassShadowEffect`（30 / 7）、`NavGlowEffect`（品牌色，18 / 6）。投影强度按主题分两档——深色底下黑影子本来就显眼，同样的 alpha 会糊成一团。
+
+**`src/FastTranslation.App/App.xaml`**
+
+- `Card`：圆角 16、去边框、`Effect=CardShadowEffect`、内边距 18,16,18,18。**改掉 v61 的判断**：当年去掉投影的理由是「浅底上一圈灰外发光会显脏」，雾光布局的底本身是冷蓝渐变，阴影色相跟着 `Shadow` 令牌走，落在蓝底上是加深而不是发灰。
+- `SidebarItem`：高度 40 → **35**（见下方踩坑 2）；悬停是纯白底 + 2px 品牌色环，不再用 v60 的 2px 右移；`SidebarItemActive` 改成 `BrandGradientBrush` 实块 + `NavGlowEffect`。
+- 新增七支共用样式：`NavIcon`（`Segoe Fluent Icons, Segoe MDL2 Assets`，15px，宽 26，不定 `Foreground` 以便继承活动项的白字）、`CardSurface`、`TopPill`、`PillDot`、`Kbd`、`ChipButton`、`FlatLinkButton`；`PrimaryButton` 底色改渐变、圆角 10/9、加 `NavGlowEffect`。
+
+**`src/FastTranslation.App/MainWindow.xaml` 整份重写**：底层两个 `Ellipse`（`IsHitTestVisible=False`，否则会挡住底下所有按钮）→ `Grid Margin=14` 两列 200/* → 玻璃侧栏（品牌方块 + 十个图标项 + 分隔条 + 底部取词开关白卡与账号行）→ `PageHost`。十个导航按钮仍是 `SidebarItems` 的直接 `Button` 子项（`MainWindow.xaml.cs` 的 `SyncSidebar` 靠 `OfType<Button>()` 遍历），分隔条是 `Border` 所以不影响。图标用 MDL2 字形而非十个 `Path`：装饰性的十枚图标不值得各写一段矢量。
+
+**`src/FastTranslation.App/Pages/MainPage.xaml` 整份重写**：顶栏两枚白药丸（语言下拉平铺进药丸、模型名 + 暖色圆点）、主区 `0.85* / 1.15*` 两张卡片（原文 / 译文，译文左侧保留渐变竖线）、`Ctrl` / `Enter` 两枚键帽 + 渐变「翻译」主按钮、译文下方两枚 chip 胶囊、页脚两枚纯文字动作。12 个被代码引用的 `x:Name` 全部保留；设计稿里的「朗读」「已收录」两枚胶囊**没有**实现——产品里没有这两个功能，不能假造。
+
+**无障碍**：十个导航按钮补 `AutomationProperties.Name`。内容从纯文字换成 `Grid` 之后 UIA 的 `Name` 变空，读屏软件读不出来，QA 脚本也点不到。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- `tests/FastTranslation.Platform.Windows.Tests/ThemePaletteTests.cs`：令牌计数 21 → 29（六支新令牌）。
+- `tests/FastTranslation.Platform.Windows.Tests/ThemeResourceKeysTests.cs`：注入键的正则从 `[A-Za-z0-9]+Brush` 放宽到 `(?:Brush|Effect)`——三支 `DropShadowEffect` 也只在 `ThemeBridge` 里出现，否则会被误报成「引用了没人定义的键」。
+- 像素证据（`PrintWindow(hwnd, dc, 2)`，1820x1155，缩放 1.75）：浅色 `(60,60) #E6EEFE` = `PageFrom`、`(1790,1140) #FFF4EF` = `PageEnd`、`(217,200) #2F5DEC` = 活动项渐变、`(700,300) #FFFFFF` = 卡片白、`(200,900) #F7F8FB` = 玻璃侧栏；深色对应 `#1B2232` / `#1D1712` / `#4278EF` / `#1F242C` / `#191D26`；标题栏 `#202020`（深）/ `#F3F3F3`（浅）。
+- 十个图标码 `E80F E8F1 E8FD E7C3 E72C E8A5 E720 E8C7 E77B E713` 用 `GlyphTypeface.CharacterToGlyphMap` 验过：`Segoe Fluent Icons` 与 `Segoe MDL2 Assets` 两套字体里全部存在，不会显示豆腐块。
+
+**踩坑**
+
+1. `tools/qa/shot-main-theme.ps1` 用 `CopyFromScreen` 抓窗口，窗口比桌面大时抓进来的是桌面本身——它给出的浅色图整片 `#FBFCFF`，据此会误判「渐变没生效」。新增 `tools/qa/shot85.ps1`，一律 `PrintWindow(hwnd, dc, 2)` + `SetProcessDPIAware()`。
+2. 侧栏十项按 v48 的 40 高排下来刚好顶到底部取词开关，**第 10 项「设置」被切到窗口外**，UIA 点不到，`audit-light-settings.png` 和 `audit-light-main.png` 的像素差只有 0.2%（两页完全一样）。高度改 35 后差异 28.6%，页面真正切过去了。判据用像素差而不是「脚本没报错」。
+3. XAML 注释收尾误写成 `*/`，导致后面整支 `FlatLinkButton` 被吞进注释，并因为注释里又出现 `<!--` 报 `MC3000：XML 注释不能包含 '--'`。报错行号指向的是**下一个**注释，不在真正出错的那一行。
+4. `TextBox` 没有 `LineHeight` 属性（`MC3072`），行高只能靠 `TextBlock` 的 `LineHeight` 或字号本身。
+
+**残留风险**
+
+- 其余七页（单词 / 短语 / 语句 / 复习 / 文档 / 语音 / 套餐 / 账号 / 设置）没有逐页重排，只是通过 `Card` 与页面透明底拿到了新的圆角、投影与雾色背景，各自仍用旧的 24px 页边距。层次是一致的，但和主页面比密度略松。
+- 侧栏图标依赖 MDL2 字形。日后若换字体或换码，先在 `GlyphTypeface.CharacterToGlyphMap` 里验过再提交。
