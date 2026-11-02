@@ -61,6 +61,7 @@ public sealed class DashScopeSpeechGateway
         AsrUsage? latestUsage = null;
         var buffer = new byte[64 * 1024];
         var result = new SpeechRelayResult(false, 0, 0, null);
+        var startedAtUtc = DateTimeOffset.UtcNow;
         int billedSeconds = 0;
         long billedIn = 0, billedOut = 0, billedChars = 0, billedCost = 0;
 
@@ -174,6 +175,15 @@ public sealed class DashScopeSpeechGateway
                 Bill(Math.Max(usage.DurationSeconds, options.MinSeconds), usage.InputTokens, usage.OutputTokens);
                 result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, usage.DurationSeconds);
             }
+            else
+            {
+                // 一条 usage 都没收到(连上就断、全程静音、上游早死):按会话墙钟计费。
+                // 不这么做的话「连上就砍」可以白嫖上游 ASR 算力——预检已经放行,不能不计账(v81)。
+                var wall = Math.Min(Math.Max(0, (int)(DateTimeOffset.UtcNow - startedAtUtc).TotalSeconds),
+                    sessionSeconds);
+                Bill(Math.Max(wall, options.MinSeconds), 0, 0);
+                result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, wall);
+            }
 
             // 关流只在这里做:上游泵不再自己关客户端,否则「硬顶到期的错误帧」会和关闭抢时序,
             // 客户端有时只看到连接断了、不知道是额度讲完了(v81)。
@@ -216,6 +226,9 @@ public sealed class DashScopeSpeechGateway
         Action<AsrUsage> onUsage)
     {
         var buffer = new byte[64 * 1024];
+        // 一条 JSON 可能跨多帧(DashScope 的长句终稿带 words[],单帧可达数十 KB);
+        // 必须等 EndOfMessage 拼完再解析,否则截断的 JSON 会被当成坏帧静默丢掉(v81)。
+        using var textBuffer = new MemoryStream();
         try
         {
             while (upstream.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -229,7 +242,20 @@ public sealed class DashScopeSpeechGateway
                 {
                     continue;
                 }
-                using var json = JsonDocument.Parse(Encoding.UTF8.GetString(buffer, 0, received.Count));
+                textBuffer.Write(buffer, 0, received.Count);
+                while (!received.EndOfMessage)
+                {
+                    received = await upstream.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                    if (received.MessageType != WebSocketMessageType.Text)
+                    {
+                        break;
+                    }
+
+                    textBuffer.Write(buffer, 0, received.Count);
+                }
+
+                using var json = JsonDocument.Parse(textBuffer.GetBuffer().AsMemory(0, (int)textBuffer.Length));
+                textBuffer.SetLength(0);
                 if (!json.RootElement.TryGetProperty("header", out var header)
                     || !header.TryGetProperty("event", out var evt))
                 {

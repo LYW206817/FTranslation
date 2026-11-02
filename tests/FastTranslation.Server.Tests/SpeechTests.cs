@@ -159,6 +159,10 @@ internal static class SpeechSocketExtensions
     public static Task SendBinaryAsync(this WebSocket socket, byte[] payload)
         => socket.SendAsync(payload, WebSocketMessageType.Binary, true, Timeout());
 
+    /// <summary>发一条被拆开的文本帧片段(EndOfMessage=false 表示后面还有)。</summary>
+    public static Task SendTextFragmentAsync(this WebSocket socket, string text, bool endOfMessage)
+        => socket.SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, endOfMessage, Timeout());
+
     public static async Task<string> ReceiveTextAsync(this WebSocket socket)
     {
         var buffer = new byte[64 * 1024];
@@ -434,4 +438,131 @@ public class DashScopeSpeechRelayTests
             }
         }
     }
+    /// <summary>上游一条 usage 都没报（连上就断、全程静音）时必须按会话墙钟计费。</summary>
+    /// <remarks>不这么做的话「连上就砍」可以白嫖上游 ASR 算力：预检已经放行，不能不计账（v81）。</remarks>
+    [Fact]
+    public async Task Bills_wall_clock_when_upstream_never_reports_usage()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), "ft-speech-tests", Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        try
+        {
+            var database = new ServerDatabase(databasePath);
+            database.Initialize();
+            var store = new AccountStore(database);
+            var user = store.CreateUser($"relay-wall-{Guid.NewGuid():N}@example.com", "hash", PlanTier.Free);
+            var device = store.RegisterDevice(user.Id, "fp-wall", "test-pc").Device!.Id;
+
+            var (clientTest, clientRelay) = FakeWebSocket.CreatePair();
+            var (upstreamTest, upstreamRelay) = FakeWebSocket.CreatePair();
+            var options = new SpeechOptions
+            {
+                Enabled = true,
+                WsUrl = "ws://speech.test/asr",
+                Model = AsrModel,
+                QuotaCharsPerSecond = 20,
+                MinSeconds = 1,
+            };
+            var gateway = new DashScopeSpeechGateway(options, "test-key",
+                _ => Task.FromResult<WebSocket>(upstreamRelay));
+
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
+            Assert.Contains("\"action\":\"run-task\"", await upstreamTest.ReceiveTextAsync());
+
+            // 不推音频、上游也不回 usage：直接砍掉客户端，看是否照样记账。
+            clientTest.Abort();
+            Assert.Contains("\"action\":\"finish-task\"", await upstreamTest.ReceiveTextAsync());
+
+            var result = await relay;
+            Assert.True(result.Recorded);
+            // 墙钟至少有 1 秒(MinSeconds=1 → 20 字符),拿到上限 600 秒为止;不赌精确值,只赌「确实记了账」。
+            Assert.InRange(result.QuotaChars, 20, 600 * 20);
+            Assert.Equal(result.QuotaChars, store.ReadUsage(user.Id, device).MonthlyChars);
+            Assert.Equal(0, result.CostMicros); // 没收到 token 数,成本按 0 记
+        }
+        finally
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try
+                {
+                    File.Delete(databasePath + suffix);
+                }
+                catch (IOException)
+                {
+                    // 尽力而为地清理。
+                }
+            }
+        }
+    }
+
+    /// <summary>一条 JSON 被拆成多帧时必须拼完再解析。</summary>
+    /// <remarks>DashScope 长句终稿带 words[]，单帧可达数十 KB 且可能跨帧；截断的 JSON 若直接解析会被当坏帧丢掉（v81）。</remarks>
+    [Fact]
+    public async Task Assembles_json_split_across_text_frames()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), "ft-speech-tests", Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        try
+        {
+            var database = new ServerDatabase(databasePath);
+            database.Initialize();
+            var store = new AccountStore(database);
+            var user = store.CreateUser($"relay-frag-{Guid.NewGuid():N}@example.com", "hash", PlanTier.Free);
+            var device = store.RegisterDevice(user.Id, "fp-frag", "test-pc").Device!.Id;
+
+            var (clientTest, clientRelay) = FakeWebSocket.CreatePair();
+            var (upstreamTest, upstreamRelay) = FakeWebSocket.CreatePair();
+            var options = new SpeechOptions
+            {
+                Enabled = true,
+                WsUrl = "ws://speech.test/asr",
+                Model = AsrModel,
+                QuotaCharsPerSecond = 20,
+                MinSeconds = 10,
+            };
+            var gateway = new DashScopeSpeechGateway(options, "test-key",
+                _ => Task.FromResult<WebSocket>(upstreamRelay));
+
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
+            await upstreamTest.ReceiveTextAsync();
+
+            const string payload = "{\"header\":{\"event\":\"result-generated\"},\"payload\":{\"output\":{\"sentence\":"
+                + "{\"sentence_id\":9,\"text\":\"跨帧的终稿。\",\"sentence_end\":true}},"
+                + "\"usage\":{\"duration\":3,\"input_tokens\":40,\"output_tokens\":12}}}";
+            var half = payload.Length / 2;
+            await upstreamTest.SendTextFragmentAsync(payload[..half], endOfMessage: false);
+            await upstreamTest.SendTextFragmentAsync(payload[half..], endOfMessage: true);
+
+            var frame = await clientTest.ReceiveTextAsync();
+            Assert.Contains("\"id\":9", frame);
+            Assert.Contains("\"final\":true", frame);
+            // 能解析出 id 与 final 就证明拼起来的 JSON 完整;文本字段被 System.Text.Json 转义成 \uXXXX,
+            // 因此不再断言中文原文(转义形式与 .NET 版本相关,断言它只会让测试变脆)。
+
+            clientTest.Abort();
+            await upstreamTest.ReceiveTextAsync();
+            var result = await relay;
+            Assert.True(result.Recorded);
+            // duration=3 秒不足 MinSeconds=10,按 10 起算:10 × 20 = 200 字符
+            Assert.Equal(200, result.QuotaChars);
+        }
+        finally
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try
+                {
+                    File.Delete(databasePath + suffix);
+                }
+                catch (IOException)
+                {
+                    // 尽力而为地清理。
+                }
+            }
+        }
+    }
+
 }
