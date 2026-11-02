@@ -20,7 +20,18 @@
     "Gateway": {
       "Enabled": true,
       "ApiKey": "__DASHSCOPE_API_KEY__",
-      "DailyBudgetMicros": 5000000
+      "DailyBudgetMicros": 5000000,
+      "Speech": {
+        "Enabled": true,
+        "WsUrl": "wss://__WORKSPACE_ID__.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference",
+        "WorkspaceId": "__WORKSPACE_ID__",
+        "Model": "qwen-audio-3.1-asr-flash-streaming",
+        "QuotaCharsPerSecond": 20,
+        "MinSeconds": 10,
+        "MaxSecondsPerSession": 1800,
+        "MaxConcurrentSessionsPerUser": 1,
+        "DailyBudgetMicros": 2000000
+      }
     }
   }
 }
