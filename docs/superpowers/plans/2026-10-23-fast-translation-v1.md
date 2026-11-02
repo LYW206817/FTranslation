@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **License note (2026-11-02):** the project was relicensed to AGPL-3.0; "MIT" mentions in this plan are historical records. See `LICENSE`.
+
 **Goal:** Build the Windows v1.0 public beta of Fast Translation: a low-memory WPF tray app that captures selected text, translates it through a user-supplied Qwen-MT key, and supports copy/replace/insert.
 
 **Architecture:** Single-process WPF app split into `Core` (platform-free logic), `Platform.Windows` (hooks, UIA, clipboard, overlay, tray), `Providers.QwenMt` (HTTP provider), and `App` (composition/UI). M0 is a throwaway probe that proves UIA coverage, no-activate focus behavior, memory, and write-back feasibility before product code starts.

@@ -2209,3 +2209,28 @@ build 0 警告 0 错误；四项目 301/97/95/198 全绿；8 张截图（`assets
 ### 残留
 
 端到端真声音（播视频→看字幕）需要真实 DashScope Key 在网关转发下验证，留到部署联调；额度预检依赖 `/api/v1/account/usage`，离线或后端 5xx 时提示「暂时读不到额度信息」并放弃本次会话。
+
+## v80 许可证改为 AGPL-3.0（1.5.0）
+
+### 为什么
+
+MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服务而不用回报源码。本项目的服务端会把翻译请求经网关对外提供网络服务，AGPL-3.0 第 13 条正好覆盖这个场景：谁改了它再拿去做网络服务，就要把对应源码提供给那些用户。自己用、或原样分发二进制不受额外影响。
+
+### 改了什么
+
+- `LICENSE`：整份替换为 GNU Affero General Public License v3.0 官方原文（34,523 字节，无 BOM、LF 换行，未改一字）。
+- `README.md` 许可段：MIT → AGPL-3.0，补一句第 13 条的通俗说明与版权行；项目结构里的迭代史范围同步到 v1–v80。
+- `THIRD_PARTY_NOTICES.md`：开头补一行「本项目自身代码以 AGPL-3.0 发布」；第三方组件清单不变（依赖仍是 MIT / Apache-2.0，与 AGPL 兼容）。
+- 历史设计文档加注，避免与现行 LICENSE 冲突：`docs/superpowers/specs/2026-10-22-fast-translation-design.md` 头部加「2026-11-02 起改为 AGPL-3.0，下文 MIT 为当时记录」；`docs/superpowers/plans/2026-10-23-fast-translation-v1.md` 头部加英文 License note；`docs/ZCODE-HANDOFF.md` 的「MIT 自有」改为「AGPL-3.0，此前为 MIT」。
+- `docs/IMPL.md:349` 与 `docs/portable-readme.txt:190` 的 MIT 字样是按版本累加的历史记录，保留不动。
+
+### 验证
+
+- 本次只改文档与许可证，无代码改动，构建产物不受影响（未重跑 build/test，改动不触及 .cs / .xaml / csproj）。
+- 提交后由 GitHub 的 license 检测确认仓库许可证识别为 AGPL-3.0（`GET /repos/LYW206817/FTranslation` 的 `license` 字段）。
+
+### 残留风险
+
+- AGPL 与「闭源分发 / 部分应用商店条款」不兼容：以后若要上架需单独授权或双许可。
+- 历史提交里的 `LICENSE` 仍是 MIT 原文——历史版本按 MIT 授权是事实，不改写历史；从本提交起新版本按 AGPL-3.0。
+- 第三方 GPL 项目仍只是「学思路」；将来若复制其代码，AGPL 与 GPL 的兼容性需逐案确认。

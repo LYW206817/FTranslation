@@ -1,4 +1,4 @@
-﻿# Fast Translation — 交接文档
+# Fast Translation — 交接文档
 
 - 更新时间:2026-10-25 02:45(夜间自主执行后)
 - 当前阶段:**M0 完成 + v1.0 完成 + 真实 Key 联调通过 + 豆包式两段交互改造完成(工具条→翻译→结果卡,✕/插入/替换全部实测)**
@@ -51,7 +51,7 @@ FastTranslation.slnx
 3. 92 语言清单与官方页 diff
 4. 插入写回实测(算法在,入口未开)
 5. 100 次翻译后内存复测(带真实 API)+ 8 小时稳定性
-6. Inno Setup 安装包 + THIRD_PARTY_NOTICES(当前零第三方代码,MIT 自有)
+6. Inno Setup 安装包 + THIRD_PARTY_NOTICES(当前零第三方代码;许可 2026-11-02 起为 AGPL-3.0,此前为 MIT)
 7. 决定后 `git init` + 首次提交(用户点头才做)
 
 ## 5. 遗留/风险

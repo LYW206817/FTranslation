@@ -1,7 +1,7 @@
 Fast Translation — 第三方声明
 ============================
 
-本项目未包含任何第三方源代码。
+本项目自身代码以 GNU Affero General Public License v3.0 发布,见 `LICENSE`。本项目未包含任何第三方源代码。
 
 依赖的运行时/库全部为官方 NuGet 包或其所属平台的组件,按各自许可使用:
 

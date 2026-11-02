@@ -128,7 +128,7 @@ tools/
   Probe*/    启动耗时与内存探针（历史决策依据）
 docs/
   PLAN.md              技术决策 D1–D9 与实测数据
-  IMPL.md              迭代史 v1–v79，每个版本解决了什么
+  IMPL.md              迭代史 v1–v80，每个版本解决了什么
   superpowers/specs/   设计规格
 ```
 
@@ -140,6 +140,8 @@ docs/
 
 ## 许可
 
-[MIT](LICENSE)。第三方依赖与参考项目见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+[GNU AGPL v3.0](LICENSE)（GNU Affero General Public License v3.0）。Copyright (C) 2026 FastTranslation Project。
+
+AGPL 是强 copyleft：如果你修改本项目并把它作为网络服务提供给别的用户，需要按第 13 条把对应的完整源码也提供给那些用户；只是自己用、或原样分发二进制，不受额外影响。第三方依赖与参考项目见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 本项目和阿里云、阿里巴巴集团没有隶属关系，是个人项目。
