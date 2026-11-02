@@ -2537,3 +2537,41 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 启动后会把其余九页一起构造，内存里多驻留九棵树（原本点一遍也都会驻留），`DocumentPage` 的 `RestoreLastFolder()` 也随之提前到启动时读一次设置。
 - 预热只做 `Measure`/`Arrange`，不做光栅化。首次显示最重的两页（设置 91–100ms、单词 92–112ms）仍有一帧级停顿，那是页面自身排版密度，留待逐页重排时一起收。
 - 悬停环与焦点环共用 `ring`（v70 起就如此），Tab 聚焦与鼠标悬停同时成立时只显示一层。
+## v87 · 全屏不再只剩中间一列：五个页面按宽度自动分列（1.5.0）
+
+用户报的是「全屏状态下，文档/语音/套餐/账号/设置明显不适配」。先把病灶量出来：这五页的根容器一律是 `MaxWidth="980"` 居中（`DocumentPage.xaml:34`、`SpeechPage.xaml:10`、`PlanPage.xaml:33`、`AccountPage.xaml:33`、`SettingsPage.xaml:97` 的 `BodyStack`），窗口拉到全屏后左右两大片空白，内容还是窄窄一条。
+
+按用户要求先出 HTML 效果图让他挑：`publish/ui-redesign/fullscreen/plan-a.html`（整宽仪表盘，内容区吃满、按卡片数切 1–2 列）与 `plan-b.html`（工作区 + 372px 常驻右栏）。他选了 A。
+
+**改法**
+
+- 新增 `src/FastTranslation.App/CardBoard.cs`：`Panel` 子类，两个依赖属性 `Columns`（期望列数）与 `MinColumnWidth`（默认 560，单列最小宽度），`Gap = 16`。`Measure` 用列宽 + 无限高去量子元素（卡片高度必须由内容决定，给固定高度就会在短卡底部拉出空白）；`Arrange` 按每列列顶依次往下排，高度用 `DesiredSize.Height`，所以卡片永远不会被拉伸。列高取最高那一列——最长列决定滚多远，短列尾部留白。
+- 有效列数 = `Math.Max(1, Math.Min(Columns, floor((availableWidth + Gap) / (MinColumnWidth + Gap))))`（`CardBoard.cs:122`）。窄窗口分不出 560 就退回单列，所以窗口模式仍是原来那一列。
+- 分列策略是「每次放进当前最矮的那一列」（`CardBoard.cs:92` 的 `File()`）。卡片高度彼此差几倍，按序号轮流放会出现一列很长一列很短；最矮优先能让两列高度差最小。
+- 五页接上：文档 `Columns="2"`、套餐 `Columns="2"`、设置 `Columns="2"`、语音与账号 `Columns="1"`（效果图里这两页就是整宽单列）。页面 `MaxWidth` 从 980 放到 1440 并继续居中，页标题与设置页底栏（「这些设置只存在这台机器上…」+ 取消/保存）留在 `CardBoard` 外面、整宽贴页顶与页底。
+- 卡片声明顺序按效果图重排（文档：拖放 → 失败 → 翻译成 → 进度 → 完成 → 错误；套餐：订阅 → 用量 → 包括什么 → 激活码 → 额度怎么重置）。所有 `x:Name` 与 code-behind 引用保留。
+
+**数据**（`Win32 SetWindowPos` 改窗 + UIA `BoundingRectangle`，DPI 175%）
+
+- 宽窗 2548×1440（=1456 DIP）：设置页「翻译与外观」L=467 T=168 W=985，「取词与写回」L=1484 T=168 W=985 —— 同一 Top、左右并列，两列成立；「服务」L=467 T=660、「系统」L=1484 T=760。
+- 窄窗 1820×1155（=1040 DIP）：同一页四张卡 L 全为 467、T=168/660/1252/1822 —— 同列堆叠，退化单列成立。
+- 阈值换算：两列需要可用宽 ≥ 560×2+16 = 1136 DIP，加侧栏 172 约等于整窗 1308 DIP。
+
+**截图**（`tools/qa/shot-fullscreen.ps1 -ExePath -Theme -Width -Height -OutDir`，`PrintWindow` 原尺寸；都在 `publish/shots/`，该目录不进仓库）
+
+- `full1720/`：1720×1080 浅色五页；`full1720dark/`：深色五页。卡片宽度跟内容区走、卡高 = 内容 + 内边距。
+- `default1040/`：1820×1155（默认 1040×660）五页，单列、无横向滚动条，与 v86 观感一致。
+- `scroll/full-light-settings-bottom-1720x1080.png`：设置页滚到底，能看到最后一张「系统」卡，底栏仍钉在底部。
+- `wide2560/`：2548×1440 的两列实拍。窗口大于屏幕时 `PrintWindow` 有缩放伪影，所以两列的正式判据是上面那组 UIA 矩形，截图只作定性。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210，共 714 全绿。
+
+**残留风险**
+
+- 两列门槛是 560 DIP：本机 1440×960、175% 缩放下 1720 物理只等于 983 DIP，物理上压不出两列，两列只能靠 2548×1440 的 UIA 矩形证明；用户在 2560 级别屏幕上全屏才会看到两列。
+- 自动分列的结果与效果图并非逐张一致（设置页左列是「翻译与外观 / 服务」，效果图是「翻译与外观 / 取词与写回 / 系统」），这是最矮优先的必然差异，不是布局错误。
+- 账号页登录态（`SignedInPanel`）从左右两列 Grid 拍平成单列，本机没有账号可登，没有截图核对；`x:Name` 与事件都保留，风险只在观感。
+- `CardBoard.Gap` 做成了 `public const`，本可以是 `private`。

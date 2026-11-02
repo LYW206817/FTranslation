@@ -6,11 +6,12 @@
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <!-- 页面只负责「开始前」的设置与会话入口；会话中的字幕在 SpeechWindow 浮窗，主窗口不重复承担 -->
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                Focusable="False">
-    <Grid MaxWidth="980" Margin="24,18,24,26">
-      <StackPanel>
-        <TextBlock Text="语音翻译" FontSize="17" FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+                HorizontalContentAlignment="Stretch" Focusable="False">
+    <!-- 标题整宽在页顶；语音页在效果图里是整宽单列，所以 Columns=1 -->
+    <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
+      <TextBlock Text="语音翻译" FontSize="17" FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+      <local:CardBoard Columns="1">
 
         <Border Style="{StaticResource Card}">
           <StackPanel>
@@ -73,7 +74,7 @@
                        Text="点击输入框后按下想要的组合键即可；语音翻译进行中按它会结束本轮。"/>
           </StackPanel>
         </Border>
-      </StackPanel>
-    </Grid>
+      </local:CardBoard>
+    </StackPanel>
   </ScrollViewer>
 </UserControl>

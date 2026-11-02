@@ -30,12 +30,12 @@
   </UserControl.Resources>
 
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                Focusable="False">
-    <Grid MaxWidth="980" Margin="24,18,24,26">
-      <StackPanel>
-        <TextBlock x:Name="Headline" Text="文档翻译" FontSize="17" FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
-
+                HorizontalContentAlignment="Stretch" Focusable="False">
+    <!-- 标题留在 CardBoard 外面：整宽在页顶，卡片那一坨才分列 -->
+    <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
+      <TextBlock x:Name="Headline" Text="文档翻译" FontSize="17" FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+      <local:CardBoard Columns="2">
         <!-- 拖放区：整块都是投放目标，虚线只用来示意边界 -->
         <Border x:Name="DropZone" Style="{StaticResource Card}" AllowDrop="True"
                 DragOver="DropZone_DragOver" Drop="DropZone_Drop">
@@ -55,6 +55,36 @@
                       Click="Pick_Click"/>
             </StackPanel>
           </Grid>
+        </Border>
+
+        <!-- 未译段清单：黄色在深色主题下不可读，统一用危险色描边当警示 -->
+        <Border x:Name="FailedCard" Style="{StaticResource Card}" Visibility="Collapsed"
+                BorderBrush="{DynamicResource DangerBrush}">
+          <StackPanel>
+            <TextBlock x:Name="FailedTitle" Style="{StaticResource CardTitle}" Text="有段没译成"/>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="这些段落保留原文并标了「【未翻译】」。重试不会重译已经译好的段，所以不会重复计费。"/>
+            <ItemsControl x:Name="FailedList" Margin="0,10,0,0">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{DynamicResource WindowBgBrush}" CornerRadius="8"
+                          Padding="10,7" Margin="0,0,0,6">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Path}" FontSize="10"
+                                 TextTrimming="CharacterEllipsis"
+                                 Foreground="{DynamicResource TextMutedBrush}"/>
+                      <TextBlock Text="{Binding Source}" FontSize="12" MaxHeight="42" Margin="0,3,0,0"
+                                 TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button x:Name="RetryButton" Content="重试未翻译的段"
+                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
+                    Margin="0,6,0,0" Padding="16,6" Click="Retry_Click"/>
+          </StackPanel>
         </Border>
 
         <Border Style="{StaticResource Card}">
@@ -97,36 +127,6 @@
           </StackPanel>
         </Border>
 
-        <!-- 未译段清单：黄色在深色主题下不可读，统一用危险色描边当警示 -->
-        <Border x:Name="FailedCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                BorderBrush="{DynamicResource DangerBrush}">
-          <StackPanel>
-            <TextBlock x:Name="FailedTitle" Style="{StaticResource CardTitle}" Text="有段没译成"/>
-            <TextBlock Style="{StaticResource Hint}"
-                       Text="这些段落保留原文并标了「【未翻译】」。重试不会重译已经译好的段，所以不会重复计费。"/>
-            <ItemsControl x:Name="FailedList" Margin="0,10,0,0">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{DynamicResource WindowBgBrush}" CornerRadius="8"
-                          Padding="10,7" Margin="0,0,0,6">
-                    <StackPanel>
-                      <TextBlock Text="{Binding Path}" FontSize="10"
-                                 TextTrimming="CharacterEllipsis"
-                                 Foreground="{DynamicResource TextMutedBrush}"/>
-                      <TextBlock Text="{Binding Source}" FontSize="12" MaxHeight="42" Margin="0,3,0,0"
-                                 TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Button x:Name="RetryButton" Content="重试未翻译的段"
-                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
-                    Margin="0,6,0,0" Padding="16,6" Click="Retry_Click"/>
-          </StackPanel>
-        </Border>
-
         <Border x:Name="ErrorCard" Style="{StaticResource Card}" Visibility="Collapsed"
                 BorderBrush="{DynamicResource DangerBrush}">
           <StackPanel>
@@ -135,7 +135,7 @@
                        Foreground="{DynamicResource DangerBrush}"/>
           </StackPanel>
         </Border>
-      </StackPanel>
-    </Grid>
+      </local:CardBoard>
+    </StackPanel>
   </ScrollViewer>
 </UserControl>
