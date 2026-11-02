@@ -8,10 +8,9 @@ namespace FastTranslation.App;
 /// <summary>
 /// 启动时把解析好的调色板写入 App.xaml 资源（v24）。
 ///
-/// XAML 里每处画刷引用都是 `{DynamicResource …Brush}`，所以原则上换掉这里的条目就够了，
-/// 但这些画刷还会被**就地修改**：冻结的画刷（XAML 默认就会冻结画刷）会把浅色一直留在
-/// 已经解析过它的元素上。这些 token 因此带着 `po:Freeze="False"`；
-/// 于是换条目与就地改色两条路径都仍然成立。
+/// XAML 里每处画刷引用都是 `{DynamicResource …Brush}`，换掉这里的条目就够了：
+/// 元素会重新解析到新的（冻结）画刷。v89 之前这里靠就地改 `Color`，代价是画刷必须
+/// 保持可变、每帧重新送给渲染线程；现在一律整支替换。
 ///
 /// v60 起这里还负责组装两支渐变（页面底色、侧栏底色）与四档自评色：
 /// 渐变的两个端点必须来自调色板，XAML 里没法拼 `Color` 级的 DynamicResource。
@@ -147,17 +146,9 @@ internal static class ThemeBridge
     private static void Set(ResourceDictionary resources, string key, string hex)
     {
         var color = (Color)ColorConverter.ConvertFromString(hex);
-        if (resources[key] is SolidColorBrush existing)
-        {
-            // 冻结的 XAML 画刷无法修改；替换它，让元素级的 StaticResource 查找
-            //（发生在窗口加载时，也就是更晚）能取到新值
-            if (!existing.IsFrozen && existing.Color != color)
-            {
-                existing.Color = color;
-                return;
-            }
-            if (existing.Color == color) return;
-        }
+        // v89：一律换掉整支画刷（而不是就地改 Color）。就地改色要求画刷不能被冻结，
+        // 而可变画刷每一帧都要重新送到渲染线程；冻结的新画刷由 DynamicResource 自动重新解析。
+        if (resources[key] is SolidColorBrush existing && existing.Color == color) return;
         var brush = new SolidColorBrush(color);
         brush.Freeze();
         resources[key] = brush;

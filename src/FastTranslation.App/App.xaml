@@ -2,7 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:FastTranslation.App"
-             xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
              ShutdownMode="OnExplicitShutdown"
              ThemeMode="Light">
   <Application.Resources>
@@ -10,26 +9,28 @@
     <!-- ===== FastTranslation 设计 token（品牌：图标奶油蓝 + #2562FF）=====
          这里每个画刷引用都用 DynamicResource 而不是 StaticResource：ThemeBridge.Apply 在启动时
          给它们重新上色，而 StaticResource 只在解析时查一次——第一次做深色模式的尝试里，
-         所有界面都还是浅色，原因正是这个。po:Freeze="False" 还让画刷保持可变，
-         否则根本没法就地换色。 -->
-    <SolidColorBrush x:Key="BrandBrush" po:Freeze="False" Color="#2562FF"/>
-    <SolidColorBrush x:Key="BrandHoverBrush" po:Freeze="False" Color="#1D4FE0"/>
-    <SolidColorBrush x:Key="BrandPressedBrush" po:Freeze="False" Color="#1A45C4"/>
-    <SolidColorBrush x:Key="BrandFillBrush" po:Freeze="False" Color="#EDF2FF"/>
-    <SolidColorBrush x:Key="BrandFillHoverBrush" po:Freeze="False" Color="#E0EAFF"/>
-    <SolidColorBrush x:Key="AccentBrush" po:Freeze="False" Color="#40A9FF"/>
-    <SolidColorBrush x:Key="WindowBgBrush" po:Freeze="False" Color="#F7F9FC"/>
-    <SolidColorBrush x:Key="SurfaceBrush" po:Freeze="False" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="HairBrush" po:Freeze="False" Color="#E4EAF3"/>
-    <SolidColorBrush x:Key="HairStrongBrush" po:Freeze="False" Color="#D9E3F1"/>
-    <SolidColorBrush x:Key="OnBrandTextBrush" po:Freeze="False" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="BrandTextBrush" po:Freeze="False" Color="#1D4FE0"/>
-    <SolidColorBrush x:Key="BorderStrongBrush" po:Freeze="False" Color="#CFD9EA"/>
-    <SolidColorBrush x:Key="HoverBrush" po:Freeze="False" Color="#F0F4FA"/>
-    <SolidColorBrush x:Key="TextPrimaryBrush" po:Freeze="False" Color="#1B2536"/>
-    <SolidColorBrush x:Key="TextSecondaryBrush" po:Freeze="False" Color="#5C6B82"/>
-    <SolidColorBrush x:Key="TextMutedBrush" po:Freeze="False" Color="#8B97A9"/>
-    <SolidColorBrush x:Key="DangerBrush" po:Freeze="False" Color="#DC2626"/>
+         所有界面都还是浅色，原因正是这个。
+         v89：这里的画刷不再带 po:Freeze="False"。ThemeBridge 改成整支替换成冻结画刷，
+         元素上的 DynamicResource 会自动重新解析；冻结后的画刷才能走渲染线程的复用路径，
+         留着可变画刷等于每帧都把 Freezable 重新序列化一遍（全屏滚动掉帧的直接原因）。 -->
+    <SolidColorBrush x:Key="BrandBrush" Color="#2562FF"/>
+    <SolidColorBrush x:Key="BrandHoverBrush" Color="#1D4FE0"/>
+    <SolidColorBrush x:Key="BrandPressedBrush" Color="#1A45C4"/>
+    <SolidColorBrush x:Key="BrandFillBrush" Color="#EDF2FF"/>
+    <SolidColorBrush x:Key="BrandFillHoverBrush" Color="#E0EAFF"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#40A9FF"/>
+    <SolidColorBrush x:Key="WindowBgBrush" Color="#F7F9FC"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="HairBrush" Color="#E4EAF3"/>
+    <SolidColorBrush x:Key="HairStrongBrush" Color="#D9E3F1"/>
+    <SolidColorBrush x:Key="OnBrandTextBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BrandTextBrush" Color="#1D4FE0"/>
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="#CFD9EA"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#F0F4FA"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B2536"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5C6B82"/>
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#8B97A9"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
 
     <!-- 输入框上方的字段标签 -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">

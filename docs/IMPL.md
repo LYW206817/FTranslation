@@ -2602,3 +2602,34 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 文档页「失败」卡与 `ErrorCard` 同属左/右列的不同语义，译完态与失败态同时出现时右列会比左列长一截（列高不齐是列式布局的固有表现）。
 - 换页首帧耗时在本机（虚拟显示驱动、2548×1600 物理）是 40–95ms，拆帧后点击反馈先出、内容晚一帧；真实显卡机器上没复现这组数字，收益只在「反馈不再等整块重画」这一层。
 - `CardBoard.Gap` 仍是 `public const`，本可以是 `private`。
+
+## v89 · 去掉全局软件渲染，画刷一律冻结替换（1.5.0 性能线）
+
+**症状**：点侧栏要等一会儿才跳页，页内上下滚动明显掉帧。
+
+**根因一：整个进程被强制成软件渲染。** `src/FastTranslation.App/SoftwareRender.cs` 用 `[ModuleInitializer]` 把 `RenderOptions.ProcessRenderMode` 设成 `SoftwareOnly`——这是 M0 时期为压住 D3D 路径约 77MB 私有工作集做的取舍，注释里写着「在 App.OnStartup 里设太晚，D3D 在那之前就已初始化」。代价是整窗每一帧都由 CPU 光栅化：在 2548×1600 的窗口上，一次换页或一格滚动就是 400 万像素的重新绘制。文件已删除，回到 WPF 默认渲染路径。
+
+**根因二：设计 token 是可变画刷。** `src/FastTranslation.App/App.xaml` 的 19 个画刷带 `po:Freeze="False"`，`ThemeBridge.Set` 走「就地改 `Color`」分支，于是这些画刷永远不会被冻结。冻结的 `Freezable` 才能被渲染线程直接复用，可变画刷每帧都要重新序列化一遍。现在改成整支替换新的冻结画刷，`po:Freeze="False"` 与 `xmlns:po` 一并删掉；所有引用本来就是 `{DynamicResource …Brush}`（全仓只剩 `Pages/MainPage.xaml:26` 一处 `StaticResource PillDot`，它的填充也是 DynamicResource），换条目后元素自动重新解析。
+
+**本机测量（`FT_UITEST=nav`，窗口 2548×1600 物理）**
+
+- 渲染层级 `tier=2 mode=Default`，即硬件路径已生效；换页帧时 pass=0 仍是 40–124ms、pass=1 22–40ms，与软件渲染时同一量级 ⇒ 这台机器的会话挂在 Oray/Idd 虚拟显示适配器上，present 本身是瓶颈，**这组数字不能代表用户本地直连显示器的观感**。
+- 内存（不同时刻的粗测）：软件渲染实例 Private 121MB / WS 210MB；硬件渲染实例 289MB / 363MB。D3D 工作集确实会回来，这是拿内存换帧率。
+- 对比实验过两处非瓶颈：卡片的 `CardShadowEffect` 加 `FT_NO_SHADOW` 开关后帧时几乎不变（v86 已测）；把画刷冻结后帧时也在噪声内（本机 present 掩盖了一切）。两处实验代码都没留下。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误；`dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- 主题切换没有因为「不再就地改色」而失效：`tools/qa/shot-main-theme.ps1` 两张 2548×1600，深色直方图 `#1F242C`(Surface) + `#16191F`(WindowBg)，浅色 `#FFFFFF` + `#F7F9FC`。
+- 八页整窗截图 `tools/qa/shot-audit.ps1 -Theme Light -OutDir publish/shots/v89`（2548×1600）。
+
+**本地联调环境（登录态）**
+
+- 服务端：`ASPNETCORE_URLS=http://127.0.0.1:5199 dotnet run --project server/FastTranslation.Server -c Release`，Development 下 `RequireEmailVerification: false`，注册 `liuyongwei@example.com` 即可登录。
+- 客户端会话落在 `%LOCALAPPDATA%\FastTranslation\account-session.bin`（DPAPI，entropy `ft-account-session`，内容是 `StoredSession` JSON）。联调时直接写入该文件可以免去手敲登录表单，重启应用即恢复登录。
+
+**残留风险**
+
+- 常驻内存上升（D3D 工作集），原来是刻意为省内存关掉的；如果以后内存优先级反超流畅度，`SoftwareOnly` 那一行要按「只对低端机生效」的方式加回来，而不是全局强制。
+- 远程桌面 / 虚拟显示适配器下硬件路径会退化成 WARP，帧时与软件渲染几乎一样；真正的体感结论只能来自用户本机直连显示器。
+- 换页首帧仍然包含整块内容区重绘，拆帧只保证「点击反馈先出」，不缩短重绘本身。
