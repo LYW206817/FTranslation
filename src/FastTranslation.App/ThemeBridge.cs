@@ -78,6 +78,44 @@ internal static class ThemeBridge
         SetDropShadow(r, "GlassShadowEffect", c.Shadow, dark ? 0.60 : 0.70, 30, 7);
         // 侧栏活动项与主按钮下面那圈品牌色辉光，颜色跟着强调色走，不能写死在 XAML 里。
         SetDropShadow(r, "NavGlowEffect", c.Brand, dark ? 0.30 : 0.34, 18, 6);
+
+        // v91：效果图 A 的三块底。深色下不能照搬浅色的冷雾——白底会亮成一块斑，
+        // 所以径向光在深色里收成「卡片面 → 窗口底」的一点落差，浅色才给满蓝调。
+        SetRadial(r, "StageWashBrush", c.Surface, dark ? c.WindowBg : "#F2F7FF", new Point(0.5, 0.34), 0.78);
+        SetLinear(r, "TileGradientBrush",
+            dark ? c.BrandFill : "#EFF4FF", dark ? c.Surface : "#E1EAFF",
+            new Point(0, 0), new Point(1, 1));
+        SetLinear(r, "HeroPanelBrush",
+            c.Surface, dark ? c.WindowBg : c.Warm,
+            new Point(0, 0), new Point(1, 1));
+    }
+
+    /// <summary>两段线性渐变：图标砖、hero 右列这类「一头亮一头暗」的薄底。</summary>
+    private static void SetLinear(
+        ResourceDictionary resources, string key, string from, string to, Point start, Point end)
+    {
+        var brush = new LinearGradientBrush { StartPoint = start, EndPoint = end };
+        brush.GradientStops.Add(new GradientStop(Parse(from), 0));
+        brush.GradientStops.Add(new GradientStop(Parse(to), 1));
+        brush.Freeze();
+        resources[key] = brush;
+    }
+
+    /// <summary>径向：中心一处亮、外圈压暗，中心点与半径由调用方给。</summary>
+    private static void SetRadial(
+        ResourceDictionary resources, string key, string inner, string outer, Point center, double radius)
+    {
+        var brush = new RadialGradientBrush
+        {
+            Center = center,
+            GradientOrigin = center,
+            RadiusX = radius,
+            RadiusY = radius,
+        };
+        brush.GradientStops.Add(new GradientStop(Parse(inner), 0));
+        brush.GradientStops.Add(new GradientStop(Parse(outer), 1));
+        brush.Freeze();
+        resources[key] = brush;
     }
 
     private static Color Parse(string hex) => (Color)ColorConverter.ConvertFromString(hex);

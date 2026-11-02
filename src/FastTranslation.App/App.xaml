@@ -32,6 +32,35 @@
     <SolidColorBrush x:Key="TextMutedBrush" Color="#8B97A9"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
 
+    <!-- v91 效果图 A 的三种底：投放台的柔和径向光、图标砖的浅蓝对角渐变、
+         套餐 hero 右列的冷暖薄渐变。XAML 里给浅色默认值，深色由 ThemeBridge 覆盖。 -->
+    <RadialGradientBrush x:Key="StageWashBrush" Center="0.5,0.34" GradientOrigin="0.5,0.34"
+                         RadiusX="0.78" RadiusY="0.78">
+      <GradientStop Color="#FFFFFF" Offset="0"/>
+      <GradientStop Color="#F2F7FF" Offset="1"/>
+    </RadialGradientBrush>
+    <LinearGradientBrush x:Key="TileGradientBrush" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#EFF4FF" Offset="0"/>
+      <GradientStop Color="#E1EAFF" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroPanelBrush" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#F7FAFF" Offset="0"/>
+      <GradientStop Color="#FFFFFF" Offset="0.6"/>
+      <GradientStop Color="#FFF6F2" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- v91 页头：效果图里每页顶部是 21px 标题 + 一行 12.5px 说明 -->
+    <Style x:Key="PageTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="21"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+    <Style x:Key="PageSub" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+
     <!-- 输入框上方的字段标签 -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="12"/>

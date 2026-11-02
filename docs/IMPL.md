@@ -2661,3 +2661,30 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 深色直方图（`audit-Dark-plan.png`）：`#1F242C` 173749、`#16191F` 5614、`#22304D` 4367，卡片与窗口底色仍是 `ThemePalette` 的令牌，没有引入裸色值。
 
 残留风险：套餐 hero 的右列写死 360，窗口内容区窄于约 700 逻辑像素时左列的额度文字会被压扁；文档页投放台 360 高在单列布局下会让整页需要滚动。两处都只在极端窄窗口出现，没有为此加自适应。
+
+## v91 · 文档 / 套餐 / 设置三页真的按效果图重做：虚线投放台、42px 套餐 + 用量环、行式设置（1.5.0）
+
+v90 只把三页的版式换了顺序，视觉仍是 v85 雾光那一套（13px 卡片标题、标签在上控件在下），用户看过截图后直接说「实际和html不符」。这一轮把效果图 A 里真正决定观感的三件事搬进 WPF：24 圆角的虚线投放台、42px 的套餐名 + 118px 用量环、左标题右控件的行式设置；顺带把默认窗口从 1040x660 撑到 1320x860，否则三页在默认窗口下只能是单列，效果图的设计意图看不出来。
+
+改动：
+
+- `src/FastTranslation.App/App.xaml`：新增三支装饰画刷——`StageWashBrush`（投放台中心微亮的径向渐变）、`TileGradientBrush`（74px 图标砖 160° 线性渐变）、`HeroPanelBrush`（套餐页右列的冷暖渐变），以及页面级标题样式 `PageTitle`（21px）与 `PageSub`（13px 次要色）。全部走 DynamicResource，由 ThemeBridge 按主题重新注入。
+- `src/FastTranslation.App/ThemeBridge.cs`：`Apply` 里补 `SetRadial` / `SetLinear` 三处赋值。深色下「微亮的白」要换成「微亮的 Surface」，否则深色投放台中心会出现一块发灰的亮斑。
+- `src/FastTranslation.App/Pages/DocumentPage.xaml`：整页重写。投放台 420 高、24 圆角、2px 虚线——Border 自己不会画虚线，虚线是叠在 Border 上的一层 `Rectangle`（`StrokeDashArray="4 3"`）；中心是 74px 图标砖 + 21px 标题 + 主次两个按钮，「翻译成 / 目标语言」压成台下一行。
+- `src/FastTranslation.App/Pages/PlanPage.xaml` 与 `PlanPage.xaml.cs`：hero 拆成 1.12 / 0.88 两列。左列 42px 套餐名 + 118px 用量环，右列两张价格卡（年付默认选中，因为点进来的人多半想买一年）与满宽订阅按钮。环是 `UpdateRing` 画的：WPF 没有 conic-gradient，用一条 12px 圆头圆弧代替，`RingRadius = 53`（118/2 再让出描边半宽），从 -90° 顺时针扫 360×比例，比例过半才置大弧标志；月计量条仍由 `ProgressBar` 旧路走，只在 `ValueChanged` 里顺手把环刷一遍，两条计量不会各算一次。
+- `src/FastTranslation.App/Pages/SettingsPage.xaml`：分区小标题整个去掉，改成行式——`SRow`（上边一道发丝线、上下 10px）、`SKey`（13px 主文本）、`SDesc`（11.5px 灰说明）。「取词与写回」和「系统」用 Grid `1.1* / 16 / 0.9*` 并排，两张卡默认 Stretch，高的那张决定行高、短的自动拉齐。原来的 `GroupLabel` 样式随之删除（已经没有引用）。
+- `src/FastTranslation.App/MainWindow.xaml`：`Width/Height` 1040x660 → 1320x860，`MinWidth/MinHeight` 900x560 → 1000x620。
+
+验证：
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- `tools/qa/shot-audit.ps1 -ExePath ... -Theme Dark|Light -OutDir publish/ui-v91` 跑出九页截图，尺寸 2310x1505（本机 175% 缩放 × 1320x860 逻辑）。
+- 本模型读不了图片，所以布局是用 UIA 几何核对而不是肉眼看图（`publish/v91-geom.ps1`，输出落 `publish/v91-geom.txt`）：设置页「取词与写回」x=504 y=1428、「系统」x=1171 y=1428 —— 同一行左右两列；「目标语言」标签 x=504 与它自己的下拉框 x=1333 同一行（y 422 / 408），行式成立。套餐页「免费版」42px 在 (516,330)、环内「本月已用」(580,649)、右列 ¥144 (1211,464) 与 ¥18 (1433,464) 并排、订阅按钮 428x70。
+
+残留风险：
+
+- 本机 175% 缩放，而 `SetWindowPos` 收的是物理像素：传 1320x860 会被 `MinWidth/MinHeight` 夹到 1000x620，截图尺寸跟着变。这是夹取不是布局错——第一版就差点把它当成设置页被压扁的证据。
+- 套餐页底部「激活码」与「额度怎么重置」在 1320 宽的默认窗口下仍是竖排（实测两张卡 x 都是 502、宽 1691），CardBoard 要更宽才并排；效果图是 1720 画布。
+- 未登录或用量为 0 时用量环是空的，hero 左列会显得偏空。那是数据状态，不是样式缺陷。
+- 文档页投放台只验证了结构与配色，拖放交互（DragOver / Drop）没有新的自动化覆盖，仍靠手点。

@@ -10,7 +10,7 @@
       <Setter Property="Height" Value="6"/>
       <Setter Property="Minimum" Value="0"/>
       <Setter Property="Maximum" Value="1"/>
-      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="Margin" Value="0,8,0,0"/>
       <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
       <Setter Property="Background" Value="{DynamicResource HairBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
@@ -31,115 +31,144 @@
 
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                 HorizontalContentAlignment="Stretch" Focusable="False">
-    <!-- 标题留在 CardBoard 外面：整宽在页顶，卡片那一坨才分列 -->
-    <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
-      <TextBlock x:Name="Headline" Text="文档翻译" FontSize="17" FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
-      <local:CardBoard Columns="2">
-        <!-- 拖放区：整块都是投放目标，虚线只用来示意边界 -->
-        <Border x:Name="DropZone" Style="{StaticResource Card}" AllowDrop="True"
-                DragOver="DropZone_DragOver" Drop="DropZone_Drop">
-          <!-- v90：按效果图让投放台占到整页大半，缩略信息都往中间堆。
-               原来 128 高只有一行字，看着像提示条而不是「把文件丢进来」的地方。 -->
-          <Grid MinHeight="360">
-            <Rectangle RadiusX="10" RadiusY="10" Fill="Transparent"
-                       Stroke="{DynamicResource BorderStrongBrush}" StrokeThickness="1"
-                       StrokeDashArray="3 2"/>
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
-              <TextBlock x:Name="DropTitle" Text="把 docx / txt / md 拖到这里"
-                         FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <TextBlock x:Name="DropMeta" FontSize="12" Margin="0,9,0,0"
-                         HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
-                         Foreground="{DynamicResource TextMutedBrush}"/>
-              <Button x:Name="PickButton" Content="选择文件" Style="{StaticResource PrimaryButton}"
-                      HorizontalAlignment="Center" Margin="0,18,0,0" Padding="24,8"
-                      Click="Pick_Click"/>
-            </StackPanel>
-          </Grid>
-        </Border>
-
-        <!-- 未译段清单：黄色在深色主题下不可读，统一用危险色描边当警示 -->
-        <Border x:Name="FailedCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                BorderBrush="{DynamicResource DangerBrush}">
-          <StackPanel>
-            <TextBlock x:Name="FailedTitle" Style="{StaticResource CardTitle}" Text="有段没译成"/>
-            <TextBlock Style="{StaticResource Hint}"
-                       Text="这些段落保留原文并标了「【未翻译】」。重试不会重译已经译好的段，所以不会重复计费。"/>
-            <ItemsControl x:Name="FailedList" Margin="0,10,0,0">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{DynamicResource WindowBgBrush}" CornerRadius="8"
-                          Padding="10,7" Margin="0,0,0,6">
-                    <StackPanel>
-                      <TextBlock Text="{Binding Path}" FontSize="10"
-                                 TextTrimming="CharacterEllipsis"
-                                 Foreground="{DynamicResource TextMutedBrush}"/>
-                      <TextBlock Text="{Binding Source}" FontSize="12" MaxHeight="42" Margin="0,3,0,0"
-                                 TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Button x:Name="RetryButton" Content="重试未翻译的段"
-                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
-                    Margin="0,6,0,0" Padding="16,6" Click="Retry_Click"/>
+    <StackPanel MaxWidth="1440" Margin="28,22,28,26" HorizontalAlignment="Center">
+      <!-- v91：按效果图 A 换成「21px 标题 + 一行说明 + 右侧药丸」。原来的 17px 标题
+           和卡片的字号一样大，页面没有主次。 -->
+      <Grid Margin="0,0,0,18">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel>
+          <TextBlock x:Name="Headline" Style="{StaticResource PageTitle}" Text="文档翻译"/>
+          <TextBlock Style="{StaticResource PageSub}"
+                     Text="把整份文件丢进来，按段落翻译，原文件不会被改动。"/>
+        </StackPanel>
+        <Border Grid.Column="1" Style="{StaticResource TopPill}" VerticalAlignment="Top">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="翻译成" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,8,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <local:FtComboBox x:Name="TargetCombo" Width="132" Height="26"
+                              SelectionChanged="TargetCombo_SelectionChanged"/>
           </StackPanel>
         </Border>
+      </Grid>
 
-        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Style="{StaticResource CardTitle}" Text="翻译成"/>
-            <StackPanel Orientation="Horizontal">
-              <local:FtComboBox x:Name="TargetCombo" Width="180"
-                                SelectionChanged="TargetCombo_SelectionChanged"/>
-              <Button x:Name="StartButton" Content="开始翻译" Style="{StaticResource PrimaryButton}"
-                      Margin="12,0,0,0" Padding="20,6" IsEnabled="False" Click="Start_Click"/>
-              <Button x:Name="CancelButton" Content="取消" Margin="8,0,0,0" Padding="16,6"
+      <!-- 投放台：整块都是投放目标，虚线只用来示意边界。效果图里它是整页主体，
+           所以给到 420 高、24 圆角、2px 虚线，中心 74px 图标砖负责「把文件丢这儿」。
+           虚线用 Rectangle 叠在 Border 上——Border 自己不会画虚线。 -->
+      <Border x:Name="DropZone" AllowDrop="True"
+              Background="{DynamicResource StageWashBrush}" CornerRadius="24"
+              DragOver="DropZone_DragOver" Drop="DropZone_Drop">
+        <Grid MinHeight="420">
+          <Rectangle RadiusX="24" RadiusY="24" Fill="Transparent"
+                     Stroke="{DynamicResource HairStrongBrush}" StrokeThickness="2"
+                     StrokeDashArray="4 3"/>
+          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="32">
+            <Border Width="74" Height="74" CornerRadius="22" HorizontalAlignment="Center"
+                    Background="{DynamicResource TileGradientBrush}"
+                    Effect="{DynamicResource CardShadowEffect}">
+              <TextBlock Text="&#xE8A5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                         FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Foreground="{DynamicResource BrandBrush}"/>
+            </Border>
+            <TextBlock x:Name="DropTitle" Text="把 docx / txt / md 拖到这里"
+                       FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center"
+                       Margin="0,16,0,0" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <TextBlock x:Name="DropMeta" FontSize="12.5" Margin="0,8,0,0"
+                       HorizontalAlignment="Center" MaxWidth="520" TextAlignment="Center"
+                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                       Text="松手就开始翻译。文件留在本机解析，只有段落文字会发出去。"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+              <Button x:Name="PickButton" Content="选择文件" Style="{StaticResource PrimaryButton}"
+                      Padding="26,10" Click="Pick_Click"/>
+              <Button x:Name="StartButton" Content="开始翻译" Margin="10,0,0,0" Padding="26,10"
+                      IsEnabled="False" Click="Start_Click"/>
+              <Button x:Name="CancelButton" Content="取消" Margin="10,0,0,0" Padding="18,10"
                       Visibility="Collapsed" Click="Cancel_Click"/>
             </StackPanel>
-            <TextBlock x:Name="QuotaText" Style="{StaticResource Hint}"/>
-            <TextBlock Style="{StaticResource Hint}"
-                       Text="文件在本机解析，只有段落文字会发送到翻译接口；原文件不会被修改。"/>
           </StackPanel>
-        </Border>
+        </Grid>
+      </Border>
 
-        <Border x:Name="ProgressCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Style="{StaticResource CardTitle}" Text="进度"/>
-            <TextBlock x:Name="ProgressText" FontSize="12" Text="已完成 0 / 0 段"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-            <ProgressBar x:Name="Progress" Style="{StaticResource MeterBar}"/>
-          </StackPanel>
-        </Border>
+      <!-- 台下那一行：左边是行为说明，右边是本月/今日额度 -->
+      <Grid Margin="6,12,6,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="超长文档按段落排队，中途可以随时停；已经译好的段落不会重译。"
+                   FontSize="12.5" TextWrapping="Wrap" VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextMutedBrush}"/>
+        <TextBlock x:Name="QuotaText" Grid.Column="1" FontSize="12.5" Margin="16,0,0,0"
+                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+      </Grid>
 
-        <Border x:Name="ResultCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Style="{StaticResource CardTitle}" Text="翻译完成"/>
-            <TextBlock x:Name="ResultText" FontSize="12" TextWrapping="Wrap"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-              <Button x:Name="OpenFolderButton" Content="打开所在文件夹" Padding="14,6"
-                      Click="OpenFolder_Click"/>
-              <Button x:Name="AgainButton" Content="再译一份" Padding="14,6" Margin="8,0,0,0"
-                      Click="Again_Click"/>
-            </StackPanel>
-          </StackPanel>
-        </Border>
+      <!-- 未译段清单：黄色在深色主题下不可读，统一用危险色描边当警示 -->
+      <Border x:Name="FailedCard" Style="{StaticResource Card}" Visibility="Collapsed"
+              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}">
+        <StackPanel>
+          <TextBlock x:Name="FailedTitle" Style="{StaticResource CardTitle}" Text="有段没译成"/>
+          <TextBlock Style="{StaticResource Hint}"
+                     Text="这些段落保留原文并标了「【未翻译】」。重试不会重译已经译好的段，所以不会重复计费。"/>
+          <ItemsControl x:Name="FailedList" Margin="0,10,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{DynamicResource WindowBgBrush}" CornerRadius="8"
+                        Padding="10,7" Margin="0,0,0,6">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Path}" FontSize="10"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Text="{Binding Source}" FontSize="12" MaxHeight="42" Margin="0,3,0,0"
+                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button x:Name="RetryButton" Content="重试未翻译的段"
+                  Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
+                  Margin="0,6,0,0" Padding="16,6" Click="Retry_Click"/>
+        </StackPanel>
+      </Border>
 
-        <Border x:Name="ErrorCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                BorderBrush="{DynamicResource DangerBrush}" local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Style="{StaticResource CardTitle}" Text="没能继续"/>
-            <TextBlock x:Name="ErrorText" FontSize="12" TextWrapping="Wrap"
-                       Foreground="{DynamicResource DangerBrush}"/>
+      <Border x:Name="ProgressCard" Style="{StaticResource Card}" Visibility="Collapsed"
+              Margin="0,16,0,0">
+        <StackPanel>
+          <TextBlock Style="{StaticResource CardTitle}" Text="进度"/>
+          <TextBlock x:Name="ProgressText" FontSize="12" Text="已完成 0 / 0 段"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <ProgressBar x:Name="Progress" Style="{StaticResource MeterBar}"/>
+        </StackPanel>
+      </Border>
+
+      <Border x:Name="ResultCard" Style="{StaticResource Card}" Visibility="Collapsed"
+              Margin="0,16,0,0">
+        <StackPanel>
+          <TextBlock Style="{StaticResource CardTitle}" Text="翻译完成"/>
+          <TextBlock x:Name="ResultText" FontSize="12" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <Button x:Name="OpenFolderButton" Content="打开所在文件夹" Padding="14,6"
+                    Click="OpenFolder_Click"/>
+            <Button x:Name="AgainButton" Content="再译一份" Padding="14,6" Margin="8,0,0,0"
+                    Click="Again_Click"/>
           </StackPanel>
-        </Border>
-      </local:CardBoard>
+        </StackPanel>
+      </Border>
+
+      <Border x:Name="ErrorCard" Style="{StaticResource Card}" Visibility="Collapsed"
+              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}">
+        <StackPanel>
+          <TextBlock Style="{StaticResource CardTitle}" Text="没能继续"/>
+          <TextBlock x:Name="ErrorText" FontSize="12" TextWrapping="Wrap"
+                     Foreground="{DynamicResource DangerBrush}"/>
+        </StackPanel>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

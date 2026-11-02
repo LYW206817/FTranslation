@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using FastTranslation.Core.Account;
 
 namespace FastTranslation.App.Pages;
@@ -59,6 +61,9 @@ public partial class PlanPage : UserControl
             DailyBar.Value = 0;
             SubscribeTitle.Text = "订阅后解锁单词本与四档复习";
             SubscribeButton.Content = "订阅";
+            PlanPillText.Text = "未登录";
+            PlanNameText.Text = "未登录";
+            PlanTermText.Text = string.Empty;
             return;
         }
 
@@ -68,11 +73,55 @@ public partial class PlanPage : UserControl
         // 同一张卡片服务两类读者：订阅者不该读到「订阅以解锁」，
         // 那项功能他已经付过钱了
         SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与四档复习";
+        // v91：hero 的 42px 大字与右上角药丸读的都是同一个套餐名，两处必须同源。
+        var planName = session.Profile.PlanDisplay;
+        PlanPillText.Text = planName;
+        PlanNameText.Text = planName;
+        PlanTermText.Text = paid ? "已订阅" : "长期有效";
         if (paid)
         {
             SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay
                 + ",续订会顺延到期时间。付款渠道尚未接通。";
         }
+    }
+
+    /// <summary>
+    /// 把本月已用比例画成那圈 118px 的用量环。
+    /// WPF 没有 conic-gradient，所以环是一段圆弧：圆心取方块中心，半径 53（118/2 再让出 6px
+    /// 描边的半宽），从正上方 -90° 顺时针扫过 360×比例。比例超过一半才需要大弧标志。
+    /// </summary>
+    private void MonthlyBar_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        => UpdateRing(e.NewValue);
+
+    private void UpdateRing(double fraction)
+    {
+        if (RingPercent is null || RingProgress is null) return;
+        fraction = Math.Clamp(fraction, 0, 1);
+        RingPercent.Text = (fraction * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
+        if (fraction < 0.002)
+        {
+            RingProgress.Data = null;
+            return;
+        }
+
+        var figure = new PathFigure
+        {
+            StartPoint = RingPoint(-90),
+            IsClosed = false,
+            IsFilled = false,
+        };
+        figure.Segments.Add(new ArcSegment(
+            RingPoint(-90 + 360 * fraction), new Size(RingRadius, RingRadius), 0,
+            fraction > 0.5, SweepDirection.Clockwise, true));
+        RingProgress.Data = new PathGeometry(new[] { figure });
+    }
+
+    private const double RingRadius = 53;
+
+    private static Point RingPoint(double degrees)
+    {
+        var radians = degrees * Math.PI / 180;
+        return new Point(59 + RingRadius * Math.Cos(radians), 59 + RingRadius * Math.Sin(radians));
     }
 
     /// <summary>读取中的占位：两条计量都写同一个词，进度条清零等真值。</summary>
