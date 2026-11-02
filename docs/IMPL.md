@@ -2267,3 +2267,42 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
 3. DNS 传播有 TTL，`--expect-ip` 可能在记录刚加时失败（脚本报「wrong record or stale cache」），等 10 分钟重跑即可，不是脚本缺陷。
 4. 脚本假设 Caddy 用默认的 `/etc/caddy/Caddyfile` 与静态根 `/var/www/fasttranslation`（与 `install.sh` 的两个变量一致）；换路径要同步改两处常量。
 5. 备案仍在管局审核：2026-10-29 12:48 提交、订单 2038868333211，页面显示 1~4 步（提交审核 / 阿里云初审 / 待提交管局 / 工信部短信核验）已全部完成，当前停在第 5 步「管局审核」，预估 10 个工作日、法定最长 20 个工作日。预计出号窗口 11-12 前后（Workday 计数从 10-30 起算：7 个工作日 ≈ 11-09，10 个 ≈ 11-12，20 个 ≈ 11-26）。
+## v81 语音额度可突破与识别语种错位（1.5.0 修复）
+
+### 为什么
+
+代码审查（2026-11-02）发现两个 P0：
+
+1. **额度可被单会话顶穿十几倍**。`SpeechEndpoints` 只按「最小会话」(MinSeconds×QuotaCharsPerSecond=200 字符) 做额度预检，而会话硬顶是 1800 秒、记账只在 `DashScopeSpeechGateway` 的 finally 里一次性记 36,000 字符。Free 日额度 2,000 → 一场会话就超日上限 18 倍。限流器只数每分钟请求数（40/min），没有并发会话上限，同一账号可以同时开几十条各自按 200 预检的会话；`ReadTodayCostMicros("speech")` 又只在会话开始读、结束才写，并发时集体读到 0。三道闸全部形同虚设。
+2. **识别语种提示方向错**。客户端把「译成哪种语言」当作 `language` 发给服务端，服务端原样塞进 DashScope 的 `language_hints`。选「译成中文」时，英文音频被硬按中文识别——字幕从第一句就开始错。
+
+### 服务端改了什么
+
+- 新增 `Domain/SpeechQuota.cs`：纯函数 `SessionSeconds(remainingChars, charsPerSecond, minSeconds, maxSeconds)` = `max(min, min(剩余可讲秒数, 硬顶))`。额度算错直接等于烧钱，所以按 `QuotaPolicy` 的做法抽成纯函数 + 单测。
+- 新增 `Gateway/SpeechSessionLimiter.cs`：按账号的并发会话计数（`TryEnter`/`Exit`，`ConcurrentDictionary` + CAS 循环，`max≤0` 不限制）。`SpeechOptions.MaxConcurrentSessionsPerUser` 默认 1；`Program.cs` 注册单例。
+- `SpeechEndpoints`：额度决定后先算 `remaining = min(RemainingMonthly, RemainingDaily ?? int.MaxValue)`，再算 `sessionSeconds = SpeechQuota.SessionSeconds(...)`；`TryEnter` 失败 → 429 `speech_busy`；「非 WS→400 / Accept / RelayAsync」包进 `try/finally { sessions.Exit(userId) }`，把 `sessionSeconds` 传进中继。
+- `DashScopeSpeechGateway`：
+  - `RelayAsync` 多收一个 `sessionSeconds`，硬顶用它（不再直接用 `MaxSecondsPerSession`）。
+  - 记账从「finally 一次性」改成 `Bill(...)` 局部函数：每收到一帧 `result-generated` 就按**增量**（deltaSeconds / deltaTokensIn / deltaTokensOut）插一行 `usage_events(source='speech')`；finally 只补足 `MinSeconds` 的差额。日预算与额度闸门因此看到的是实时花费，客户端半路跑掉也不会丢账。
+  - 会话硬顶到期时给客户端发一条 `{"type":"error","code":"session_timeout",...}`，再关流——否则用户只看到「连接中断」，会以为是网络问题。
+  - **关流收口到 `RelayAsync` 的 finally**：上游泵不再自己 `CloseAsync`。原先两处都在关，错误帧和关闭抢时序，实测时好时坏（新增测试在并行负载下就会收到 Close 而不是错误帧）。
+
+### 客户端改了什么
+
+- `GatewaySpeechTransport` 的 start 帧只报 `sampleRate`，不再带 `language`；`SpeechSessionOptions` 删掉 `TargetLanguage`（识别语种必须由 ASR 自己判断，译成哪种语言由翻译回调决定），四处构造点同步收窄。
+- 升级前探测复用应用唯一的 `_gatewayHttp`（原来每次会话 `new HttpClient`），并用 10 秒的 linked CTS 限时——共享客户端的 45 秒超时不能拖着开始会话。
+- 采集停止移出 UI 线程：`Stop()` 内部 `Join` 采集线程最多 2 秒，在 UI 线程上同步等会把窗口冻住（结束会话、切换设备两条路径都改）。
+- `AudioResampler.MaxOutputBytes(inputSamples)`：按「输出帧数×2+余量」算精确上限，替换 `floats.Length/2*6+64` 这种 9 倍拍脑袋分配（48k 立体声 100ms 块只需 3.2KB，原来每块分配 28.8KB，一秒约 300KB gen0 垃圾）。
+
+### 测试
+
+- 新增 `SpeechQuotaTests`（折算边界 + 并发闸门 3 条）、`Asr_returns_429_when_the_account_already_has_a_session`、`Session_timeout_tells_the_client_why_it_stopped`、`MaxOutputBytes_matches_what_a_block_actually_produces`。
+- 断言 `run-task` **不再**含 `language_hints`（锁住 P0-2）。
+- 顺手修了一个测试隔离坑：两个语音中继测试的 `SqliteConnection.ClearAllPools()` 会清掉**整个进程**的连接池，并行跑的其他测试打到失效连接上，表现为 `AccountProfileTests` 偶发登录 500。去掉后 Server 套件连跑 3 次稳定。
+- 全量：`dotnet test` **702 通过 0 失败**（Core 302 / Platform.Windows 97 / Providers.QwenMt 95 / Server 208），连跑 2 次一致；Release build 0 警告 0 错误。
+
+### 残留
+
+- **重采样没有抗混叠低通**（设计 §5.1 写的是 3 抽头滑动平均，实现是直接线性插值）。48k→16k 会有一部分高频折回，可能让 ASR 把气声、齿音听错。这段改动会改变输出样本值，需要拿真实音频 A/B 才敢定，留到端到端真声联调一起做。
+- `SpeechTranscriptService.DroppedCount`（队列满丢批次数）仍未上屏，用户看不出「字幕丢了几句」。属于体验项，等真声联调后再定是否显示。
+- 真声端到端（播视频→看字幕）、`target_lang="auto"` 链路、生产 wss 腿仍待联调/备案。

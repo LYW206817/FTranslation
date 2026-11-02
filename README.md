@@ -119,20 +119,20 @@ server/
 site/                                产品介绍静态单页（纯 HTML/CSS，无构建步骤）
 deploy/                              一台 ECS 的部署文件（systemd + Caddy）
 tests/
-  FastTranslation.Core.Tests/              301 个测试
+  FastTranslation.Core.Tests/              302 个测试
   FastTranslation.Platform.Windows.Tests/  97 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
   FastTranslation.Providers.QwenMt.Tests/  95 个测试（本地假 HTTP 服务）
-  FastTranslation.Server.Tests/            198 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
+  FastTranslation.Server.Tests/            208 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
 tools/
   qa/        截图、内存浸泡、安装校验、E2E 联调等 PowerShell 脚本
   Probe*/    启动耗时与内存探针（历史决策依据）
 docs/
   PLAN.md              技术决策 D1–D9 与实测数据
-  IMPL.md              迭代史 v1–v80，每个版本解决了什么
+  IMPL.md              迭代史 v1–v81，每个版本解决了什么
   superpowers/specs/   设计规格
 ```
 
-全部 691 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
+全部 702 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
 
 架构上有一条硬约束：**Core 不引用 Win32 也不引用 WPF**，所有平台能力走 `Interfaces.cs` 里的接口，因此 Core 的测试可以在任何机器上跑。
 
