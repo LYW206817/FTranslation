@@ -2234,3 +2234,36 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
 - AGPL 与「闭源分发 / 部分应用商店条款」不兼容：以后若要上架需单独授权或双许可。
 - 历史提交里的 `LICENSE` 仍是 MIT 原文——历史版本按 MIT 授权是事实，不改写历史；从本提交起新版本按 AGPL-3.0。
 - 第三方 GPL 项目仍只是「学思路」；将来若复制其代码，AGPL 与 GPL 的兼容性需逐案确认。
+
+## v81 备案上线一键脚本 go-live.sh，并修掉升级会覆盖 Caddyfile 的隐患（1.5.0）
+
+### 为什么这样改
+
+备案号下来那一刻要连做六件事：云解析加记录、替换 `Caddyfile` 占位符、填页脚备案号、`caddy validate`、`systemctl enable --now caddy`、逐项验收。手工做最容易漏两处：**页脚备案号**（境内站点必须展示，漏了是合规问题）和**域名是否真的解析到这台机器**（指错了会先怀疑证书，白查半小时）。所以收成一条命令，带只读的 `--dry-run`、五项断言和回滚命令。
+
+顺带修掉一个真缺陷：`install.sh` 原来无条件 `install -m 0644 "$HERE/Caddyfile" /etc/caddy/Caddyfile`，而上传目录里的模板永远带占位符 —— 也就是说**上线后任意一次升级都会把配好的 Caddyfile 换回占位符，接着那段占位符检测把 caddy 停掉，网站直接下线**。现在检测到已配好的 Caddyfile 就保留（要重铺模板用 `FT_FORCE_CADDYFILE=1`）。
+
+### 脚本
+
+`deploy/go-live.sh`（218 行，LF，`set -euo pipefail`）：
+
+- 参数：`--domain`（默认 ftranslation.cn）、`--email`、`--icp`、`--expect-ip`、`--skip-icp`、`--dry-run`
+- 前置体检（任一不过直接退出，不改文件）：`getent ahostsv4` 确认解析、`--expect-ip` 比对、`ss` 确认 80/443 没被非 caddy 进程占着、占位符现状
+- 变更：`cp -a` 留 `.bak` → `sed` 两处占位符 → 页脚 `__ICP_NUMBER__` → `caddy validate` → `enable --now`（已在跑则 `reload-or-restart`）
+- 等待：轮询 `https://<域名>/health` 至多 90 秒（ACME HTTP-01 首次签发要几十秒）
+- 断言五项：80 回 301/308；`/health` 含 `"ok"`；证书 `subject`/`enddate`（有 openssl 时）；页面不含 `__ICP_NUMBER__` 且含 `beian.miit.gov.cn`；页面含传入的备案号
+- 收尾：打印 `systemctl is-enabled/status caddy`，失败时打印一行回滚命令
+
+### 验证
+
+- `bash -n deploy/go-live.sh` 与 `bash -n deploy/install.sh` 均通过；两个文件确认 LF（无 CR）。
+- **生产机上的 `--dry-run` 没跑成**：本机当前出口 IP 是 `223.104.121.58`（武汉移动 4G），而安全组 22 只放行 `59.173.184.134/32`，`ssh root@114.55.166.224` 直接 `Connection timed out`，`python socket.connect` 探测 22 同样超时。脚本的真机行为等能 ssh 时补验（这是本次交付的已知不足，不写成已验证）。
+- 因此本次没有新增/修改任何 C# 代码，`dotnet build` 与 573 项测试的结论沿用上一版（未受脚本改动影响）。
+
+### 残留风险
+
+1. `--icp` 是自由文本，直接进 `sed s/__ICP_NUMBER__/<值>/`：值里若含 `/` 会让 sed 报错（备案号字符集是汉字+数字+`号-`，正常不会触发；真要含就在脚本里换分隔符）。
+2. `go-live.sh` 只改服务器上的 `/var/www/fasttranslation/index.html`，不改仓库里的 `site/index.html`：下次 `install.sh` 整目录同步站点会把页脚覆盖回占位符。脚本收尾已经打印这条提醒，但仍需人工提交一次仓库副本。
+3. DNS 传播有 TTL，`--expect-ip` 可能在记录刚加时失败（脚本报「wrong record or stale cache」），等 10 分钟重跑即可，不是脚本缺陷。
+4. 脚本假设 Caddy 用默认的 `/etc/caddy/Caddyfile` 与静态根 `/var/www/fasttranslation`（与 `install.sh` 的两个变量一致）；换路径要同步改两处常量。
+5. 备案仍在管局审核：2026-10-29 12:48 提交、订单 2038868333211，页面显示 1~4 步（提交审核 / 阿里云初审 / 待提交管局 / 工信部短信核验）已全部完成，当前停在第 5 步「管局审核」，预估 10 个工作日、法定最长 20 个工作日。预计出号窗口 11-12 前后（Workday 计数从 10-30 起算：7 个工作日 ≈ 11-09，10 个 ≈ 11-12，20 个 ≈ 11-26）。

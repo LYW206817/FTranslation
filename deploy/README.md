@@ -16,12 +16,13 @@
 |---|---|
 | `build-server.sh` | 本机执行,产出 `publish/server-linux` |
 | `bootstrap.sh` | 服务器上执行一次(幂等):swap 与 `vm.swappiness=10`、系统账号、目录、Caddy(装完即停用)、libicu、SSH 加固、ufw |
-| `install.sh` | 服务器上执行:先校验生产配置,再停服务拷二进制(所以可以原地重复执行做升级),然后 systemd 单元、静态站点、备份任务、Caddyfile,最后启动并打印健康检查 |
+| `install.sh` | 服务器上执行:先校验生产配置,再停服务拷二进制(所以可以原地重复执行做升级),然后 systemd 单元、静态站点、备份任务、Caddyfile,最后启动并打印健康检查。**已填好的 `/etc/caddy/Caddyfile` 不会被覆盖** |
 | `fasttranslation.service` | → `/etc/systemd/system/fasttranslation.service` |
 | `Caddyfile` | → `/etc/caddy/Caddyfile`(两处占位符) |
 | `appsettings.Production.json.example` | → `/opt/fasttranslation/appsettings.Production.json` 后填空 |
 | `backup.sh` | → `/usr/local/bin/ft-backup.sh` |
 | `fasttranslation-backup.cron` | → `/etc/cron.d/fasttranslation-backup` |
+| `go-live.sh` | 备案号下来后在服务器上执行一次:替换占位符、填备案号、启用 Caddy 并断言五项 |
 
 ## 首次部署
 
@@ -32,7 +33,7 @@ bash deploy/build-server.sh
 # 2) 本机:把 deploy/ 与两个产物一起打成一份上传目录
 rm -rf publish/ftdeploy
 mkdir -p publish/ftdeploy
-cp deploy/bootstrap.sh deploy/install.sh deploy/fasttranslation.service \
+cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
    deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron publish/ftdeploy/
 cp deploy/appsettings.Production.json.example publish/ftdeploy/
 cp -r publish/server-linux publish/ftdeploy/server
@@ -110,6 +111,26 @@ ssh -L 5080:127.0.0.1:5080 root@YOUR_SERVER_IP
 # 然后本机浏览器访问 http://127.0.0.1:5080/health
 ```
 
+## 备案下来后:一条命令上线
+
+`go-live.sh` 把「换 Caddyfile 占位 → 填页脚备案号 → `caddy validate` → 启用 Caddy → 逐项断言」收成一条命令,幂等,重复执行等于重新体检:
+
+```bash
+bash /root/ftdeploy/go-live.sh --email 你的邮箱 --icp '豫ICP备2026xxxxxx号-1' --expect-ip YOUR_SERVER_IP
+```
+
+先看它怎么说,再让它动手 —— `--dry-run` 只做只读诊断(解析、端口、占位符),不改文件、不启 Caddy,发现问题时退出码非 0:
+
+```bash
+bash /root/ftdeploy/go-live.sh --email 你的邮箱 --icp '豫ICP备2026xxxxxx号-1' --expect-ip YOUR_SERVER_IP --dry-run
+```
+
+它断言五项:80 回 301/308、`https://<域名>/health` 回 `{"status":"ok"}`、证书主体与到期日、页面不含 `__ICP_NUMBER__` 且链到 beian.miit.gov.cn、页面确实带备案号。任一项不过就打印回滚命令(`Caddyfile` 与 `index.html` 都留了 `.bak`)。
+
+脚本会先替你验两个前置:**云解析** `A @ -> 公网 IP` 与 `CNAME www -> 裸域` 已生效、**安全组**放行 80/443。缺一个就直接退出,不碰文件。
+
+> 备案号到手后,别忘了同时把它写进仓库的 `site/index.html`(替换 `__ICP_NUMBER__`)并提交 —— 否则下次 `install.sh` 会把页脚覆盖回占位符。`install.sh` 已经不会覆盖已配好的 `/etc/caddy/Caddyfile`,但站点文件是整目录同步的。
+
 ## 安全组
 
 入方向只留这四条（2026-10-29 已按此配好，实测从公网只有 22/80/443 能到达机器）：
@@ -160,7 +181,7 @@ systemctl start fasttranslation
 ```bash
 bash deploy/build-server.sh
 rm -rf /root/ftup && mkdir -p /root/ftup
-cp deploy/bootstrap.sh deploy/install.sh deploy/fasttranslation.service \
+cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
    deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron /root/ftup/
 cp -r publish/server-linux /root/ftup/server
 cp -r site /root/ftup/site

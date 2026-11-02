@@ -71,7 +71,15 @@ install -m 0755 "$HERE/backup.sh" /usr/local/bin/ft-backup.sh
 install -m 0644 "$HERE/fasttranslation-backup.cron" /etc/cron.d/fasttranslation-backup
 
 echo "==> Caddy"
-install -m 0644 "$HERE/Caddyfile" /etc/caddy/Caddyfile
+# 已经配好（没有占位符）的 Caddyfile 不能被升级覆盖：拷贝过来会带回占位符，
+# 下面那段检测就会把 caddy 停掉，网站跟着下线。要重新铺模板用
+# FT_FORCE_CADDYFILE=1 bash install.sh。
+if [ -f /etc/caddy/Caddyfile ] && ! grep -q '__DOMAIN__\|__ACME_EMAIL__' /etc/caddy/Caddyfile \
+	&& [ "${FT_FORCE_CADDYFILE:-0}" != 1 ]; then
+	echo "    keeping the configured /etc/caddy/Caddyfile (FT_FORCE_CADDYFILE=1 to overwrite)"
+else
+	install -m 0644 "$HERE/Caddyfile" /etc/caddy/Caddyfile
+fi
 if grep -q '__DOMAIN__\|__ACME_EMAIL__' /etc/caddy/Caddyfile; then
 	echo "    !! /etc/caddy/Caddyfile still has placeholders."
 	echo "    !! Fill them in, then: systemctl reload caddy"
