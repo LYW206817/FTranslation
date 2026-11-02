@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
@@ -89,6 +89,38 @@ public partial class MainWindow : Window
         _ready = true;
         ApplyCaptureState();
         ShowPage(MainPageId.Home);
+
+        // v86：页面在空闲时先建好并量一遍。点侧栏那一下原本要现场构造控件树再排版——设置页
+        // 要拉进五组控件，实测从点到第一帧 185ms，这就是"点一下得等一下"的来源。放到
+        // ApplicationIdle 里做，窗口早已经画出来了，用户看不到，也不拖慢启动。
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, PrebuildPages);
+    }
+
+    /// <summary>
+    /// 把所有还没被打开过的页面构造出来并量一遍。控件模板的实例化与首次排版是切页开销的
+    /// 大头，而它们和用户点哪一项无关——先付掉，点击时就只剩换 Content。
+    /// 一次跑完，但放在窗口排好版之后的那一个空闲时刻；分成多次空闲时刻反而更糟——
+    /// 用户一点侧栏，新的空闲任务就排到预热后面，越点越晚。
+    /// </summary>
+    private void PrebuildPages()
+    {
+        var size = new Size(PageHost.ActualWidth, PageHost.ActualHeight);
+        if (size.Width < 1 || size.Height < 1)
+        {
+            // 窗口还没排出尺寸：这次收工就再没机会预热了，等下一帧重试。
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, PrebuildPages);
+            return;
+        }
+
+        foreach (var id in Enum.GetValues<MainPageId>())
+        {
+            if (id == _current) continue;
+            // 量一遍而不是塞进 PageHost：塞进去会真的画出来，用户会看到页面自己翻。
+            // 只量不画就够——模板实例化与首次排版正是切页那一 nib 的大头。
+            var page = Build(id);
+            page.Measure(size);
+            page.Arrange(new Rect(size));
+        }
     }
 
     /// <summary>显示在侧边栏底部，这样不打开任何界面也能看到登录状态。</summary>
@@ -287,33 +319,6 @@ public partial class MainWindow : Window
         PageHost.Content = Build(page);
         SyncSidebar();
         RefreshPage(page);
-        PlayPageTransition();
-    }
-
-    /// <summary>
-    /// 换页的衔接（v60）：新页面淡入并从下方 10px 处就位。只动页面宿主，
-    /// 底下的渐变背景保持不动，所以看起来是"内容在纸上出现"而不是整块界面闪一下。
-    /// 系统里关掉动画效果的人走同一路径但不看动画。
-    /// </summary>
-    private void PlayPageTransition()
-    {
-        if (!SystemParameters.ClientAreaAnimation)
-        {
-            PageHost.Opacity = 1;
-            PageHost.RenderTransform = null;
-            return;
-        }
-
-        var slide = new TranslateTransform(0, 10);
-        PageHost.RenderTransform = slide;
-        PageHost.BeginAnimation(OpacityProperty, null);
-        PageHost.Opacity = 1;
-
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease };
-        var rise = new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(210)) { EasingFunction = ease };
-        PageHost.BeginAnimation(OpacityProperty, fade);
-        slide.BeginAnimation(TranslateTransform.YProperty, rise);
     }
 
     /// <summary>
@@ -342,7 +347,7 @@ public partial class MainWindow : Window
         foreach (var button in SidebarItems.Children.OfType<Button>())
         {
             var active = Enum.TryParse<MainPageId>(button.Tag as string, true, out var id) && id == _current;
-            button.Style = (Style)FindResource(active ? "SidebarItemActive" : "SidebarItem");
+            SidebarState.SetIsActive(button, active);
         }
     }
 

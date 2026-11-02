@@ -14,6 +14,11 @@
     <Resource Include="..\..\assets\icon\master-alpha.png">
       <Link>icon-master.png</Link>
     </Resource>
+    <!-- v86：侧栏左上角要显示真图标。用 256 那一档而不是 master-alpha：后者是 1MB 的
+         原图，解到 26px 的方块里要白解码出一张全尺寸位图。 -->
+    <Resource Include="..\..\assets\icon\icon-256.png">
+      <Link>logo.png</Link>
+    </Resource>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FastTranslation.Platform.Windows\FastTranslation.Platform.Windows.csproj" />

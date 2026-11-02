@@ -2490,3 +2490,50 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 
 - 其余七页（单词 / 短语 / 语句 / 复习 / 文档 / 语音 / 套餐 / 账号 / 设置）没有逐页重排，只是通过 `Card` 与页面透明底拿到了新的圆角、投影与雾色背景，各自仍用旧的 24px 页边距。层次是一致的，但和主页面比密度略松。
 - 侧栏图标依赖 MDL2 字形。日后若换字体或换码，先在 `GlyphTypeface.CharacterToGlyphMap` 里验过再提交。
+## v86 · 侧栏换页不再卡：去掉换样式重画与过场，九页提前构造；左上角换成真 logo（1.5.0）
+
+用户的原话是「点击应用内侧栏卡顿」，不是翻译往返慢（他后来专门纠正过）。所以这一节只处理一件事：从点下侧栏到看见新页面之间那几帧。
+
+**三处开销，都在 `src/FastTranslation.App/MainWindow.xaml.cs`**
+
+1. `SyncSidebar()` 每次换页遍历十个按钮重新赋 `Style`。换 Style 等于让 WPF 丢掉旧模板、按新样式重建一整棵 `ControlTemplate` 树——十项重画十次，其中九项根本没变。
+2. `PlayPageTransition()` 给 `PageHost` 套 170ms 淡入 + 210ms 上移 10px。页面自身还没排完版就先进入动画，观感上就是「点了之后等一下才动」。
+3. 首次访问某一页要现场构造控件树：设置页 38ms、账号页 50ms，之后的第一帧还要 102–185ms。
+
+另外证伪了一条猜测：`CardShadowEffect`（每张卡一只 `DropShadowEffect`）不是瓶颈。给 `ThemeBridge.cs` 临时加环境变量开关跑对照，帧时几乎不变（Word 21 vs 20、Plan 33 vs 27、Settings 33 vs 26、Account 38 vs 35），实验代码已原样撤回。
+
+**改法**
+
+- 新增 `src/FastTranslation.App/SidebarState.cs`：一个附加属性 `IsActive`。它的类注释写明为什么不能用 Style 表达活动态。
+- `src/FastTranslation.App/App.xaml`：整支 `SidebarItemActive` 样式删除，活动态并进 `SidebarItem` 模板的一支 `DataTrigger`（绑定 `(local:SidebarState.IsActive)`），四个 Setter 复刻 v85 视觉——`ring` 透明、`fill` 用 `BrandGradientBrush` 加 `NavGlowEffect`、文字 `OnBrandTextBrush` + SemiBold。位置在 `IsMouseOver` 之后，活动块上不叠白色悬停底。
+- `SyncSidebar()` 改成 `SidebarState.SetIsActive(button, active)`；`PlayPageTransition()` 与其调用、`using System.Windows.Media.Animation` 一并删除。
+- 构造函数末尾 `Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, PrebuildPages)`，`PrebuildPages()` 把还没访问过的页 `Build` 出来各 `Measure`/`Arrange` 一遍。不塞进 `PageHost`——塞进去会真的画出来，用户会看到页面自己翻。尺寸还是 0 时重排一次，否则队列停下就再也不预热了。
+- `src/FastTranslation.App/Pages/DocumentPage.xaml.cs`：构造函数里的 `Reload()` 删掉。宿主每次切页都会 `Reload`（包含第一次），留着这一行等于启动预热时就去问一次额度。
+
+**数据**（`FT_UITEST=nav`，`call` = `ShowPage` 本身，`frame` = 其后第一帧，单位 ms）
+
+- 基线 → 现在，首次访问：单词 45/118 → 19–36/92–112；短语 15/61 → 7/36；语句 13/50 → 7/34；复习 24/69 → 8/41；文档 29/78 → 9/41；语音 30/93 → 9/41；套餐 13/115 → 8/59；账号 50/155 → 5–6/70–72；设置 38/185 → 8–10/91–100。
+- 再次访问：全部落在 4–17 / 15–43 一档，且不再有 170+210ms 的过场。
+- 抖动约 ±30%（同一版本连跑三次同一项可以差 20ms），所以上表只当量级看。
+
+**左上角换成真 logo**
+
+- `src/FastTranslation.App/FastTranslation.App.csproj` 增加 `<Resource Include="..\..\assets\icon\icon-256.png"><Link>logo.png</Link></Resource>`；256 那一档在 200% 缩放下仍是满分辨率。
+- `src/FastTranslation.App/MainWindow.xaml` 品牌区从「渐变方块 + 13px 的『译』字」换成 26x26 的 `Image`（`RenderOptions.BitmapScalingMode="HighQuality"`），右边保留 `Fast Translation` 字样。
+- 像素证据（`PrintWindow` 实拍 1820x1155，深色）：奶油色 `#FAF3ED` 出现在 x 66–104、y 110–154，高 45px ≈ 26 × 1.75 DPI；同一行右侧是 `#E8ECF3` 的文字。
+
+**视觉回归**
+
+- 活动项（深色实拍）：填充带 y 187–247，61px ≈ 35 × 1.75，颜色 `#3E74E8`…`#4981FD` 逐行渐变，说明 `BrandGradientBrush` + 辉光仍在；浅色是 `#2A57EA`…`#3A6AF0`。
+- 悬停（鼠标停在「单词」，UIA rect 406,471 311x61、窗口在 350,221，折到图内 y 250–311）：顶边 y 248–254 有 `#4A82FF` ×555 的 2px 环，块内是 `#1F242C`（Surface）+ `#E8ECF3` 文字，`SurfaceBrush` 悬停底没变。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = 714 全绿。
+
+**残留风险**
+
+- 启动后会把其余九页一起构造，内存里多驻留九棵树（原本点一遍也都会驻留），`DocumentPage` 的 `RestoreLastFolder()` 也随之提前到启动时读一次设置。
+- 预热只做 `Measure`/`Arrange`，不做光栅化。首次显示最重的两页（设置 91–100ms、单词 92–112ms）仍有一帧级停顿，那是页面自身排版密度，留待逐页重排时一起收。
+- 悬停环与焦点环共用 `ring`（v70 起就如此），Tab 聚焦与鼠标悬停同时成立时只显示一层。

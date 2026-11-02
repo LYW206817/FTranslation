@@ -590,6 +590,35 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest == "nav")
+        {
+            // FT_UITEST=nav -> 量「点侧栏换页」的耗时。每一页跑两遍：第一遍要构造页面并预热模板，
+            // 第二遍走 _pages 缓存。call 是 ShowPage 本身花的时间，frame 是它之后第一帧画完的时间。
+            // v86 改性能前后各跑一次，数字进 docs/IMPL.md。
+            var navTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
+            navTimer.Tick += async (_, _) =>
+            {
+                navTimer.Stop();
+                MainPageId[] order =
+                [
+                    MainPageId.Home, MainPageId.Word, MainPageId.Phrase, MainPageId.Sentence, MainPageId.Review,
+                    MainPageId.Document, MainPageId.Speech, MainPageId.Plan, MainPageId.Account, MainPageId.Settings,
+                ];
+                for (var pass = 0; pass < 2; pass++)
+                {
+                    foreach (var id in order)
+                    {
+                        var wall = System.Diagnostics.Stopwatch.StartNew();
+                        _mainWindow!.ShowPage(id);
+                        var call = wall.ElapsedMilliseconds;
+                        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+                        Trace($"nav pass={pass} page={id} call={call}ms frame={wall.ElapsedMilliseconds}ms");
+                        await Task.Delay(150);
+                    }
+                }
+            };
+            navTimer.Start();
+        }
         else if (uitest is "image-result")
         {
             // FT_UITEST=image-result -> 用一张合成截图打开截屏翻译卡片。

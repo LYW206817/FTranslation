@@ -59,7 +59,9 @@ public partial class DocumentPage : UserControl
         LoadLanguages();
         RestoreLastFolder();
         _progressTimer.Tick += (_, _) => FlushProgress();
-        Reload();
+        // v86：构造里不再自己 Reload。宿主每次切到本页都会调 Reload（MainWindow.RefreshPage），
+        // 首次显示也一样；而窗口一建好就会把各页提前构造（MainWindow.PrebuildPages），
+        // 留在这里等于启动时就朝服务端问一次额度。
     }
 
     /// <summary>页面每次被切到前台时调（<c>MainWindow.RefreshPage</c>）。正在跑的时候不重读额度。</summary>

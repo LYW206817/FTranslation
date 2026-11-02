@@ -477,34 +477,18 @@
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
               </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-
-    <!-- 活动项重复整个模板：控件模板无法只覆盖继承模板里的某一个元素。
-         v85 雾光：从"浅蓝底 + 左侧竖条"换成品牌渐变的实色块，底下垫一圈同色辉光——
-         整条侧栏里只有它是重色块，一眼就能定位。 -->
-    <Style x:Key="SidebarItemActive" TargetType="Button" BasedOn="{StaticResource SidebarItem}">
-      <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Grid>
-              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
-                      CornerRadius="12" Margin="-1"/>
-              <Border x:Name="fill" Background="{DynamicResource BrandGradientBrush}" CornerRadius="11"
-                      Effect="{DynamicResource NavGlowEffect}">
-                <ContentPresenter Margin="10,0" VerticalAlignment="Center"/>
-              </Border>
-            </Grid>
-            <ControlTemplate.Triggers>
-              <!-- 实色块上不再叠悬停底色，只留焦点环：在一整块品牌渐变上再压白会显脏。 -->
+              <!-- v86 活动项：以前是整支 SidebarItemActive 样式（另写一份模板，换页时给十个
+                   按钮重新赋 Style，等于把十棵模板树拆了重画）。现在同一份模板里改一个附加属性，
+                   点击时模板原地不动。放在悬停触发器之后，活动块上就不叠白色悬停底。
+                   v85 的视觉不变：品牌渐变实块 + 同色辉光，整条侧栏里只有它是重色块。 -->
+              <DataTrigger Binding="{Binding (local:SidebarState.IsActive), RelativeSource={RelativeSource Self}}"
+                           Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="Transparent"/>
+                <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandGradientBrush}"/>
+                <Setter TargetName="fill" Property="Effect" Value="{DynamicResource NavGlowEffect}"/>
+                <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+              </DataTrigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
