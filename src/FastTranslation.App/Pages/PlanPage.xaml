@@ -26,6 +26,38 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- v92：效果图 A 的 facts 小卡与「额度怎么重置」行——13px 标题、12px 说明，
+         行是左键右值，靠列宽把值推到右边，不用手写对齐空格。 -->
+    <Style x:Key="FactTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+    <Style x:Key="FactBody" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,5,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="19"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+    <Style x:Key="RuleRow" TargetType="Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="0,1,0,0"/>
+      <Setter Property="Padding" Value="0,10"/>
+    </Style>
+    <Style x:Key="RuleKey" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+    <Style x:Key="RuleValue" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Margin" Value="24,0,0,0"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="TextAlignment" Value="Right"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
   </UserControl.Resources>
 
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -182,61 +214,97 @@
         </Grid>
       </Border>
 
-      <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+      <!-- v92：按效果图 A 的阅读顺序——先三张 facts 小卡并排，再让「激活码」和
+           「额度怎么重置」各自独占一行。原来的三列要点挤在一张卡里用圆点列举，
+           下面两张卡又被 CardBoard 拆成左右两半，读起来比效果图碎。 -->
+      <Grid Margin="0,16,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="16"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="16"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}" Padding="16,15,18,16">
+          <StackPanel>
+            <TextBlock Text="单词本" Style="{StaticResource FactTitle}"/>
+            <TextBlock Text="单词、短语、整句都能存,按分栏翻。" Style="{StaticResource FactBody}"/>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}" Padding="16,15,18,16" Grid.Column="2">
+          <StackPanel>
+            <TextBlock Text="四档复习" Style="{StaticResource FactTitle}"/>
+            <TextBlock Text="忘记 / 模糊 / 熟悉 / 记住,按自己的感觉排下一次。" Style="{StaticResource FactBody}"/>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}" Padding="16,15,18,16" Grid.Column="4">
+          <StackPanel>
+            <TextBlock Text="额度" Style="{StaticResource FactTitle}"/>
+            <TextBlock Text="标准版每月 300 万字符,不再受每日上限限制。" Style="{StaticResource FactBody}"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="18,15,18,16">
         <StackPanel>
-          <TextBlock Text="包括什么" Style="{StaticResource CardTitle}"/>
-          <TextBlock Text="· 单词本:单词、短语、整句都能存,按分栏翻。"
-                     Style="{StaticResource Hint}" Margin="0"/>
-          <TextBlock Text="· 四档复习:忘记 / 模糊 / 熟悉 / 记住,按自己的感觉排下一次。"
-                     Style="{StaticResource Hint}" Margin="0,7,0,0"/>
-          <TextBlock Text="· 额度:标准版每月 300 万字符,不再受每日上限限制。"
-                     Style="{StaticResource Hint}" Margin="0,7,0,0"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="激活码" Style="{StaticResource CardTitle}" Margin="0" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBox x:Name="RedeemBox" Width="240" AutomationProperties.Name="激活码" MaxLength="24"
+                       TextChanged="Input_Changed"/>
+              <Button x:Name="RedeemButton" Content="兑换" Margin="10,0,0,0"
+                      Style="{StaticResource SmallButton}" Click="Redeem_Click"/>
+            </StackPanel>
+          </Grid>
+          <!-- 这行既是说明也是兑换结果与报错的出口，所以留在按钮下面通栏，
+               不跟标题挤在左边，出错时用户第一眼能看到。 -->
+          <TextBlock x:Name="RedeemHint" Style="{StaticResource Hint}" Margin="0,10,0,0"
+                     Text="买到激活码后填在这里,兑换后套餐立刻生效。"/>
         </StackPanel>
       </Border>
 
-      <local:CardBoard Columns="2" Margin="0,16,0,0">
-        <Border Style="{StaticResource Card}">
-          <StackPanel>
-            <TextBlock Text="激活码" Style="{StaticResource CardTitle}"/>
+      <!-- 重置规则属于套餐，所以放在它所解释的计量旁边 -->
+      <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+        <StackPanel>
+          <TextBlock Text="额度怎么重置" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+          <Border Style="{StaticResource RuleRow}">
             <Grid>
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
-              <TextBox x:Name="RedeemBox" AutomationProperties.Name="激活码" MaxLength="24"
-                       TextChanged="Input_Changed"/>
-              <Button x:Name="RedeemButton" Grid.Column="1" Content="兑换" Margin="8,0,0,0"
-                      Style="{StaticResource SmallButton}" Click="Redeem_Click"/>
+              <TextBlock Text="本月额度" Style="{StaticResource RuleKey}"/>
+              <TextBlock Grid.Column="1" Text="北京时间每月 1 日 8:00 归零,重新按整月计算。" Style="{StaticResource RuleValue}"/>
             </Grid>
-            <TextBlock x:Name="RedeemHint" Style="{StaticResource Hint}"
-                       Text="买到激活码后填在这里,兑换后套餐立刻生效。"/>
-          </StackPanel>
-        </Border>
-
-        <!-- 重置规则属于套餐，所以放在它所解释的计量旁边 -->
-        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Text="额度怎么重置" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="本月额度" FontSize="12" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock Text="北京时间每月 1 日 8:00 归零,重新按整月计算。"
-                       Style="{StaticResource Hint}" Margin="0,3,0,0"/>
-
-            <TextBlock Text="今日额度" FontSize="12" FontWeight="SemiBold" Margin="0,12,0,0"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock Text="北京时间每天 8:00 归零。免费版每天 2,000 字符,标准版没有每日上限。"
-                       Style="{StaticResource Hint}" Margin="0,3,0,0"/>
-
-            <TextBlock Text="复习队列" FontSize="12" FontWeight="SemiBold" Margin="0,12,0,0"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock Text="同样在北京时间 8:00 换新的一天:到期卡全部排进来,另外最多再加 20 条当天新存的。"
-                       Style="{StaticResource Hint}" Margin="0,3,0,0"/>
-
-            <TextBlock Text="把日历放在 UTC 上是刻意的:服务端不跟着用户机器的时区走,换一台电脑不会多算一天。"
-                       Style="{StaticResource Hint}" Margin="0,12,0,0"/>
-          </StackPanel>
-        </Border>
-      </local:CardBoard>
+          </Border>
+          <Border Style="{StaticResource RuleRow}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="今日额度" Style="{StaticResource RuleKey}"/>
+              <TextBlock Grid.Column="1" Text="北京时间每天 8:00 归零;免费版每天 2,000 字符。" Style="{StaticResource RuleValue}"/>
+            </Grid>
+          </Border>
+          <Border Style="{StaticResource RuleRow}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="复习队列" Style="{StaticResource RuleKey}"/>
+              <TextBlock Grid.Column="1" Text="同样 8:00 换新的一天:到期卡全部排进来,另加最多 20 条当天新存的。" Style="{StaticResource RuleValue}"/>
+            </Grid>
+          </Border>
+          <TextBlock Text="把日历放在 UTC 上是刻意的:服务端不跟着用户机器的时区走,换一台电脑不会多算一天。"
+                     Style="{StaticResource Hint}" Margin="0,12,0,0"/>
+        </StackPanel>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

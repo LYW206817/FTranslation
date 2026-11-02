@@ -532,7 +532,9 @@
          红色小方块在冷暖两色之间跳得太凶；数字读得清就够了，不需要嚷。 -->
     <Style x:Key="SidebarBadge" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-      <Setter Property="CornerRadius" Value="9"/>
+      <!-- v92：9 在 18 高的框上正好是胶囊，和按钮（10）、标签（6）不是一套；
+           收到 6，让它和「当前套餐」那枚小标签同一个圆角。 -->
+      <Setter Property="CornerRadius" Value="6"/>
       <Setter Property="MinWidth" Value="18"/>
       <Setter Property="Height" Value="18"/>
       <Setter Property="Padding" Value="6,0"/>
@@ -575,11 +577,13 @@
       <Setter Property="ClipToBounds" Value="True"/>
     </Style>
 
-    <!-- 顶栏那几枚白色药丸（语言、模型、积分）。影子比卡片轻一档，
-         它们是贴在纸面上的小标签，不该和卡片抢层次。 -->
+    <!-- 顶栏那几枚白色标签（语言、模型、积分）。影子比卡片轻一档，
+         它们是贴在纸面上的小标签，不该和卡片抢层次。
+         v92：圆角 20 → 10。20 在 28 高的框上已经收成胶囊，和按钮（10）、
+         输入框（8–10）不是一套语言；10 让它们读成同一族的圆角方框。 -->
     <Style x:Key="TopPill" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="CornerRadius" Value="10"/>
       <Setter Property="Padding" Value="12,5"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="Effect" Value="{DynamicResource GlassShadowEffect}"/>
@@ -613,7 +617,8 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="20"
+            <!-- v92：与 TopPill 同为 10 圆角，胶囊形状不再出现在任何方框上 -->
+            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="10"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter VerticalAlignment="Center"/>
             </Border>
