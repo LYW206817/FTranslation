@@ -2633,3 +2633,14 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 常驻内存上升（D3D 工作集），原来是刻意为省内存关掉的；如果以后内存优先级反超流畅度，`SoftwareOnly` 那一行要按「只对低端机生效」的方式加回来，而不是全局强制。
 - 远程桌面 / 虚拟显示适配器下硬件路径会退化成 WARP，帧时与软件渲染几乎一样；真正的体感结论只能来自用户本机直连显示器。
 - 换页首帧仍然包含整块内容区重绘，拆帧只保证「点击反馈先出」，不缩短重绘本身。
+
+**发布记录 v1.5.0（2026-11-02）**
+
+- 提交 `149e32dcd79c6edd6036e33289901237f0579031`（v89 性能线）；版本号五处同步为 1.5.0：`Directory.Build.props`、`installer/FastTranslation.iss`、`docs/portable-readme.txt`、`README.md`、`site/index.html`。
+- 构建与测试：`dotnet build FastTranslation.slnx -c Release` 0 警告 0 错误；`dotnet test` 714 全绿（Core 302 / Platform.Windows 107 / Providers.QwenMt 95 / Server 210）。
+- 主仓库 Release `v1.5.0`（id 431568056，`target_commitish` 为完整 40 位 sha）：`FastTranslation-1.5.0-Setup.exe` 47175967B / sha256 `c7423789b52c8fd2be03b33265409f21ea7c484de6dde1fb86e20a98d6402663`；`FastTranslation-1.5.0-portable.zip`（263 条目）62378635B / sha256 `a41a1abebda07ba76a39ce2c5ecffed3a006ddebe5500e06240b54a8dab4b9c0`。两个资产均 `state: uploaded`，digest 与本地一致。
+- 更新通道仓库 Release `v1.5.0`（id 431573150）上传同一份 Setup.exe，`state: uploaded`，digest 一致。
+- `version.json` 已更新（旧 blob `e37f9d578d68cd742ff19233ad4e22417d7cd4d3` → 新 blob `19554e176f9cbf2a6cac76a8d8c9e4541521189c`，commit `ca407f15bc10bdb78e2b84ce95581bdcd03a4d45`）：version 1.5.0 / url 指向通道资产 / sha256 小写 / size 47175967 / releasePage 指主仓库 tag。
+- 清单轮询（22:43–22:44）：Pages 22:43:29 仍是 1.3.7、22:44:24 已刷成 1.5.0（600 秒缓存窗口内即生效）；gh-proxy raw 立即是 1.5.0；`raw.githubusercontent.com` 直连被 `Connection was reset`（与既往一致）。
+- 本机验收：同一份 Setup.exe 静默安装到 `%LOCALAPPDATA%\Programs\FastTranslation`，264 文件 / 140.2MB，注册表 `DisplayVersion` 1.5.0，窗口正常打开、`update.log` 记 `up to date (1.5.0)`。
+- 发布前清理了 1.2.2 残留：僵尸注册表键（`InstallLocation` 指向已不存在的 `D:\SoftwareDownload\FastTranslation\`，导出 `.reg` 后删除）、开始菜单两个失效快捷方式、`%LOCALAPPDATA%\Programs\FastTranslation` 旧副本 139MB；用户数据 `%LOCALAPPDATA%\FastTranslation` 未动。
