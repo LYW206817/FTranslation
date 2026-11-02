@@ -2306,3 +2306,44 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
 - **重采样没有抗混叠低通**（设计 §5.1 写的是 3 抽头滑动平均，实现是直接线性插值）。48k→16k 会有一部分高频折回，可能让 ASR 把气声、齿音听错。这段改动会改变输出样本值，需要拿真实音频 A/B 才敢定，留到端到端真声联调一起做。
 - `SpeechTranscriptService.DroppedCount`（队列满丢批次数）仍未上屏，用户看不出「字幕丢了几句」。属于体验项，等真声联调后再定是否显示。
 - 真声端到端（播视频→看字幕）、`target_lang="auto"` 链路、生产 wss 腿仍待联调/备案。
+## v82 语音链路剩余隐患收口：墙钟计费、跨帧 JSON、残留样本与后台任务异常（1.5.0 修复）
+
+用户问「隐患都修复了吗?」之后逐条核对 v81 的遗留项,本版修掉 6 处,另 1 项明确不做并给出理由。
+
+### 改了什么
+
+1. **上游一条 usage 都没报时按墙钟计费**（`server/FastTranslation.Server/Gateway/DashScopeSpeechGateway.cs`）。
+   之前只有 `latestUsage is { } usage` 一个分支:连接刚建就被砍、或全程静音时一帧 usage 都收不到,于是一分钱不记——
+   预检已经放行、上游 ASR 算力已经花掉,这是可以白嫖的口子。现在 else 分支按
+   `DateTimeOffset.UtcNow - startedAtUtc` 取秒数(上限 `sessionSeconds`)、不足 `MinSeconds` 按 `MinSeconds` 记。
+2. **上游 JSON 跨帧拼接**（同上,`PumpUpstreamAsync`）。`ReceiveAsync` 只读一帧,`received.EndOfMessage=false` 时
+   旧实现把半截 JSON 直接丢给 `JsonDocument.Parse`;而 DashScope 的长句终稿带 `words[]`、单帧可达数十 KB,
+   一旦分帧就是「静默丢句」。现在用 `MemoryStream` 累积到 `EndOfMessage` 再解析。
+3. **收尾补发重采样器残留样本**（`src/FastTranslation.App/App.xaml.cs` 的 `EndSpeechSession`）。
+   `AudioResampler` 内部压着不足一块的样本(最多 100ms),之前从不调用 `Flush`,每段话的尾巴都被吞掉。
+   现在结束前 `Flush` 一次并 `PushAudio`。
+4. **后台任务异常不再静默**（同文件新增 `Observe(Task, string)`）。语音链路有 4 处 fire-and-forget
+   (`StartSpeechSessionAsync`/`RestartSpeechCaptureAsync`/`StopAsync`/`DisposeAsync`),以前任一抛出都无人观察,
+   用户只看到窗口一直转圈。现在统一 `ContinueWith(OnlyOnFaulted)` 回 UI 线程显示原因;`Task.Run` 里的
+   `capture.Stop()/Dispose()` 也补了 `ObjectDisposedException/InvalidOperationException` 兜底。
+5. **被丢弃的句子要说出来**（`SpeechWindow.EndSession(string? error, int dropped)`）。
+   `SpeechTranscriptService.DroppedCount` 之前只存在不上屏,队列满丢句时用户只看到字幕缺词、以为模型漏译;
+   现在结束态显示「已结束(N 句因处理不过来被丢弃)」。
+6. **浮窗不再抢焦点**（`ShowSpeechWindow` 去掉 `Activate()`）。开始语音时用户多半正在打字,抢焦点会打断输入;
+   窗口置顶 + `Show()` 已足够可见,要拖动或点关闭时用户自己会点它。
+
+### 明确不修的一项
+
+**重采样仍无抗混叠低通**(`src/FastTranslation.Core/Audio/AudioResampler.cs:94` 直接线性插值,设计 §5.1 曾提 3 抽头滑动平均)。
+不做原因:48k→16k 是 3:1 抽取,理论上 8 kHz 以上会折回;但收益只能靠真机真声 A/B(看 ASR 是否正确率更高),
+当前没有可用额度做端到端真声验证,先加一版无法证明收益的滤波只是增加回归面。已列入残留风险,端到端联调时一并验。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误(**构建前必须先停应用与本地服务**,否则
+  MSB3026/MSB3021 锁文件)。
+- `dotnet test` → **704 通过 0 失败**(Core 302 / Platform.Windows 97 / Providers.QwenMt 95 / Server 210);
+  Server 由 208 增至 210,正是本版新增的 `Bills_wall_clock_when_upstream_never_reports_usage` 与
+  `Assembles_json_split_across_text_frames`。
+- 无界面布局改动,截图沿用 v79(`SpeechWindow` 只改了结束态文案)。
+
