@@ -70,7 +70,7 @@ public class ThemePaletteTests
     [InlineData(AppTheme.Dark)]
     public void OnBrandTextIsReadableOnTheBrandFill(AppTheme theme)
     {
-        // v80：三支强调色各有一套品牌色，任何一个都不许把白字/墨字做到读不清
+        // v83：三支强调色各有一套品牌色，任何一个都不许把白字/墨字做到读不清
         foreach (var accent in Accents)
         {
             var palette = ThemePalette.PaletteFor(theme, accent);
