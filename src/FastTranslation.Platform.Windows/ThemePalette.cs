@@ -102,7 +102,7 @@ public static class ThemePalette
     public const string LakeSetting = "lake";
     public const string VioletSetting = "violet";
 
-    // v80：品牌蓝换成偏 azure 的电光蓝。原先的 #2562FF 是钴蓝，与强调色里的湖蓝、
+    // v83：品牌蓝换成偏 azure 的电光蓝。原先的 #2562FF 是钴蓝，与强调色里的湖蓝、
     // 紫罗兰放在一起时色相区分不够。白字压 #3B6BF0 是 4.62:1（旧值 4.92:1），
     // 仍然过 AA；#4B7BFF 只有 3.77:1，因此只用在闪电渐变与色块上，不做实底按钮。
     public static ThemeColors Light { get; } = new(

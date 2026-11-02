@@ -21,7 +21,8 @@ public partial class SettingsPage : UserControl
     private readonly HotkeyService _hotkey;
     private readonly Action? _checkUpdates;
 
-    // 强调色是「待保存」的页面状态：和 Theme 一样，点保存才落盘，下次启动才生效
+    // 强调色是「待保存」的页面状态：点保存才落盘。界面本身在点选时就预览（v84），
+    // 离开本页或取消则退回已保存的外观，免得预览和 settings.json 长期不一致。
     private AccentTheme _accent = AccentTheme.Electro;
 
     /// <summary>保存或取消之后触发，好让外壳回到用户来的地方。</summary>
@@ -51,6 +52,9 @@ public partial class SettingsPage : UserControl
 
         AboutText.Text = AboutLine();
         ReloadFromSettings();
+
+        // 页面是缓存的：切页面/取消离开时把预览过的外观退回已保存的那一套
+        Unloaded += (_, _) => RevertAppearance();
     }
 
     /// <summary>
@@ -215,13 +219,7 @@ public partial class SettingsPage : UserControl
     {
         _settings.TargetLanguage = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
         _settings.Model = ModelCombo.SelectedIndex == 1 ? "qwen-mt-plus" : "qwen-mt-flash";
-        // 调色板在启动时应用一次（App.OnStartup）——按设计不做实时换主题
-        _settings.Theme = ThemeCombo.SelectedIndex switch
-        {
-            1 => ThemePalette.LightSetting,
-            2 => ThemePalette.DarkSetting,
-            _ => ThemePalette.SystemSetting,
-        };
+        _settings.Theme = SelectedThemeSetting;
         _settings.Accent = ThemePalette.AccentSetting(_accent);
 
         var newHotkey = HotkeyBox.Text.Trim();
@@ -274,11 +272,40 @@ public partial class SettingsPage : UserControl
         Closed?.Invoke();
     }
 
+    /// <summary>下拉框当前选项对应的设置值；预览与保存都读它，避免两处 switch 走岔。</summary>
+    private string SelectedThemeSetting => ThemeCombo.SelectedIndex switch
+    {
+        1 => ThemePalette.LightSetting,
+        2 => ThemePalette.DarkSetting,
+        _ => ThemePalette.SystemSetting,
+    };
+
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 构造与 ReloadFromSettings 里设 SelectedIndex 也会走到这里，那时还没上树，别预览
+        if (IsLoaded) PreviewAppearance();
+    }
+
     private void AccentChip_Click(object sender, RoutedEventArgs e)
     {
         _accent = ThemePalette.ResolveAccent((sender as FrameworkElement)?.Tag as string);
+        PreviewAppearance();
+    }
+
+    /// <summary>
+    /// 把「当前控件里的选择」直接铺到整个界面上，让用户不用重启就能看到效果（v84）。
+    /// 只改运行时画刷与标题栏，不落盘；落盘仍然只发生在保存按钮里。
+    /// </summary>
+    private void PreviewAppearance()
+    {
+        App.ApplyAppearance(SelectedThemeSetting, ThemePalette.AccentSetting(_accent));
+        // 色块显示的是「该色在当前主题下」的品牌色，换主题后必须重取值
         UpdateAccentChips();
     }
+
+    /// <summary>退回 settings.json 里那套外观：取消、切走页面、以及保存后离开都走这里。</summary>
+    private void RevertAppearance()
+        => App.ApplyAppearance(_settings.Theme, _settings.Accent);
 
     /// <summary>
     /// 三枚色块永远显示该强调色在**当前**主题下的品牌色（于是深色下看到的是深色那一支），

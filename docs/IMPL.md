@@ -2348,7 +2348,7 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
 - 无界面布局改动,截图沿用 v79(`SpeechWindow` 只改了结束态文案)。
 
 
-## v80 · 设置页新增强调色：电光蓝 / 湖蓝 / 雾光紫（1.5.0）
+## v83 · 设置页新增强调色：电光蓝 / 湖蓝 / 雾光紫（1.5.0）
 
 ### 为什么
 
@@ -2368,7 +2368,8 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
   原因：#4B7BFF 压白只有 3.77:1 不够 AA，所以它只进闪电渐变与色块；实底按钮用 `#3B6BF0`（白字 4.62:1，旧值 4.92:1）。
 - **落盘时机与主题一致**：设置页点保存写 `Settings.Accent`（`src/FastTranslation.Core/Settings.cs`，缺字段默认 `"electro"`，
   无需迁移），`App.OnStartup` 里 `ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme), _settings.Accent)` 生效。
-  属性页提示语同步改成「主题、强调色与热键均在下次启动后生效」——不实时换色是刻意的，热重建整棵画刷树不值得。
+  属性页提示语同步改成「主题、强调色与热键均在下次启动后生效」（**v84 起改成选完立即生效**，见下节：
+  画刷本来就是可变实例，就地改色并不需要重建画刷树，当初「不值得」的判断是错的）。
 
 ### 界面
 
@@ -2397,3 +2398,48 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
   其它正文色没有逐项跑对比度，仍是人工目测。
 - 选中态靠「品牌色描边 + 品牌填充底 + 半粗字」三重区分，深色下三枚色块本身也都是品牌色，低视力用户未必分得清选中与未选中；
   若后续有反馈，加一枚勾选图标比继续加颜色更有效。
+
+## v84 · 主题与强调色选完即生效，不再要求重启
+
+### 为什么
+
+用户看完 v83 直接问「怎么还重启生效呢？不能保存生效吗」。原来那句「下次启动生效」是从 v24 沿用下来的
+（`docs/IMPL.md:351` 当时判断实时换肤要把 94 处 `StaticResource` 全改 `DynamicResource` + 调色板可变 + 窗口重建）。
+但这两件事其实早就做完了：v24 起 XAML 里每处画刷引用都是 `{DynamicResource …}`，且画刷带 `po:Freeze="False"`，
+`ThemeBridge.Set` 一直是**就地**改 `SolidColorBrush.Color`（`src/FastTranslation.App/ThemeBridge.cs:64-81`）。
+也就是说缺的只有一次调用——画刷树不用重建，标题栏要单独再推一次 DWM。
+
+### 怎么做的
+
+- 新增 `App.ApplyAppearance(string? themeSetting, string? accent)`（`src/FastTranslation.App/App.xaml.cs`）：
+  `ThemeBridge.Apply(ThemePalette.Resolve(setting), accent)` 之后遍历 `Application.Current.Windows`，
+  对每个窗口补一次 `WindowChrome.SetDarkTitleBar(..., ThemePalette.Current == AppTheme.Dark)`。
+  参数收「设置值」而不是解析结果，好让调用方原样传 `_settings.Theme`。
+  启动路径（`App.OnStartup`）也改走这一个方法，于是「启动」与「运行时切换」只有一条代码路径。
+- 设置页改成**选完即预览**（`src/FastTranslation.App/Pages/SettingsPage.xaml.cs`）：
+  `ThemeCombo.SelectionChanged` 与 `AccentChip_Click` 都调 `PreviewAppearance()`；落盘仍然只发生在保存按钮里。
+  `SelectedThemeSetting` 一个属性同时给预览与保存用，避免两处 switch 走岔。
+- **预览要能退回去**：页面是缓存的（切页面不重建），所以 `Unloaded` 里 `RevertAppearance()` 把外观退回 `settings.json` 那一套；
+  「取消」也走同一条（`ReloadFromSettings` 改下拉框会再预览一次，最后仍以保存值为准）。不这样做的话，看了预览又没保存，
+  界面就会和设置文件长期不一致，下次启动「自己变回去」看起来像 bug。
+- 提示语改成「主题与强调色选完立即生效；热键在下次启动后生效」——热键是注册表/`RegisterHotKey` 状态，确实只能重启才省事。
+- QA 钩子 `FT_UITEST=live-dark`：浅色启动后 2.6 秒在**同一进程**里调 `ApplyAppearance(Dark, Electro)`，
+  用来证明不重启也能换主题与原生标题栏。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误；`dotnet test` → **714 通过 0 失败**（无新增单测：
+  这条链路是 WPF 画刷与 DWM 的运行时行为，xunit 里没有消息循环可用，证据只能是像素）。
+- 强调色实时切换（`tools/qa/shot-live-switch.ps1`，`PrintWindow` 实拍 1820×1155，同一进程三帧）：
+  - `live-1-before.png`：`#3B6BF0`（电光）8423 px，`#0E7EA8`（湖蓝）只有 189 px —— 那是色块本身。
+  - 点「湖蓝」色块后 `live-2-preview-lake.png`：`#0E7EA8` 8335 px，`#3B6BF0` 缩到 189 px（只剩电光色块）。
+  - 未保存直接切回首页 `live-3-reverted.png`：`#3B6BF0` 8229 px、`#0E7EA8` **0** —— 预览已退回保存值。
+- 主题实时切换（`tools/qa/shot-live-theme.ps1` + `FT_UITEST=live-dark`，浅色启动、同进程切深色）：
+  `publish/live/live-4-dark.png` 里 `#F7F9FC`（浅色页底）**0** px、`#3B6BF0`（浅色品牌）**0** px、
+  `#4A82FF`（深色品牌）8229 px；`#F3F3F3`（系统原生浅色标题栏）也是 **0** px ⇒ 客户区与标题栏一起换了。
+
+### 残留风险
+
+- 预览只覆盖主题与强调色。同一张卡里的目标语言、模型、热键、开机自启仍是「保存才动」，读起来是一致的（提示语写明了热键）。
+- `Unloaded` 里的回退依赖页面被移出可视树。若将来把设置做成独立窗口或用 `Visibility` 隐藏，这条回退就失效，得改成显式的 `Closed`。
+- 切换时没有过渡动画：整屏颜色瞬间跳变。要顺滑得给窗口做交叉淡入，代价是一次全屏重绘，暂不做。

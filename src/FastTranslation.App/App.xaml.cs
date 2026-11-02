@@ -112,7 +112,7 @@ public partial class App : Application, IResultPresenter
 
         // 调色板要在任何窗口存在之前就位：XAML 画刷是可变的（po:Freeze="False"），
         // ThemeBridge 就地给它们换色，于是每个样式和模板都能拿到主题（v24）
-        ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme), _settings.Accent);
+        ApplyAppearance(_settings.Theme, _settings.Accent);
 
         // 账号服务：整个进程共用一个 HttpClient，超时 20 秒，这样主机挂了会表现为
         // 网络错误，而不是一个永远回不来的按钮
@@ -532,6 +532,17 @@ public partial class App : Application, IResultPresenter
                 catch (Exception ex) { Trace($"notice branch: {ex}"); }
             };
             uiTimer.Start();
+        }
+        else if (uitest == "live-dark")
+        {
+            // QA：浅色启动后在同一个进程里切深色 —— 验证主题与原生标题栏都不用重启（v84）
+            var switchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2600) };
+            switchTimer.Tick += (_, _) =>
+            {
+                switchTimer.Stop();
+                ApplyAppearance(ThemePalette.DarkSetting, ThemePalette.ElectroSetting);
+            };
+            switchTimer.Start();
         }
         else if (uitest is "translate")
         {
@@ -1210,6 +1221,25 @@ public partial class App : Application, IResultPresenter
         {
             // 非模态通知（曾经用 MessageBox 把应用冻住过一次）；不产生剪贴板副作用
             _card?.ShowNotice(replace ? "当前内容不能替换诶,换一个试试" : "当前内容不能插入诶,换一个试试");
+        }
+    }
+
+    /// <summary>
+    /// 应用外观（v84）：设置里换主题或强调色时立刻重刷，不必重启。
+    /// 画刷是 po:Freeze="False" 的可变实例，ThemeBridge 就地改色，所有 DynamicResource 引用
+    /// 跟着变；只有原生标题栏要单独再推一次 DWM——它只在 SourceInitialized 里设过一次（v38）。
+    /// 参数用「设置值」而不是解析结果，好让调用方原样传 _settings.Theme。
+    /// </summary>
+    internal static void ApplyAppearance(string? themeSetting, string? accent)
+    {
+        ThemeBridge.Apply(ThemePalette.Resolve(themeSetting), accent);
+        if (Current is not App app) return;
+
+        // 已开的窗口都要重刷标题栏；Show() 之后才建 HWND 的窗口由 WindowChrome.Apply 兜住
+        foreach (Window window in app.Windows)
+        {
+            try { WindowChrome.SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
+            catch { /* 只是外观：DWM 拒绝就保留系统默认标题栏 */ }
         }
     }
 
