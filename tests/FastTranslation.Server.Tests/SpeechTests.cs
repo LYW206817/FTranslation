@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using System.Threading.Channels;
 using Xunit;
 
@@ -114,6 +115,38 @@ public class SpeechEndpointTests : IClassFixture<SpeechGatewayFactory>, IClassFi
         var reason = Assert.Single(response.Headers.GetValues("X-FT-Quota-Reason"));
         Assert.Contains("quota_exhausted", reason);
         Assert.Contains(reason, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Asr_returns_429_when_the_account_already_has_a_session()
+    {
+        // 并发闸门是单例,测试可以先替这个账号占住唯一的名额,再打端点看它 429。
+        var client = _factory.CreateClient();
+        var email = $"speech-busy-{Guid.NewGuid():N}@example.com";
+        var register = await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email, "password123", null, "fp-" + Guid.NewGuid().ToString("N"), "test-pc"));
+        register.EnsureSuccessStatusCode();
+        var auth = (await register.Content.ReadFromJsonAsync<AuthResponse>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+        var store = _factory.Services.GetRequiredService<AccountStore>();
+        var user = store.FindUserByEmail(email)!;
+        var sessions = _factory.Services.GetRequiredService<SpeechSessionLimiter>();
+        Assert.True(sessions.TryEnter(user.Id, 1));
+        try
+        {
+            var busy = await client.GetAsync("/v1/asr");
+            Assert.Equal(HttpStatusCode.TooManyRequests, busy.StatusCode);
+            Assert.Contains("speech_busy", await busy.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            sessions.Exit(user.Id);
+        }
+
+        // 名额放回去之后,同一账号能过闸门(非 WS 请求收在 400)。
+        var released = await client.GetAsync("/v1/asr");
+        Assert.Equal(HttpStatusCode.BadRequest, released.StatusCode);
     }
 }
 
@@ -255,6 +288,62 @@ public class DashScopeSpeechRelayTests
 
 
     [Fact]
+    public async Task Session_timeout_tells_the_client_why_it_stopped()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), "ft-speech-tests", Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        try
+        {
+            var database = new ServerDatabase(databasePath);
+            database.Initialize();
+            var store = new AccountStore(database);
+            var user = store.CreateUser($"relay-timeout-{Guid.NewGuid():N}@example.com", "hash", PlanTier.Free);
+            var device = store.RegisterDevice(user.Id, "fp-timeout", "test-pc").Device!.Id;
+
+            var (clientTest, clientRelay) = FakeWebSocket.CreatePair();
+            var (upstreamTest, upstreamRelay) = FakeWebSocket.CreatePair();
+            var options = new SpeechOptions
+            {
+                Enabled = true,
+                WsUrl = "ws://speech.test/asr",
+                Model = AsrModel,
+                QuotaCharsPerSecond = 20,
+                MinSeconds = 10,
+            };
+            var gateway = new DashScopeSpeechGateway(options, "test-key",
+                _ => Task.FromResult<WebSocket>(upstreamRelay));
+
+            // 硬顶 1 秒:到点服务端必须主动告诉客户端「为什么停了」,不能只断连接
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 1, CancellationToken.None);
+            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
+            await upstreamTest.ReceiveTextAsync();   // run-task
+
+            var error = await clientTest.ReceiveTextAsync();
+            Assert.Contains("\"code\":\"session_timeout\"", error);
+            Assert.Contains("时长上限", error);
+
+            await relay;
+        }
+        finally
+        {
+            // 不调 SqliteConnection.ClearAllPools():它会清掉整个进程的连接池,
+            // 并行跑的其他测试服务端会瞬间拿到失效连接(表现为登录 500)。
+            // 文件被占用就留给 %TEMP%,无害。
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try
+                {
+                    File.Delete(databasePath + suffix);
+                }
+                catch (IOException)
+                {
+                    // 尽力而为地清理。
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task Records_usage_even_when_client_disconnects()
     {
         var databasePath = Path.Combine(Path.GetTempPath(), "ft-speech-tests", Guid.NewGuid().ToString("N") + ".db");
@@ -280,15 +369,16 @@ public class DashScopeSpeechRelayTests
             var gateway = new DashScopeSpeechGateway(options, "test-key",
                 _ => Task.FromResult<WebSocket>(upstreamRelay));
 
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
 
-            // 客户端发 start → relay 向上游发 run-task(带上模型与语种)。
-            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000,\"language\":\"zh\"}");
+            // 客户端发 start → relay 向上游发 run-task(带模型与采样率)。
+            // v81:客户端只报采样率,不再把「翻译目标语言」当识别语种提示发过去。
+            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
             var runTask = await upstreamTest.ReceiveTextAsync();
             Assert.Contains("\"action\":\"run-task\"", runTask);
             Assert.Contains(AsrModel, runTask);
             Assert.Contains("\"sample_rate\":16000", runTask);
-            Assert.Contains("\"language_hints\":[\"zh\"]", runTask);
+            Assert.DoesNotContain("language_hints", runTask);
 
             // 上游回 task-started → relay 给客户端 ready。
             await upstreamTest.SendTextAsync("{\"header\":{\"event\":\"task-started\"},\"payload\":{}}");
@@ -328,7 +418,9 @@ public class DashScopeSpeechRelayTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            // 不调 SqliteConnection.ClearAllPools():它会清掉整个进程的连接池,
+            // 并行跑的其他测试服务端会瞬间拿到失效连接(表现为登录 500)。
+            // 文件被占用就留给 %TEMP%,无害。
             foreach (var suffix in new[] { "", "-wal", "-shm" })
             {
                 try

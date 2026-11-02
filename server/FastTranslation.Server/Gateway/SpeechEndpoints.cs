@@ -20,7 +20,8 @@ public static class SpeechEndpoints
     }
 
     private static async Task SpeechAsync(HttpContext context, ClaimsPrincipal principal,
-        AccountStore store, ServerDatabase database, GatewayOptions gateway, GatewayRateLimiter limiter)
+        AccountStore store, ServerDatabase database, GatewayOptions gateway, GatewayRateLimiter limiter,
+        SpeechSessionLimiter sessions)
     {
         if (!gateway.Speech.Enabled || string.IsNullOrWhiteSpace(gateway.ApiKey))
         {
@@ -69,15 +70,38 @@ public static class SpeechEndpoints
             return;
         }
 
-        if (!context.WebSockets.IsWebSocketRequest)
+        // 会话硬顶取「剩余额度还能讲多久」与 MaxSecondsPerSession 的较小值:预检只验了
+        // 最小会话的 200 字符,不按剩余额度截断的话,一次讲满 30 分钟就是 36,000 字符,
+        // 能把日/月额度顶穿十几倍(v81)。
+        var remaining = Math.Min(decision.RemainingMonthly, decision.RemainingDaily ?? int.MaxValue);
+        var sessionSeconds = SpeechQuota.SessionSeconds(remaining, gateway.Speech.QuotaCharsPerSecond,
+            gateway.Speech.MinSeconds, gateway.Speech.MaxSecondsPerSession);
+
+        // 同一账号的并发会话上限:限流器只数请求数,拦不住 40 条并发 WS 各自讲满额度(v81)。
+        if (!sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser))
         {
-            // 闸门全过但没带升级头:HTTP 测试就是从这条 400 收口的。
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
             return;
         }
 
-        using var socket = await context.WebSockets.AcceptWebSocketAsync();
-        var speechGateway = new DashScopeSpeechGateway(gateway.Speech, gateway.ApiKey);
-        await speechGateway.RelayAsync(socket, userId, deviceId, store, database, context.RequestAborted);
+        try
+        {
+            if (!context.WebSockets.IsWebSocketRequest)
+            {
+                // 闸门全过但没带升级头:HTTP 测试与客户端的升级前探测都从这条 400 收口。
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            using var socket = await context.WebSockets.AcceptWebSocketAsync();
+            var speechGateway = new DashScopeSpeechGateway(gateway.Speech, gateway.ApiKey);
+            await speechGateway.RelayAsync(socket, userId, deviceId, store, database, sessionSeconds,
+                context.RequestAborted);
+        }
+        finally
+        {
+            sessions.Exit(userId);
+        }
     }
 }

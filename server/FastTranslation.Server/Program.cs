@@ -34,6 +34,7 @@ builder.Services.AddSingleton(sp =>
 
 builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Gateway);
 builder.Services.AddSingleton<GatewayRateLimiter>();
+builder.Services.AddSingleton<SpeechSessionLimiter>();
 builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
 
 builder.Services.AddSingleton<AccountStore>();

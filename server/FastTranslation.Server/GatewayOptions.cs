@@ -86,6 +86,10 @@ public sealed class SpeechOptions
     /// <summary>单会话硬顶秒数:到点由服务端发 finish-task 关流,防连接挂着烧钱。</summary>
     public int MaxSecondsPerSession { get; set; } = 1800;
 
+    /// <summary>同一账号同时能开几条语音会话(0=不限制,默认 1)。
+    /// 限流器按请求数计数,拦不住并发会话带来的成本放大——这是第二道闸(v81)。</summary>
+    public int MaxConcurrentSessionsPerUser { get; set; } = 1;
+
     /// <summary>语音独立日预算(微元)。默认 2 元/日≈2.3 小时:全站 5 元桶只够 5.8 小时
     /// 且语音烧完会把文本翻译一起 429,所以单独一个桶,先撞预算是刻意的。</summary>
     public long DailyBudgetMicros { get; set; } = 2_000_000;

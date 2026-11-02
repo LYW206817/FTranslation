@@ -46,12 +46,14 @@ public sealed class DashScopeSpeechGateway
         return ws;
     }
 
+    /// <param name="sessionSeconds">本次会话允许的最长秒数(已按剩余额度截断,见 SpeechQuota)。</param>
     public async Task<SpeechRelayResult> RelayAsync(WebSocket client, Guid userId, Guid deviceId,
-        AccountStore store, ServerDatabase database, CancellationToken requestAborted)
+        AccountStore store, ServerDatabase database, int sessionSeconds, CancellationToken requestAborted)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
         // 会话硬顶:到点我们自己断,防止客户端消失后上游连接挂着烧钱(设计 §6.1)。
-        timeout.CancelAfter(TimeSpan.FromSeconds(options.MaxSecondsPerSession));
+        // 秒数由调用方按剩余额度算好——讲满 30 分钟不等于有 30 分钟的额度(v81)。
+        timeout.CancelAfter(TimeSpan.FromSeconds(sessionSeconds));
 
         WebSocket? upstream = null;
         Task upstreamPump = Task.CompletedTask;
@@ -59,6 +61,33 @@ public sealed class DashScopeSpeechGateway
         AsrUsage? latestUsage = null;
         var buffer = new byte[64 * 1024];
         var result = new SpeechRelayResult(false, 0, 0, null);
+        int billedSeconds = 0;
+        long billedIn = 0, billedOut = 0, billedChars = 0, billedCost = 0;
+
+        // 上游用量是「会话累计」值,每来一帧就按增量落一行 usage_events:
+        // 这样日预算/额度闸门看到的是实时花费,客户端半路跑掉也不会丢账(v81)。
+        void Bill(int durationSeconds, long tokensIn, long tokensOut)
+        {
+            var seconds = Math.Max(durationSeconds, billedSeconds);
+            var deltaSeconds = seconds - billedSeconds;
+            var deltaIn = Math.Max(0L, tokensIn - billedIn);
+            var deltaOut = Math.Max(0L, tokensOut - billedOut);
+            if (deltaSeconds == 0 && deltaIn == 0 && deltaOut == 0)
+            {
+                return;
+            }
+
+            var chars = (long)deltaSeconds * options.QuotaCharsPerSecond;
+            var cost = Pricing.TextCostMicros(options.Model, deltaIn, deltaOut);
+            store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), options.Model,
+                (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
+                cost, database.NowUnix, source: "speech");
+            billedSeconds = seconds;
+            billedIn = tokensIn;
+            billedOut = tokensOut;
+            billedChars += chars;
+            billedCost += cost;
+        }
 
         try
         {
@@ -76,8 +105,11 @@ public sealed class DashScopeSpeechGateway
                     {
                         upstream = await connectUpstream(timeout.Token);
                         await SendRunTaskAsync(upstream, sampleRate, language, timeout.Token);
-                        upstreamPump = PumpUpstreamAsync(client, upstream, timeout.Token,
-                            usage => latestUsage = usage);
+                        upstreamPump = PumpUpstreamAsync(client, upstream, timeout.Token, usage =>
+                        {
+                            latestUsage = usage;
+                            Bill(usage.DurationSeconds, usage.InputTokens, usage.OutputTokens);
+                        });
                     }
                     else if (IsStop(text) && upstream is not null)
                     {
@@ -101,7 +133,13 @@ public sealed class DashScopeSpeechGateway
         }
         catch (OperationCanceledException)
         {
-            // 客户端中止或会话硬顶到期:finally 里照常收尾、记账。
+            // 会话硬顶到期(不是客户端自己走)必须告诉用户为什么停:否则客户端只看到连接断,
+            // 会显示成「语音连接中断」,用户以为是网络问题(v81)。
+            if (timeout.IsCancellationRequested && !requestAborted.IsCancellationRequested)
+            {
+                await TrySendErrorAsync(client, "session_timeout",
+                    "本次语音已达时长上限(按剩余额度计算),请稍后重新开始").ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -131,17 +169,46 @@ public sealed class DashScopeSpeechGateway
 
             if (latestUsage is { } usage)
             {
+                // 补足最短计费秒数(讲半秒也按 MinSeconds 记);增量部分已在每帧记过,不会重复。
                 // 额度是产品语言(按秒折字符),成本是财务语言(按 token 算钱),分开记(设计 §5.5)。
-                var seconds = Math.Max(usage.DurationSeconds, options.MinSeconds);
-                var quotaChars = (long)seconds * options.QuotaCharsPerSecond;
-                var cost = Pricing.TextCostMicros(options.Model, usage.InputTokens, usage.OutputTokens);
-                store.RecordUsage(userId, deviceId, (int)Math.Min(quotaChars, int.MaxValue), options.Model,
-                    (int)Math.Min(usage.InputTokens, int.MaxValue), (int)Math.Min(usage.OutputTokens, int.MaxValue),
-                    cost, database.NowUnix, source: "speech");
-                result = new SpeechRelayResult(true, quotaChars, cost, usage.DurationSeconds);
+                Bill(Math.Max(usage.DurationSeconds, options.MinSeconds), usage.InputTokens, usage.OutputTokens);
+                result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, usage.DurationSeconds);
+            }
+
+            // 关流只在这里做:上游泵不再自己关客户端,否则「硬顶到期的错误帧」会和关闭抢时序,
+            // 客户端有时只看到连接断了、不知道是额度讲完了(v81)。
+            if (client.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "finished", CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                    // 客户端可能已经自己断了。
+                }
             }
         }
         return result;
+    }
+
+    private static async Task TrySendErrorAsync(WebSocket client, string code, string message)
+    {
+        if (client.State != WebSocketState.Open)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = "{\"type\":\"error\",\"code\":\"" + code + "\",\"message\":\"" + message + "\"}";
+            await client.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // 尽力而为:客户端已经走了就没什么可通知的,收尾记账不受影响
+        }
     }
 
     /// <summary>上游泵:把 DashScope 的帧翻译成客户端的 5 种帧。只在终稿前转 sentence,part 永远不出门。</summary>
@@ -205,21 +272,6 @@ public sealed class DashScopeSpeechGateway
         catch (Exception) when (ct.IsCancellationRequested)
         {
             // 硬顶到期/请求中止:正常退出,调用方 finally 收尾。
-        }
-        finally
-        {
-            // 上游泵结束后给客户端一个正常关闭,它可能还在等帧。
-            if (client.State == WebSocketState.Open)
-            {
-                try
-                {
-                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "finished", CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    // 客户端可能已经自己断了。
-                }
-            }
         }
     }
 
