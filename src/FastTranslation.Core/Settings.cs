@@ -25,6 +25,10 @@ public sealed class AppSettings
     public bool FirstRunCompleted { get; set; }
     public string Theme { get; set; } = "system";
 
+    // 强调色(electro|lake|violet)。与主题正交，和 Theme 一样只在启动时应用一次；
+    // 缺字段的旧配置走默认值电光蓝，无需迁移。
+    public string Accent { get; set; } = "electro";
+
     // 文档翻译记住上次的目标语言与目录：一份文档翻完常要接着翻下几份，
     // 每次重选语言和目录是纯粹的重复劳动。缺字段时 JSON 反序列化直接用默认值，无需迁移。
     public string DocumentTargetLanguage { get; set; } = "en";

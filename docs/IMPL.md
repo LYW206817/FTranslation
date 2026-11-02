@@ -2347,3 +2347,53 @@ MIT 允许别人把本项目（含自建网关）改成闭源后对外提供服�
   `Assembles_json_split_across_text_frames`。
 - 无界面布局改动,截图沿用 v79(`SpeechWindow` 只改了结束态文案)。
 
+
+## v80 · 设置页新增强调色：电光蓝 / 湖蓝 / 雾光紫（1.5.0）
+
+### 为什么
+
+用户要「电光 / 湖蓝 / 雾光紫」三种色号都能在设置里选（原话见 m05854）。此前主题只有浅色/深色两档，
+品牌蓝一族直接写死在 `ThemePalette` 的表里，想换色相只能整站重排 —— 三版 HTML 设计稿（`publish/ui-redesign/`，
+不进仓库）做出来才看清：用户真正要的不是新布局，而是**把色相抽成独立思考的第二维**。
+
+### 怎么做的
+
+- **强调色与明暗正交**：`AccentColors`（`src/FastTranslation.Platform.Windows/ThemePalette.cs`）只装品牌色一族九项
+  （Brand / BrandHover / BrandPressed / BrandFill / BrandFillHover / BrandText / OnBrandText / BoltFrom / BoltTo），
+  `Compose` 用 record `with` 把这九项盖到所属明暗主题上。页底、发丝线、正文、四档自评色一个不动 —— 所以三支切换
+  只是换色号，布局与间距零风险。
+- **电光蓝不单独建表**：基底 `Light` / `Dark` 本身就是电光蓝，`Use(Light, "electro")` 直接返回同一个实例
+  （`UseAppliesTheAccentButLeavesTheRestOfThePaletteAlone` 用 `Assert.Same` 盯住这一点）。
+- **品牌蓝基线顺带调色相**：浅色 `#2562FF` → `#3B6BF0`（偏 azure），闪电渐变 `#4B7BFF → #2450E8`。
+  原因：#4B7BFF 压白只有 3.77:1 不够 AA，所以它只进闪电渐变与色块；实底按钮用 `#3B6BF0`（白字 4.62:1，旧值 4.92:1）。
+- **落盘时机与主题一致**：设置页点保存写 `Settings.Accent`（`src/FastTranslation.Core/Settings.cs`，缺字段默认 `"electro"`，
+  无需迁移），`App.OnStartup` 里 `ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme), _settings.Accent)` 生效。
+  属性页提示语同步改成「主题、强调色与热键均在下次启动后生效」——不实时换色是刻意的，热重建整棵画刷树不值得。
+
+### 界面
+
+- `src/FastTranslation.App/Pages/SettingsPage.xaml` 外观卡新增「强调色」一行三枚 chip（`AccentChip` / `AccentChipDot` 两支样式，
+  12×12 圆点 + 文字）。三枚色块**永远显示该色在当明暗主题下的真实品牌色**，不是固定色号。
+- 选中态改 `BorderBrush=BrandBrush` + `Background=BrandFillBrush` + `FontWeight=SemiBold`，未选中 `BorderStrongBrush` + `SurfaceBrush`。
+
+### 验证
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误。
+- `dotnet test FastTranslation.slnx -c Release` → **714 通过 0 失败**（Platform.Windows 107 / Core 302 / QwenMt 95 / Server 210）；
+  两条 AA 对比度测试改成遍历三支强调色（`OnBrandTextIsReadableOnTheBrandFill`、`BrandTextIsReadableOnSurfaceAndOnBrandFill`），
+  另加 `EveryAccentHasItsOwnBrand`、`ResolveAccent_FallsBackToElectro`、`UseAppliesTheAccentButLeavesTheRestOfThePaletteAlone`。
+- 像素证据（新脚本 `tools/qa/shot-accent.ps1` + `tools/qa/count-color.ps1`，`PrintWindow(hwnd, dc, 2)` 实拍 1820×1155）：
+  主窗在湖蓝/紫罗兰下的精确计数 —— `accent-main-light-lake.png` `#0E7EA8` 8229 px、`#3B6BF0` 0 px；
+  `accent-main-light-violet.png` `#5B36F0` 8741 px、`#3B6BF0` 0 px；`accent-main-dark-lake.png` `#4FC3F0` 8229 px、`#4A82FF` 0 px；
+  `accent-main-dark-violet.png` `#9B7DFF` 8230 px、`#4A82FF` 0 px。
+  设置页三枚色块同帧出现三种色：`accent-set-light-electro.png` 里 `#0E7EA8` 189 px @(564,504)、`#5B36F0` 189 px @(694,504)；
+  `accent-set-dark-violet.png` 里 `#4A82FF` 189 px @(412,504)、`#4FC3F0` 189 px @(564,504)。
+
+### 残留风险
+
+- **默认外观确实变了**：浅色品牌蓝从 `#2562FF` 改成 `#3B6BF0`，v69/v70 的截图不能再当像素基线。这是有意为之（旧钴蓝与湖蓝、
+  紫罗兰放在一排时色相区分不够），但它不是「纯新增」变更，回归对比时要留意。
+- 只对 Brand/OnBrandText 与 BrandText/Surface+BrandFill 两组做了 AA 断言；深色湖蓝的 `#123441` 填充、紫罗兰 `#2A2447` 填充上的
+  其它正文色没有逐项跑对比度，仍是人工目测。
+- 选中态靠「品牌色描边 + 品牌填充底 + 半粗字」三重区分，深色下三枚色块本身也都是品牌色，低视力用户未必分得清选中与未选中；
+  若后续有反馈，加一枚勾选图标比继续加颜色更有效。

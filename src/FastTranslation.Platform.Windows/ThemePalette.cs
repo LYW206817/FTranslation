@@ -8,6 +8,20 @@ public enum AppTheme
     Dark,
 }
 
+/// <summary>界面强调色。与浅色/深色正交：它只替换品牌色一族，页底、文字、发丝线
+/// 仍由 AppTheme 决定。旧版只有一种蓝，因此默认值就是最接近旧观感的那一支。</summary>
+public enum AccentTheme
+{
+    /// <summary>电光蓝：偏 azure 的蓝。</summary>
+    Electro,
+
+    /// <summary>湖蓝：偏青的蓝。</summary>
+    Lake,
+
+    /// <summary>雾光紫：紫罗兰。</summary>
+    Violet,
+}
+
 /// <summary>一整套调色板。十六进制字符串是唯一数据源：App.xaml 里的资源
 /// 画刷由它们生成，浮层界面(用不了 XAML 资源)也用同一批值构建自己的冻结画刷。</summary>
 public sealed record ThemeColors(
@@ -61,6 +75,18 @@ public sealed record ThemeColors(
     // 悬停抬起时那层很淡的投影（#AARRGGBB）
     string Shadow);
 
+/// <summary>一支强调色替换掉的那一族品牌色。九项之外的颜色都沿用它所属的主题。</summary>
+internal readonly record struct AccentColors(
+    string Brand,
+    string BrandHover,
+    string BrandPressed,
+    string BrandFill,
+    string BrandFillHover,
+    string BrandText,
+    string OnBrandText,
+    string BoltFrom,
+    string BoltTo);
+
 /// <summary>
 /// 浅色/深色调色板，以及启动时决定用哪一套。
 /// StaticResource 在控件加载时才解析，因此在第一个窗口创建之前选定调色板，
@@ -72,14 +98,21 @@ public static class ThemePalette
     public const string LightSetting = "light";
     public const string DarkSetting = "dark";
 
+    public const string ElectroSetting = "electro";
+    public const string LakeSetting = "lake";
+    public const string VioletSetting = "violet";
+
+    // v80：品牌蓝换成偏 azure 的电光蓝。原先的 #2562FF 是钴蓝，与强调色里的湖蓝、
+    // 紫罗兰放在一起时色相区分不够。白字压 #3B6BF0 是 4.62:1（旧值 4.92:1），
+    // 仍然过 AA；#4B7BFF 只有 3.77:1，因此只用在闪电渐变与色块上，不做实底按钮。
     public static ThemeColors Light { get; } = new(
-        Brand: "#2562FF",
-        BrandHover: "#1D4FE0",
-        BrandPressed: "#1A45C4",
-        BrandFill: "#EDF2FF",
-        BrandFillHover: "#E0EAFF",
+        Brand: "#3B6BF0",
+        BrandHover: "#2F5CD9",
+        BrandPressed: "#2450E8",
+        BrandFill: "#EAF0FF",
+        BrandFillHover: "#DDE7FF",
         OnBrandText: "#FFFFFF",
-        BrandText: "#1D4FE0",
+        BrandText: "#2450E8",
         Accent: "#40A9FF",
         WindowBg: "#F7F9FC",
         Surface: "#FFFFFF",
@@ -110,8 +143,8 @@ public static class ThemePalette
         PageTo: "#E7EEF9",
         SidebarFrom: "#FAFCFF",
         SidebarTo: "#F0F5FC",
-        BoltFrom: "#40A9FF",
-        BoltTo: "#2562FF",
+        BoltFrom: "#4B7BFF",
+        BoltTo: "#2450E8",
         Shadow: "#1F1B2536");
 
     public static ThemeColors Dark { get; } = new(
@@ -155,10 +188,107 @@ public static class ThemePalette
         BoltTo: "#5BB4FF",
         Shadow: "#99000000");
 
-    /// <summary>从此刻起创建的界面所使用的调色板。</summary>
+    // 强调色表。电光蓝不在这里：基底 Light/Dark 本身就是电光蓝——少一次 with 复制，
+    // 并且 Use(Light, electro) 仍返回同一个实例（测试据此断言，见 ThemePaletteTests）。
+    private static readonly AccentColors LakeLightColors = new(
+        Brand: "#0E7EA8",
+        BrandHover: "#0B6F94",
+        BrandPressed: "#09607F",
+        BrandFill: "#E4F4FA",
+        BrandFillHover: "#D3EBF5",
+        BrandText: "#0B6F94",
+        OnBrandText: "#FFFFFF",
+        BoltFrom: "#3FA9DB",
+        BoltTo: "#0E7EA8");
+
+    private static readonly AccentColors LakeDarkColors = new(
+        Brand: "#4FC3F0",
+        BrandHover: "#6FD2F7",
+        BrandPressed: "#3AA6D0",
+        BrandFill: "#123441",
+        BrandFillHover: "#17414F",
+        BrandText: "#8FDDF7",
+        OnBrandText: "#0A1A20",
+        BoltFrom: "#3FB6E0",
+        BoltTo: "#7FE0F5");
+
+    private static readonly AccentColors VioletLightColors = new(
+        Brand: "#5B36F0",
+        BrandHover: "#4D2BE0",
+        BrandPressed: "#4322C9",
+        BrandFill: "#EFEAFF",
+        BrandFillHover: "#E3DBFF",
+        BrandText: "#5B36F0",
+        OnBrandText: "#FFFFFF",
+        BoltFrom: "#8B6CFF",
+        BoltTo: "#5B36F0");
+
+    private static readonly AccentColors VioletDarkColors = new(
+        Brand: "#9B7DFF",
+        BrandHover: "#AE95FF",
+        BrandPressed: "#8163E8",
+        BrandFill: "#2A2447",
+        BrandFillHover: "#342C55",
+        BrandText: "#BFA9FF",
+        OnBrandText: "#150E24",
+        BoltFrom: "#8B6CFF",
+        BoltTo: "#B79BFF");
+
+    /// <summary>从此刻起创建的界面所使用的主题。</summary>
     public static AppTheme Current { get; private set; } = AppTheme.Light;
 
-    public static ThemeColors Active => Current == AppTheme.Dark ? Dark : Light;
+    /// <summary>当前强调色。与 <see cref="Current"/> 一起在 <see cref="Use"/> 里就位。</summary>
+    public static AccentTheme CurrentAccent { get; private set; } = AccentTheme.Electro;
+
+    /// <summary>当前生效的整套调色板＝基础主题 + 强调色。界面与浮层都必须读它，
+    /// 直接读 Light/Dark 会漏掉强调色。</summary>
+    public static ThemeColors Active { get; private set; } = Light;
+
+    /// <summary>把存储的设置值映射为强调色。未知值回退到电光蓝。</summary>
+    public static AccentTheme ResolveAccent(string? setting) => setting?.Trim().ToLowerInvariant() switch
+    {
+        LakeSetting => AccentTheme.Lake,
+        VioletSetting => AccentTheme.Violet,
+        _ => AccentTheme.Electro,
+    };
+
+    /// <summary>强调色写回设置时用的字符串。</summary>
+    public static string AccentSetting(AccentTheme accent) => accent switch
+    {
+        AccentTheme.Lake => LakeSetting,
+        AccentTheme.Violet => VioletSetting,
+        _ => ElectroSetting,
+    };
+
+    /// <summary>某支强调色在指定主题下的品牌色。设置页的色块用它显示「这一支长什么样」。</summary>
+    public static string BrandOf(AppTheme theme, AccentTheme accent) => PaletteFor(theme, accent).Brand;
+
+    /// <summary>「主题 + 强调色」组成的整套调色板。装定时不必先 <see cref="Use"/>：
+    /// 设置页要把三支候选色都显示出来。</summary>
+    public static ThemeColors PaletteFor(AppTheme theme, AccentTheme accent) => Compose(theme, accent);
+
+    private static ThemeColors Compose(AppTheme theme, AccentTheme accent) => (theme, accent) switch
+    {
+        (AppTheme.Dark, AccentTheme.Lake) => Tint(Dark, LakeDarkColors),
+        (AppTheme.Dark, AccentTheme.Violet) => Tint(Dark, VioletDarkColors),
+        (AppTheme.Dark, _) => Dark,
+        (_, AccentTheme.Lake) => Tint(Light, LakeLightColors),
+        (_, AccentTheme.Violet) => Tint(Light, VioletLightColors),
+        _ => Light,
+    };
+
+    private static ThemeColors Tint(ThemeColors palette, AccentColors accent) => palette with
+    {
+        Brand = accent.Brand,
+        BrandHover = accent.BrandHover,
+        BrandPressed = accent.BrandPressed,
+        BrandFill = accent.BrandFill,
+        BrandFillHover = accent.BrandFillHover,
+        BrandText = accent.BrandText,
+        OnBrandText = accent.OnBrandText,
+        BoltFrom = accent.BoltFrom,
+        BoltTo = accent.BoltTo,
+    };
 
     /// <summary>把存储的设置值映射为具体主题。未知值回退到跟随系统。</summary>
     public static AppTheme Resolve(string? setting, bool systemPrefersDark) => setting?.Trim().ToLowerInvariant() switch
@@ -189,5 +319,10 @@ public static class ThemePalette
     }
 
     /// <summary>必须在第一个窗口构造之前调用(窗口加载时会解析 StaticResource)。</summary>
-    public static void Use(AppTheme theme) => Current = theme;
+    public static void Use(AppTheme theme, string? accent = null)
+    {
+        Current = theme;
+        CurrentAccent = ResolveAccent(accent);
+        Active = Compose(theme, CurrentAccent);
+    }
 }

@@ -112,7 +112,7 @@ public partial class App : Application, IResultPresenter
 
         // 调色板要在任何窗口存在之前就位：XAML 画刷是可变的（po:Freeze="False"），
         // ThemeBridge 就地给它们换色，于是每个样式和模板都能拿到主题（v24）
-        ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme));
+        ThemeBridge.Apply(ThemePalette.Resolve(_settings.Theme), _settings.Accent);
 
         // 账号服务：整个进程共用一个 HttpClient，超时 20 秒，这样主机挂了会表现为
         // 网络错误，而不是一个永远回不来的按钮

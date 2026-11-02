@@ -70,10 +70,14 @@ public class ThemePaletteTests
     [InlineData(AppTheme.Dark)]
     public void OnBrandTextIsReadableOnTheBrandFill(AppTheme theme)
     {
-        var palette = theme == AppTheme.Dark ? ThemePalette.Dark : ThemePalette.Light;
-        Assert.True(
-            Contrast(palette.OnBrandText, palette.Brand) >= 4.5,
-            $"{theme}: OnBrandText {palette.OnBrandText} 压在 Brand {palette.Brand} 上对比度不足");
+        // v80：三支强调色各有一套品牌色，任何一个都不许把白字/墨字做到读不清
+        foreach (var accent in Accents)
+        {
+            var palette = ThemePalette.PaletteFor(theme, accent);
+            Assert.True(
+                Contrast(palette.OnBrandText, palette.Brand) >= 4.5,
+                $"{theme}/{accent}: OnBrandText {palette.OnBrandText} 压在 Brand {palette.Brand} 上对比度不足");
+        }
     }
 
     /// <summary>
@@ -85,13 +89,70 @@ public class ThemePaletteTests
     [InlineData(AppTheme.Dark)]
     public void BrandTextIsReadableOnSurfaceAndOnBrandFill(AppTheme theme)
     {
-        var palette = theme == AppTheme.Dark ? ThemePalette.Dark : ThemePalette.Light;
-        Assert.True(
-            Contrast(palette.BrandText, palette.Surface) >= 4.5,
-            $"{theme}: BrandText {palette.BrandText} 压在 Surface {palette.Surface} 上对比度不足");
-        Assert.True(
-            Contrast(palette.BrandText, palette.BrandFill) >= 4.5,
-            $"{theme}: BrandText {palette.BrandText} 压在 BrandFill {palette.BrandFill} 上对比度不足");
+        foreach (var accent in Accents)
+        {
+            var palette = ThemePalette.PaletteFor(theme, accent);
+            Assert.True(
+                Contrast(palette.BrandText, palette.Surface) >= 4.5,
+                $"{theme}/{accent}: BrandText {palette.BrandText} 压在 Surface {palette.Surface} 上对比度不足");
+            Assert.True(
+                Contrast(palette.BrandText, palette.BrandFill) >= 4.5,
+                $"{theme}/{accent}: BrandText {palette.BrandText} 压在 BrandFill {palette.BrandFill} 上对比度不足");
+        }
+    }
+
+    private static readonly AccentTheme[] Accents =
+        [AccentTheme.Electro, AccentTheme.Lake, AccentTheme.Violet];
+
+    [Theory]
+    [InlineData(AppTheme.Light)]
+    [InlineData(AppTheme.Dark)]
+    public void EveryAccentHasItsOwnBrand(AppTheme theme)
+    {
+        var brands = Accents.Select(accent => ThemePalette.PaletteFor(theme, accent).Brand).ToArray();
+        Assert.Equal(Accents.Length, brands.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("electro", AccentTheme.Electro)]
+    [InlineData("lake", AccentTheme.Lake)]
+    [InlineData(" LAKE ", AccentTheme.Lake)]
+    [InlineData("violet", AccentTheme.Violet)]
+    [InlineData("garbage", AccentTheme.Electro)]
+    [InlineData(null, AccentTheme.Electro)]
+    [InlineData("", AccentTheme.Electro)]
+    public void ResolveAccent_FallsBackToElectro(string? setting, AccentTheme expected)
+    {
+        Assert.Equal(expected, ThemePalette.ResolveAccent(setting));
+        // 写回设置再从设置读出来仍是同一支
+        Assert.Equal(expected, ThemePalette.ResolveAccent(ThemePalette.AccentSetting(expected)));
+    }
+
+    [Fact]
+    public void UseAppliesTheAccentButLeavesTheRestOfThePaletteAlone()
+    {
+        var originalTheme = ThemePalette.Current;
+        var originalAccent = ThemePalette.CurrentAccent;
+        try
+        {
+            ThemePalette.Use(AppTheme.Light, ThemePalette.LakeSetting);
+            Assert.Equal(AccentTheme.Lake, ThemePalette.CurrentAccent);
+            Assert.NotEqual(ThemePalette.Light.Brand, ThemePalette.Active.Brand);
+            Assert.Equal(ThemePalette.Light.Surface, ThemePalette.Active.Surface);
+            Assert.Equal(ThemePalette.Light.TextPrimary, ThemePalette.Active.TextPrimary);
+
+            // 电光蓝就是基底调色板，不再复制一遍，因此可以直接比引用
+            ThemePalette.Use(AppTheme.Light, ThemePalette.ElectroSetting);
+            Assert.Same(ThemePalette.Light, ThemePalette.Active);
+
+            ThemePalette.Use(AppTheme.Dark, ThemePalette.VioletSetting);
+            Assert.Equal(AccentTheme.Violet, ThemePalette.CurrentAccent);
+            Assert.Same(ThemePalette.Dark.TextPrimary, ThemePalette.Active.TextPrimary);
+        }
+        finally
+        {
+            ThemePalette.Use(originalTheme, ThemePalette.AccentSetting(originalAccent));
+        }
     }
 
     /// <summary>WCAG 2.x 相对亮度对比度。</summary>

@@ -14,6 +14,41 @@
     </Style>
 
 
+    <!-- 强调色选择：一枚色块 + 名字，选中态由代码改 BorderBrush/Brush（画刷来自
+         ThemePalette，XAML 里不写裸色值） -->
+    <Style x:Key="AccentChip" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Padding" Value="10,6"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="AccentChipDot" TargetType="Border">
+      <Setter Property="Width" Value="12"/>
+      <Setter Property="Height" Value="12"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Margin" Value="0,0,7,0"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairStrongBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
     <!-- 卡片内紧贴其输入框上方的标签 -->
     <Style x:Key="ExclusionItem" TargetType="ListBoxItem">
       <Setter Property="Padding" Value="8,4"/>
@@ -110,7 +145,33 @@
                   <TextBox x:Name="HotkeyBox" Text="Ctrl+Alt+T" AutomationProperties.Name="划词热键"/>
                 </StackPanel>
               </Grid>
-              <TextBlock Text="主题与热键均在下次启动后生效" Style="{StaticResource Hint}"/>
+              <StackPanel Margin="0,14,0,0">
+                <TextBlock Text="强调色" Style="{StaticResource FieldLabelTight}"/>
+                <StackPanel Orientation="Horizontal">
+                  <Button x:Name="AccentElectroChip" Tag="electro" Style="{StaticResource AccentChip}"
+                          Click="AccentChip_Click" AutomationProperties.Name="强调色 电光蓝">
+                    <StackPanel Orientation="Horizontal">
+                      <Border x:Name="AccentElectroDot" Style="{StaticResource AccentChipDot}"/>
+                      <TextBlock Text="电光蓝" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="AccentLakeChip" Tag="lake" Style="{StaticResource AccentChip}"
+                          Click="AccentChip_Click" AutomationProperties.Name="强调色 湖蓝">
+                    <StackPanel Orientation="Horizontal">
+                      <Border x:Name="AccentLakeDot" Style="{StaticResource AccentChipDot}"/>
+                      <TextBlock Text="湖蓝" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="AccentVioletChip" Tag="violet" Style="{StaticResource AccentChip}"
+                          Click="AccentChip_Click" AutomationProperties.Name="强调色 雾光紫">
+                    <StackPanel Orientation="Horizontal">
+                      <Border x:Name="AccentVioletDot" Style="{StaticResource AccentChipDot}"/>
+                      <TextBlock Text="雾光紫" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+              <TextBlock Text="主题、强调色与热键均在下次启动后生效" Style="{StaticResource Hint}"/>
               <TextBlock x:Name="HotkeyError" Text="" FontSize="12"
                          Foreground="{DynamicResource DangerBrush}" Margin="0,6,0,0"
                          Visibility="Collapsed" TextWrapping="Wrap"/>

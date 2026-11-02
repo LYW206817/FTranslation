@@ -21,6 +21,9 @@ public partial class SettingsPage : UserControl
     private readonly HotkeyService _hotkey;
     private readonly Action? _checkUpdates;
 
+    // 强调色是「待保存」的页面状态：和 Theme 一样，点保存才落盘，下次启动才生效
+    private AccentTheme _accent = AccentTheme.Electro;
+
     /// <summary>保存或取消之后触发，好让外壳回到用户来的地方。</summary>
     public event Action? Closed;
 
@@ -64,6 +67,8 @@ public partial class SettingsPage : UserControl
             ThemePalette.DarkSetting => 2,
             _ => 0,
         };
+        _accent = ThemePalette.ResolveAccent(_settings.Accent);
+        UpdateAccentChips();
         HotkeyBox.Text = _settings.Hotkey;
         ClipboardFallbackCheck.IsChecked = _settings.ClipboardFallbackEnabled;
         WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
@@ -217,6 +222,7 @@ public partial class SettingsPage : UserControl
             2 => ThemePalette.DarkSetting,
             _ => ThemePalette.SystemSetting,
         };
+        _settings.Accent = ThemePalette.AccentSetting(_accent);
 
         var newHotkey = HotkeyBox.Text.Trim();
         if (!string.Equals(newHotkey, _settings.Hotkey, System.StringComparison.OrdinalIgnoreCase))
@@ -266,5 +272,41 @@ public partial class SettingsPage : UserControl
     {
         ReloadFromSettings(); // 丢弃未保存的改动：页面不像窗口那样会被重建
         Closed?.Invoke();
+    }
+
+    private void AccentChip_Click(object sender, RoutedEventArgs e)
+    {
+        _accent = ThemePalette.ResolveAccent((sender as FrameworkElement)?.Tag as string);
+        UpdateAccentChips();
+    }
+
+    /// <summary>
+    /// 三枚色块永远显示该强调色在**当前**主题下的品牌色（于是深色下看到的是深色那一支），
+    /// 选中标记用正在运行的品牌色，未选中的用发丝线边框。
+    /// </summary>
+    private void UpdateAccentChips()
+    {
+        var chips = new (AccentTheme Accent, Button Chip, Border Dot)[]
+        {
+            (AccentTheme.Electro, AccentElectroChip, AccentElectroDot),
+            (AccentTheme.Lake, AccentLakeChip, AccentLakeDot),
+            (AccentTheme.Violet, AccentVioletChip, AccentVioletDot),
+        };
+
+        foreach (var (accent, chip, dot) in chips)
+        {
+            dot.Background = Swatch(ThemePalette.BrandOf(ThemePalette.Current, accent));
+            var selected = accent == _accent;
+            chip.BorderBrush = (Brush)FindResource(selected ? "BrandBrush" : "BorderStrongBrush");
+            chip.Background = (Brush)FindResource(selected ? "BrandFillBrush" : "SurfaceBrush");
+            chip.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+    }
+
+    private static SolidColorBrush Swatch(string hex)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        brush.Freeze();
+        return brush;
     }
 }

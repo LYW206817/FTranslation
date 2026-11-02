@@ -17,9 +17,9 @@ namespace FastTranslation.App;
 /// </summary>
 internal static class ThemeBridge
 {
-    internal static void Apply(AppTheme theme)
+    internal static void Apply(AppTheme theme, string? accent = null)
     {
-        ThemePalette.Use(theme);
+        ThemePalette.Use(theme, accent);
         var c = ThemePalette.Active;
         var r = Application.Current?.Resources;
         if (r is null) return;
