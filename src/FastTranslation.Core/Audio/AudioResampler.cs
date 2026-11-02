@@ -30,6 +30,19 @@ public sealed class AudioResampler
         _ch = sourceChannels;
     }
 
+    /// <summary>
+    /// 给定一段输入采样数，算出本次 Process 最多可能写出多少字节。
+    /// 调用方按这个数开缓冲即可——按「输入采样数×6」这种拍脑袋系数开会白扔 9 倍内存
+    /// （48k 立体声每 100ms 块只产 3.2KB，却分配 28.8KB，一秒 300KB 垃圾）。
+    /// </summary>
+    public int MaxOutputBytes(int inputSamples)
+    {
+        // 输出帧数 ≤ 输入帧数 × 16000 / 源采样率；每帧 2 字节；+8 留给取整与终局补帧
+        var frames = (long)inputSamples / _ch;
+        var outFrames = frames * 16000L / _srcRate + 2;
+        return (int)(outFrames * 2) + 8;
+    }
+
     /// <summary>混入一段交错 float 采样，尽可能产出输出字节；返回写入 output 的字节数（缓冲不足时截断，相位不推进）。</summary>
     public int Process(ReadOnlySpan<float> input, Span<byte> output)
     {

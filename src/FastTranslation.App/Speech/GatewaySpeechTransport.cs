@@ -18,16 +18,21 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
     private readonly Func<Task<string?>> _accessToken;
     private readonly Uri _gatewayBaseUri;
     private readonly string _deviceFingerprint;
+    private readonly HttpClient? _sharedClient;
     private readonly CancellationTokenSource _closed = new();
     private ClientWebSocket? _socket;
 
-    public GatewaySpeechTransport(Func<Task<string?>> accessToken, Uri gatewayBaseUri, string deviceFingerprint)
+    /// <param name="sharedClient">可选的共享 HttpClient(应用就一个);传了就不在每次会话里新建。
+    /// 复用是为了不再每条会话漏一个连接池对象——预检是每次开始的固定动作(v81)。</param>
+    public GatewaySpeechTransport(
+        Func<Task<string?>> accessToken, Uri gatewayBaseUri, string deviceFingerprint, HttpClient? sharedClient = null)
     {
         ArgumentNullException.ThrowIfNull(accessToken);
         ArgumentNullException.ThrowIfNull(gatewayBaseUri);
         _accessToken = accessToken;
         _gatewayBaseUri = gatewayBaseUri;
         _deviceFingerprint = deviceFingerprint;
+        _sharedClient = sharedClient;
     }
 
     public event Action<SpeechTransportEvent>? Received;
@@ -41,14 +46,27 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
         // 不用等 WS 握手莫名其妙地失败
         var asr = AsrUri();
         var probeUri = new UriBuilder(asr) { Scheme = asr.Scheme == "wss" ? "https" : "http" }.Uri;
-        using var probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        using var probe = new HttpRequestMessage(HttpMethod.Get, probeUri);
-        probe.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        probe.Headers.Add("X-FT-Device", _deviceFingerprint);
-        using var probeResponse = await probeClient.SendAsync(probe, ct).ConfigureAwait(false);
-        if (probeResponse.StatusCode != HttpStatusCode.BadRequest)
+        // 预检自己限时 10 秒:共享 HttpClient 的 Timeout 是 45 秒,不能让它拖着开始会话
+        using var probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        probeTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var probeClient = _sharedClient ?? new HttpClient();
+        try
         {
-            throw new InvalidOperationException(await DescribeRefusalAsync(probeResponse).ConfigureAwait(false));
+            using var probe = new HttpRequestMessage(HttpMethod.Get, probeUri);
+            probe.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            probe.Headers.Add("X-FT-Device", _deviceFingerprint);
+            using var probeResponse = await probeClient.SendAsync(probe, probeTimeout.Token).ConfigureAwait(false);
+            if (probeResponse.StatusCode != HttpStatusCode.BadRequest)
+            {
+                throw new InvalidOperationException(await DescribeRefusalAsync(probeResponse).ConfigureAwait(false));
+            }
+        }
+        finally
+        {
+            if (_sharedClient is null)
+            {
+                probeClient.Dispose();
+            }
         }
 
         var socket = new ClientWebSocket();
@@ -57,8 +75,9 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
         await socket.ConnectAsync(AsrUri(), ct).ConfigureAwait(false);
         _socket = socket;
         _ = PumpAsync(socket);
-        var start = "{\"type\":\"start\",\"sampleRate\":" + options.SourceRate.ToString(CultureInfo.InvariantCulture)
-            + ",\"language\":\"" + options.TargetLanguage + "\"}";
+        // 只报采样率:识别语种交给 ASR 自动判断。把「译成哪种语言」当 language_hints 发过去,
+        // 会让英文音频被硬按中文识别——曾经就是这样错的(v81 修)。
+        var start = "{\"type\":\"start\",\"sampleRate\":" + options.SourceRate.ToString(CultureInfo.InvariantCulture) + "}";
         await SendTextAsync(socket, start, ct).ConfigureAwait(false);
     }
 

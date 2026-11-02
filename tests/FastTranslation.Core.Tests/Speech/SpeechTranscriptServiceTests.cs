@@ -8,7 +8,7 @@ public sealed class SpeechTranscriptServiceTests
     private static SpeechSessionOptions Options(
         int maxConcurrency = 2,
         int queueCapacity = 8,
-        int debounceMs = 0) => new(16000, "en", 200, debounceMs, maxConcurrency, queueCapacity);
+        int debounceMs = 0) => new(16000, 200, debounceMs, maxConcurrency, queueCapacity);
 
     [Fact]
     public void Provisional_updates_never_reach_the_translator()

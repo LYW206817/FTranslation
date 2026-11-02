@@ -5,10 +5,13 @@ namespace FastTranslation.Core.Speech;
 /// <summary>字幕面板上的一行；IsFinal=false 时 Target 恒为空串（部分结果绝不送翻译）。</summary>
 public sealed record SpeechTranscriptLine(int SentenceId, string Source, string Target, bool IsFinal, DateTimeOffset StartedAt);
 
-/// <summary>语音会话参数；数值均有产品含义，见 docs/superpowers/specs 的语音方案。</summary>
+/// <summary>
+/// 语音会话参数；数值均有产品含义，见 docs/superpowers/specs 的语音方案。
+/// 这里刻意不带「目标语言」——识别语种必须由 ASR 自己判断，把翻译目标当语种提示
+/// 会让英文音频被按中文识别（v81 的 bug 就是这么来的）；译成哪种语言由翻译回调自己决定。
+/// </summary>
 public sealed record SpeechSessionOptions(
     int SourceRate,
-    string TargetLanguage,
     int MaxSentences = 200,
     int DebounceMs = 500,
     int MaxConcurrency = 2,

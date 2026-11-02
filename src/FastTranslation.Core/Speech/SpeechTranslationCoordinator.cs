@@ -23,7 +23,7 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
     private readonly object _gate = new();
 
     private SpeechCoordinatorState _state = SpeechCoordinatorState.Idle;
-    private SpeechSessionOptions _options = new(16_000, "en");
+    private SpeechSessionOptions _options = new(16_000);
     private ITimer? _pump;
     private TaskCompletionSource<bool> _ready;
     private int _bufferBytes;

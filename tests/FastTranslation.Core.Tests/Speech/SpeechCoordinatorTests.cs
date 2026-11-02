@@ -22,7 +22,7 @@ public sealed class SpeechCoordinatorTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private static SpeechSessionOptions Options() => new(16_000, "en", DebounceMs: 0);
+    private static SpeechSessionOptions Options() => new(16_000, DebounceMs: 0);
 
     [Fact]
     public async Task Buffers_audio_until_ready_then_pumps_it()

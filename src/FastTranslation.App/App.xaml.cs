@@ -1417,10 +1417,10 @@ public partial class App : Application, IResultPresenter
                 ? await a.GetAccessTokenAsync(CancellationToken.None).ConfigureAwait(false)
                 : null,
             new Uri(GatewayBaseUrl()),
-            account.DeviceFingerprint);
+            account.DeviceFingerprint,
+            _gatewayHttp);
         var options = new SpeechSessionOptions(
             SourceRate: 16000,
-            TargetLanguage: _settings.SpeechTargetLanguage,
             MaxSentences: _settings.SpeechMaxSentences);
         var subtitles = new SpeechTranscriptService(
             TranslateSpeechBatchAsync,
@@ -1472,8 +1472,15 @@ public partial class App : Application, IResultPresenter
         var stale = _speechCapture;
         _speechCapture = null;
         _speechResampler = null;
-        stale?.Stop();
-        stale?.Dispose();
+        if (stale is not null)
+        {
+            // 同上：UI 线程不能等 Join(2s)，设备切换时窗口会假死
+            _ = Task.Run(() =>
+            {
+                stale.Stop();
+                stale.Dispose();
+            });
+        }
         // 给音频引擎留出端点切换的时间；设备失效后立刻重开常常拿不到新端点
         await Task.Delay(1500).ConfigureAwait(true);
         if (_speechCoordinator is null) return;
@@ -1503,7 +1510,7 @@ public partial class App : Application, IResultPresenter
         var coordinator = _speechCoordinator;
         if (resampler is null || coordinator is null) return;
         var floats = MemoryMarshal.Cast<byte, float>(block);
-        var output = new byte[floats.Length / 2 * 6 + 64];
+        var output = new byte[resampler.MaxOutputBytes(floats.Length)];
         var written = resampler.Process(floats, output);
         if (written > 0) coordinator.PushAudio(output[..written]);
     }
@@ -1529,9 +1536,19 @@ public partial class App : Application, IResultPresenter
         var coordinator = _speechCoordinator;
         _speechCoordinator = null;
         _speechResampler = null;
-        _speechCapture?.Stop();
-        _speechCapture?.Dispose();
+        var capture = _speechCapture;
         _speechCapture = null;
+        if (capture is not null)
+        {
+            // Stop() 内部 Join 等采集线程退出（最多 2s）。这是 UI 线程，同步等会把窗口冻住，
+            // 所以甩到后台；采集线程之后的回调因 _speechResampler/_speechCoordinator 已置空而直接返回
+            _ = Task.Run(() =>
+            {
+                capture.Stop();
+                capture.Dispose();
+            });
+        }
+
         coordinator?.StopAsync();
         // 不等 DisposeAsync：协调器内部对停传已有 2s 超时；这里是 UI 线程，同步等待会死锁
         _ = coordinator?.DisposeAsync().AsTask();

@@ -33,6 +33,20 @@ public class AudioResamplerTests
     }
 
     [Fact]
+    public void MaxOutputBytes_matches_what_a_block_actually_produces()
+    {
+        // 48k 立体声 100ms 块:4800 帧 → 1600 帧 16k = 3200 字节。
+        // 按 MaxOutputBytes 开缓冲既不能截断,也不该像「采样数×6」那样白扔 9 倍内存。
+        var resampler = new AudioResampler(48000, 2);
+        var output = new byte[resampler.MaxOutputBytes(4800 * 2)];
+
+        int written = resampler.Process(Constant(4800, 2, 0.5f), output);
+
+        Assert.InRange(written, 3196, 3204);
+        Assert.InRange(output.Length, 3200, 4096);
+    }
+
+    [Fact]
     public void Keeps_remainder_between_blocks()
     {
         var input = Constant(24000, 2, 0.5f);
