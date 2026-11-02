@@ -36,12 +36,41 @@
       <TextBlock x:Name="Headline" Text="套餐" FontSize="17" FontWeight="SemiBold"
                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
 
-      <local:CardBoard Columns="2">
-        <Border Style="{StaticResource Card}">
-          <StackPanel>
+      <!-- v90：按效果图把「订阅」与「用量」并成一张 hero 卡：左边是套餐与本月/今日额度，
+           右边是价格与入口。分成两张卡时右列只有一张矮卡，左列一直空着一大片。 -->
+      <Border Style="{StaticResource Card}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="20"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0">
             <TextBlock x:Name="SubscribeTitle" Text="订阅后解锁单词本与四档复习"
                        Style="{StaticResource CardTitle}"/>
 
+            <TextBlock Text="本月" Style="{StaticResource FieldLabelTight}"/>
+            <TextBlock x:Name="MonthlyText" FontSize="13"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
+            <TextBlock x:Name="MonthlyLeftText" Style="{StaticResource Hint}"/>
+
+            <StackPanel x:Name="DailyRow" Margin="0,14,0,0">
+              <TextBlock Text="今日" Style="{StaticResource FieldLabelTight}"/>
+              <TextBlock x:Name="DailyText" FontSize="13"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>
+              <TextBlock x:Name="DailyLeftText" Style="{StaticResource Hint}"/>
+            </StackPanel>
+
+            <TextBlock x:Name="UsageError" Style="{StaticResource Hint}"
+                       Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
+            <TextBlock x:Name="SignedOutHint" Style="{StaticResource Hint}" Visibility="Collapsed"
+                       Text="登录后才能看到自己的用量,去「账号」页登录。"/>
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Width="360">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -86,48 +115,26 @@
 
             <Button x:Name="SubscribeButton" Content="订阅" Height="34" Margin="0,12,0,0"
                     Style="{StaticResource PrimaryButton}" Click="Subscribe_Click"/>
-            <TextBlock x:Name="SubscribeHint" Style="{StaticResource Hint}"
-                       Text="付款渠道尚未接通,当前版本点击后仅记录意向。"/>
+              <TextBlock x:Name="SubscribeHint" Style="{StaticResource Hint}"
+                         Text="付款渠道尚未接通,当前版本点击后仅记录意向。"/>
           </StackPanel>
-        </Border>
+        </Grid>
+      </Border>
 
+      <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+        <StackPanel>
+          <TextBlock Text="包括什么" Style="{StaticResource CardTitle}"/>
+          <TextBlock Text="· 单词本:单词、短语、整句都能存,按分栏翻。"
+                     Style="{StaticResource Hint}" Margin="0"/>
+          <TextBlock Text="· 四档复习:忘记 / 模糊 / 熟悉 / 记住,按自己的感觉排下一次。"
+                     Style="{StaticResource Hint}" Margin="0,7,0,0"/>
+          <TextBlock Text="· 额度:标准版每月 300 万字符,不再受每日上限限制。"
+                     Style="{StaticResource Hint}" Margin="0,7,0,0"/>
+        </StackPanel>
+      </Border>
+
+      <local:CardBoard Columns="2" Margin="0,16,0,0">
         <Border Style="{StaticResource Card}">
-          <StackPanel>
-            <TextBlock Text="用量" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="本月" Style="{StaticResource FieldLabelTight}"/>
-            <TextBlock x:Name="MonthlyText" FontSize="13"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
-            <TextBlock x:Name="MonthlyLeftText" Style="{StaticResource Hint}"/>
-
-            <StackPanel x:Name="DailyRow" Margin="0,14,0,0">
-              <TextBlock Text="今日" Style="{StaticResource FieldLabelTight}"/>
-              <TextBlock x:Name="DailyText" FontSize="13"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>
-              <TextBlock x:Name="DailyLeftText" Style="{StaticResource Hint}"/>
-            </StackPanel>
-
-            <TextBlock x:Name="UsageError" Style="{StaticResource Hint}"
-                       Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
-            <TextBlock x:Name="SignedOutHint" Style="{StaticResource Hint}" Visibility="Collapsed"
-                       Text="登录后才能看到自己的用量,去「账号」页登录。"/>
-          </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
-          <StackPanel>
-            <TextBlock Text="包括什么" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="· 单词本:单词、短语、整句都能存,按分栏翻。"
-                       Style="{StaticResource Hint}" Margin="0"/>
-            <TextBlock Text="· 四档复习:忘记 / 模糊 / 熟悉 / 记住,按自己的感觉排下一次。"
-                       Style="{StaticResource Hint}" Margin="0,7,0,0"/>
-            <TextBlock Text="· 额度:标准版每月 300 万字符,不再受每日上限限制。"
-                       Style="{StaticResource Hint}" Margin="0,7,0,0"/>
-          </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Text="激活码" Style="{StaticResource CardTitle}"/>
             <Grid>

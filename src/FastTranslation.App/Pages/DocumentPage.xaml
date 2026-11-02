@@ -39,19 +39,21 @@
         <!-- 拖放区：整块都是投放目标，虚线只用来示意边界 -->
         <Border x:Name="DropZone" Style="{StaticResource Card}" AllowDrop="True"
                 DragOver="DropZone_DragOver" Drop="DropZone_Drop">
-          <Grid MinHeight="128">
+          <!-- v90：按效果图让投放台占到整页大半，缩略信息都往中间堆。
+               原来 128 高只有一行字，看着像提示条而不是「把文件丢进来」的地方。 -->
+          <Grid MinHeight="360">
             <Rectangle RadiusX="10" RadiusY="10" Fill="Transparent"
                        Stroke="{DynamicResource BorderStrongBrush}" StrokeThickness="1"
                        StrokeDashArray="3 2"/>
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
               <TextBlock x:Name="DropTitle" Text="把 docx / txt / md 拖到这里"
-                         FontSize="13" HorizontalAlignment="Center"
-                         Foreground="{DynamicResource TextSecondaryBrush}"/>
-              <TextBlock x:Name="DropMeta" FontSize="11" Margin="0,6,0,0"
+                         FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock x:Name="DropMeta" FontSize="12" Margin="0,9,0,0"
                          HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
                          Foreground="{DynamicResource TextMutedBrush}"/>
               <Button x:Name="PickButton" Content="选择文件" Style="{StaticResource PrimaryButton}"
-                      HorizontalAlignment="Center" Margin="0,12,0,0" Padding="20,6"
+                      HorizontalAlignment="Center" Margin="0,18,0,0" Padding="24,8"
                       Click="Pick_Click"/>
             </StackPanel>
           </Grid>

@@ -2644,3 +2644,20 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 清单轮询（22:43–22:44）：Pages 22:43:29 仍是 1.3.7、22:44:24 已刷成 1.5.0（600 秒缓存窗口内即生效）；gh-proxy raw 立即是 1.5.0；`raw.githubusercontent.com` 直连被 `Connection was reset`（与既往一致）。
 - 本机验收：同一份 Setup.exe 静默安装到 `%LOCALAPPDATA%\Programs\FastTranslation`，264 文件 / 140.2MB，注册表 `DisplayVersion` 1.5.0，窗口正常打开、`update.log` 记 `up to date (1.5.0)`。
 - 发布前清理了 1.2.2 残留：僵尸注册表键（`InstallLocation` 指向已不存在的 `D:\SoftwareDownload\FastTranslation\`，导出 `.reg` 后删除）、开始菜单两个失效快捷方式、`%LOCALAPPDATA%\Programs\FastTranslation` 旧副本 139MB；用户数据 `%LOCALAPPDATA%\FastTranslation` 未动。
+
+## v90 · 文档 / 套餐 / 设置三页按选定效果图重排（1.5.0）
+
+用户从三版 HTML 效果图里选定 A「留白焦点」，并要求设置页取消左侧分区导航、让「系统」与「取词与写回」两张卡对齐。WPF 的设置页本来就没有分区导航（那是 mockup 加的），所以真正落地的只有三处版式。
+
+- **文档页** `src/FastTranslation.App/Pages/DocumentPage.xaml`：投放台内层 `Grid MinHeight` 128 → 360，标题 13 → 17 SemiBold 并换成 `TextPrimaryBrush`，说明 11 → 12，按钮 `Padding` 20,6 → 24,8、`Margin` 12 → 18。判据是 128 高只装得下一行字，看着像提示条而不是「把文件丢进来」的地方；效果图里它是整页的主体。
+- **套餐页** `src/FastTranslation.App/Pages/PlanPage.xaml`：把原来并排的「订阅」与「用量」两张卡并成一张 hero —— 外层 `Border` 里一个两列 `Grid`，左列 `*` 放 `SubscribeTitle` 与本月 / 今日额度，右列 360 放年付 / 月付与订阅按钮；「包括什么」提到 `CardBoard` 外面整宽；剩下的激活码（列 0）与额度怎么重置（列 1）仍交给 `CardBoard`。原来两张卡并排时右列只有一张矮卡、左列空一大片。
+- **设置页** `src/FastTranslation.App/Pages/SettingsPage.xaml`：`CardBoard` 换成三段式 —— 翻译与外观、服务各自整宽，最后一段用 `CardBoard Columns="2"` 承载「取词与写回（含排除应用）」与「系统」两组。这里刻意用 `CardBoard` 而不是固定两列的 `Grid`：卡片的 `MinColumnWidth` 是 500，窗口窄到分不出两列时会自动竖排，固定 `Grid` 不会——默认 1040 窗口内容区只有约 700 逻辑像素，固定两列会把左列挤到三百多像素。
+
+验证：
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误；`dotnet test` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- `tools/qa/shot-audit.ps1` 双主题各 9 页截图（顺手给 `$pages` 补了漏掉的「文档」页，并加了可选的 `-Width/-Height`）：`publish/ui-v90/`（默认 1040×660 窗口，物理 1820×1155）与 `publish/ui-v90-wide/`（2548×1500）。
+- UIA 实测（`publish/measure-v90.ps1`，物理像素）：默认窗口下三页都是单列 —— 设置页「翻译与外观」y=389、「服务」y=881、「取词与写回」y=1479、「排除应用」y=1715、「系统」y=2127；窗口拉到 2600×1500（内容区 1144 逻辑像素，过了 1016 的分列门槛）后「取词与写回」与「系统」同为 y=1258、宽 985 并排，「套餐」页激活码与额度重置同为 y=874、宽 926，「文档」页投放台在左列而「翻译成」移到右列顶部 y=200。
+- 深色直方图（`audit-Dark-plan.png`）：`#1F242C` 173749、`#16191F` 5614、`#22304D` 4367，卡片与窗口底色仍是 `ThemePalette` 的令牌，没有引入裸色值。
+
+残留风险：套餐 hero 的右列写死 360，窗口内容区窄于约 700 逻辑像素时左列的额度文字会被压扁；文档页投放台 360 高在单列布局下会让整页需要滚动。两处都只在极端窄窗口出现，没有为此加自适应。

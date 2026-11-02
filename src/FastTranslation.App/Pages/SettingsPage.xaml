@@ -96,8 +96,9 @@
       <!-- v69：底边留够一行的高度。原来只留 6px，滚动到底时最后那张卡的
            脚注会被视口边缘切成半行。 -->
       <StackPanel x:Name="BodyStack" Margin="24,0,24,18" MaxWidth="1440" HorizontalAlignment="Center">
-        <local:CardBoard Columns="2">
-
+        <!-- v90：按效果图改成三段式：翻译与外观、服务各自整宽，最后「取词与写回」与
+             「系统」并排等高。原来五张卡交给 CardBoard 分两列，取词与系统从来没有落在同一行。 -->
+        <StackPanel>
           <StackPanel>
             <TextBlock Text="翻译与外观" Style="{StaticResource GroupLabel}"/>
             <Border Style="{StaticResource Card}">
@@ -175,65 +176,7 @@
               </StackPanel>
             </Border>
           </StackPanel>
-
           <StackPanel>
-            <TextBlock Text="取词与写回" Style="{StaticResource GroupLabel}"/>
-            <Border Style="{StaticResource Card}">
-              <StackPanel>
-                <CheckBox x:Name="ClipboardFallbackCheck" Content="取词失败时使用剪贴板兜底(Ctrl+C)"/>
-                <CheckBox x:Name="WriteBackCheck" Content="启用替换原文(仅在可写文本框)" Margin="0,12,0,0"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-
-          <StackPanel>
-            <TextBlock Text="排除应用" Style="{StaticResource GroupLabel}"/>
-            <Border Style="{StaticResource Card}">
-              <StackPanel>
-                <Border Background="{DynamicResource WindowBgBrush}" BorderBrush="{DynamicResource HairBrush}"
-                        BorderThickness="1" CornerRadius="7" Padding="3">
-                  <Grid>
-                    <TextBlock x:Name="ExclusionEmpty" Text="还没有排除任何应用"
-                               FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
-                               Margin="9,9,0,0" IsHitTestVisible="False"/>
-                    <ListBox x:Name="ExcludedList" MinHeight="42" MaxHeight="132"
-                             BorderThickness="0" Background="Transparent" Padding="0"
-                             ItemContainerStyle="{StaticResource ExclusionItem}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             AutomationProperties.Name="已排除的应用"/>
-                  </Grid>
-                </Border>
-
-                <Grid Margin="0,10,0,0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                  </Grid.ColumnDefinitions>
-                  <TextBox x:Name="ExclusionInput" Grid.Column="0" Margin="0,0,8,0"
-                           AutomationProperties.Name="进程名"/>
-                  <Button Grid.Column="1" Content="添加" Click="AddExclusion_Click" Margin="0"/>
-                </Grid>
-
-                <Grid Margin="0,8,0,0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                  </Grid.ColumnDefinitions>
-                  <Button Grid.Column="0" Content="填入前台应用" Style="{StaticResource SmallButton}"
-                          HorizontalAlignment="Left" Click="FillForeground_Click"/>
-                  <Button Grid.Column="1" Content="移除选中" Style="{StaticResource SmallButton}"
-                          Margin="0" Click="RemoveExclusion_Click"/>
-                </Grid>
-
-                <TextBlock x:Name="ExclusionHint" Text="" FontSize="11" Visibility="Collapsed"
-                           Foreground="{DynamicResource BrandTextBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <TextBlock Text="按进程名匹配(如 chrome、Code),不区分大小写;这些应用里的划词与写回都不触发。"
-                           Style="{StaticResource Hint}"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-
-          <StackPanel local:CardBoard.Column="1">
             <TextBlock Text="服务" Style="{StaticResource GroupLabel}"/>
             <Border Style="{StaticResource Card}">
               <StackPanel>
@@ -251,34 +194,93 @@
               </StackPanel>
             </Border>
           </StackPanel>
-
-          <StackPanel local:CardBoard.Column="1">
-            <TextBlock Text="系统" Style="{StaticResource GroupLabel}"/>
-            <Border Style="{StaticResource Card}">
+          <!-- v90：这一段用 CardBoard 而不是固定两列的 Grid：窗口窄到分不出两列时它会自动竖排，
+               固定 Grid 不会，默认 1040 窗口下左列会被挤到三百多像素。 -->
+          <local:CardBoard Columns="2" Margin="0,16,0,0">
+            <StackPanel>
               <StackPanel>
-                <CheckBox x:Name="AutoStartCheck" Content="开机时自动启动(当前用户)"/>
-                <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <Button x:Name="CheckUpdateButton" Grid.Column="0" Content="检查更新"
-                          Style="{StaticResource SmallButton}" HorizontalAlignment="Left"
-                          Click="CheckUpdate_Click"/>
-                  <TextBlock x:Name="UpdateHint" Grid.Column="1" Margin="10,0,0,0" FontSize="11"
-                             VerticalAlignment="Center" TextWrapping="Wrap"
-                             Foreground="{DynamicResource TextMutedBrush}"
-                             Text="发现新版本会提示下载并自动安装。"/>
-                </Grid>
-                <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
-                <TextBlock x:Name="AboutText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                           TextWrapping="Wrap"/>
+                <TextBlock Text="取词与写回" Style="{StaticResource GroupLabel}"/>
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <CheckBox x:Name="ClipboardFallbackCheck" Content="取词失败时使用剪贴板兜底(Ctrl+C)"/>
+                    <CheckBox x:Name="WriteBackCheck" Content="启用替换原文(仅在可写文本框)" Margin="0,12,0,0"/>
+                  </StackPanel>
+                </Border>
               </StackPanel>
-            </Border>
-          </StackPanel>
+              <StackPanel Margin="0,16,0,0">
+                <TextBlock Text="排除应用" Style="{StaticResource GroupLabel}"/>
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <Border Background="{DynamicResource WindowBgBrush}" BorderBrush="{DynamicResource HairBrush}"
+                            BorderThickness="1" CornerRadius="7" Padding="3">
+                      <Grid>
+                        <TextBlock x:Name="ExclusionEmpty" Text="还没有排除任何应用"
+                                   FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="9,9,0,0" IsHitTestVisible="False"/>
+                        <ListBox x:Name="ExcludedList" MinHeight="42" MaxHeight="132"
+                                 BorderThickness="0" Background="Transparent" Padding="0"
+                                 ItemContainerStyle="{StaticResource ExclusionItem}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 AutomationProperties.Name="已排除的应用"/>
+                      </Grid>
+                    </Border>
 
-        </local:CardBoard>
+                    <Grid Margin="0,10,0,0">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="ExclusionInput" Grid.Column="0" Margin="0,0,8,0"
+                               AutomationProperties.Name="进程名"/>
+                      <Button Grid.Column="1" Content="添加" Click="AddExclusion_Click" Margin="0"/>
+                    </Grid>
+
+                    <Grid Margin="0,8,0,0">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <Button Grid.Column="0" Content="填入前台应用" Style="{StaticResource SmallButton}"
+                              HorizontalAlignment="Left" Click="FillForeground_Click"/>
+                      <Button Grid.Column="1" Content="移除选中" Style="{StaticResource SmallButton}"
+                              Margin="0" Click="RemoveExclusion_Click"/>
+                    </Grid>
+
+                    <TextBlock x:Name="ExclusionHint" Text="" FontSize="11" Visibility="Collapsed"
+                               Foreground="{DynamicResource BrandTextBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Text="按进程名匹配(如 chrome、Code),不区分大小写;这些应用里的划词与写回都不触发。"
+                               Style="{StaticResource Hint}"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+            <StackPanel local:CardBoard.Column="1">
+                <TextBlock Text="系统" Style="{StaticResource GroupLabel}"/>
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <CheckBox x:Name="AutoStartCheck" Content="开机时自动启动(当前用户)"/>
+                    <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                      </Grid.ColumnDefinitions>
+                      <Button x:Name="CheckUpdateButton" Grid.Column="0" Content="检查更新"
+                              Style="{StaticResource SmallButton}" HorizontalAlignment="Left"
+                              Click="CheckUpdate_Click"/>
+                      <TextBlock x:Name="UpdateHint" Grid.Column="1" Margin="10,0,0,0" FontSize="11"
+                                 VerticalAlignment="Center" TextWrapping="Wrap"
+                                 Foreground="{DynamicResource TextMutedBrush}"
+                                 Text="发现新版本会提示下载并自动安装。"/>
+                    </Grid>
+                    <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,12"/>
+                    <TextBlock x:Name="AboutText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+          </local:CardBoard>
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
 

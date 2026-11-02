@@ -1,7 +1,9 @@
 ﻿param(
   [Parameter(Mandatory=$true)][string]$ExePath,
   [Parameter(Mandatory=$true)][string]$Theme,
-  [Parameter(Mandatory=$true)][string]$OutDir
+  [Parameter(Mandatory=$true)][string]$OutDir,
+  [int]$Width = 0,
+  [int]$Height = 0
 )
 # 本文件必须存成 UTF-8 带 BOM：PowerShell 5.1 无 BOM 时按 GBK 解码中文，脚本直接报语法错误。
 $ErrorActionPreference = 'Stop'
@@ -14,6 +16,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 public class Aud {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -52,6 +55,7 @@ public class Aud {
 $wMain = 'Fast Translation'
 $pages = @(
   @{ Name = '设置'; Slug = 'settings' },
+  @{ Name = '文档'; Slug = 'document' },
   @{ Name = '单词'; Slug = 'notes-word' },
   @{ Name = '短语'; Slug = 'notes-phrase' },
   @{ Name = '语句'; Slug = 'notes-sentence' },
@@ -84,6 +88,10 @@ try {
   if (-not $main) { Write-Host 'MAIN NOT FOUND'; exit 1 }
   Start-Sleep -Seconds 2
   $h = [Aud]::Find([uint32]$app.Id, $wMain)
+  if ($Width -gt 0) {
+    [Aud]::SetWindowPos($h, [IntPtr]::Zero, 0, 0, $Width, $Height, 0x0004) | Out-Null
+    Start-Sleep -Milliseconds 900
+  }
   Write-Host ("main " + [Aud]::Shot($h, (Join-Path $OutDir ("audit-" + $Theme + "-main.png"))))
 
   # 页面都在主窗的 ContentControl 里换，没有独立窗口：点侧边栏按钮，再截同一扇窗。
