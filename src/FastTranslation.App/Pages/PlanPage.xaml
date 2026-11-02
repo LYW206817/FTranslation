@@ -115,7 +115,7 @@
           </StackPanel>
         </Border>
 
-        <Border Style="{StaticResource Card}">
+        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Text="包括什么" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="· 单词本:单词、短语、整句都能存,按分栏翻。"
@@ -127,7 +127,7 @@
           </StackPanel>
         </Border>
 
-        <Border Style="{StaticResource Card}">
+        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Text="激活码" Style="{StaticResource CardTitle}"/>
             <Grid>
@@ -146,7 +146,7 @@
         </Border>
 
         <!-- 重置规则属于套餐，所以放在它所解释的计量旁边 -->
-        <Border Style="{StaticResource Card}">
+        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Text="额度怎么重置" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="本月额度" FontSize="12" FontWeight="SemiBold"

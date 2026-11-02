@@ -304,6 +304,7 @@ public partial class MainWindow : Window
         return _settingsPage;
     }
 
+    /// <summary>切换到指定页面；同一个页面重复调用只刷新内容，不重建控件。</summary>
     public void ShowPage(MainPageId page)
     {
         // 重建同一个页面会丢掉里面已经输入的内容，所以缓存页面只做刷新——而这次刷新
@@ -316,8 +317,17 @@ public partial class MainWindow : Window
         }
 
         _current = page;
-        PageHost.Content = Build(page);
+        var content = Build(page);
+
+        // v88：先把侧栏选中态改掉，内容推到下一帧再挂。换页要重画整个内容区（全屏 2548×1400
+        // 物理像素），首帧 40–110ms；两件事同一帧做，点击反馈要等这一大块画完才出现，手感就是
+        // 「点了没反应」。拆开后点下去当帧只重画侧栏那一条，内容晚一帧到。
         SyncSidebar();
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            // 连点多页时队列里会堆几个挂载：只让最后一次生效，否则会闪回中间的页。
+            if (_current == page) PageHost.Content = content;
+        });
         RefreshPage(page);
     }
 

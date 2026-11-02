@@ -2575,3 +2575,30 @@ v83/v84 只换了颜色，用户一眼看穿：「你这和图中严重不符啊
 - 自动分列的结果与效果图并非逐张一致（设置页左列是「翻译与外观 / 服务」，效果图是「翻译与外观 / 取词与写回 / 系统」），这是最矮优先的必然差异，不是布局错误。
 - 账号页登录态（`SignedInPanel`）从左右两列 Grid 拍平成单列，本机没有账号可登，没有截图核对；`x:Name` 与事件都保留，风险只在观感。
 - `CardBoard.Gap` 做成了 `public const`，本可以是 `private`。
+## v88 · 分列按效果图写死：卡片自己声明落在哪一列（1.5.0）
+
+**问题（用户 m07167：「全屏状态下和planA也完全不同」）**
+
+- v87 的 `CardBoard` 用「逐张放进当前最矮的那一列」自动分列，把效果图里写死的左右归属打乱了。实机（v87 构建）设置页排成 左=翻译与外观 / 服务、右=取词与写回 / 排除应用 / 系统；`plan-a.html` 是 左=翻译与外观 / 取词与写回 / 排除应用、右=服务 / 系统。文档页同理（左=拖放 / 翻译成 / 翻译完成，效果图是 左=拖放 / 失败、右=翻译成 / 进度 / 翻译完成）。逐卡错位，所以用户说「完全不同」。
+- 另一半原因是门槛：两列需要 `560×2+16 = 1136` 的可用宽，而 2560×1600 屏最大化后内容区正好在 1128–1145 之间摆动，稍窄一点就整页掉回单列。
+
+**改法**
+
+- `src/FastTranslation.App/CardBoard.cs`：删掉 `File()` 的最矮列投放，换成附加属性 `CardBoard.Column`（`DependencyProperty.RegisterAttached`，默认 0，`AffectsParentMeasure | AffectsParentArrange`）与 `GetColumn/SetColumn`；`ResolveColumns(columns)` 把不可见子元素记为 -1，其余取 `Math.Min(Math.Max(声明值, 0), columns - 1)`。`MeasureOverride` 按列累加 `高度 + 列内间距`，`ArrangeOverride` 只在「该列已有卡」时加 `Gap`，所以列首不会多出一段空白。退化到单列时列号全部夹到 0，顺序就是声明顺序（列优先），和效果图从左上读下来的顺序一致。
+- `MinColumnWidth` 默认值 560 → 500：两列门槛降到 1016，全屏稳定两列、每列约 560 DIP；默认 1040 窗口可用宽 820，仍是单列。
+- 列归属照 `publish/ui-redesign/fullscreen/plan-a.html` 逐卡写进 XAML：`Pages/DocumentPage.xaml` 的翻译成卡、`ProgressCard`、`ResultCard`、`ErrorCard` 加 `local:CardBoard.Column="1"`；`Pages/PlanPage.xaml` 的包括什么、激活码、额度怎么重置加 `Column="1"`；`Pages/SettingsPage.xaml` 的「服务」「系统」两个分组加 `Column="1"`。语音页与账号页仍是单列。
+- 换页顺序：`MainWindow.ShowPage` 先 `SyncSidebar()` 改选中态，`PageHost.Content` 推到 `DispatcherPriority.Background` 再挂，回调里判 `_current == page` 防连点闪回。这样点下去当帧只重画侧栏那一条，内容晚一帧到。
+
+**验证**
+
+- `dotnet build FastTranslation.slnx -c Release` → 0 警告 0 错误；`dotnet test FastTranslation.slnx -c Release` → Core 302 / Platform.Windows 107 / QwenMt 95 / Server 210 = **714 全绿**。
+- UIA 矩形（`publish/probe-uia.ps1 <exe> 2520 1600 <页名> <控件名…>`，DPI 175%，窗口 2520×1600 物理 = 1440×914 DIP）：设置页 翻译与外观 / 取词与写回 / 排除应用 L=467 W=971 同列，服务 / 系统 L=1470；套餐页右列 L=1498；文档页「拖到这里」L=813、`开始翻译` L=1834。列归属与效果图逐项对上了。
+- 截图 `tools/qa/shot-fullscreen.ps1 -ExePath src/FastTranslation.App/bin/Release/net10.0-windows/FastTranslation.exe -Theme light -Width 2560 -Height 1600 -OutDir publish/shots/planA2` → 2548×1600 五张（`publish/` 不进仓库）。设置页左 翻译与外观 / 取词与写回 / 排除应用、右 服务 / 系统、底栏钉在窗口底部，与效果图结构一致。
+- 文档页空状态只有「拖放」「翻译成」两张卡，效果图展示的是「已经译完一批」的密集状态，这是数据状态差异，不是样式差异。
+
+**残留风险**
+
+- 分列现在完全靠 XAML 里手写的 `Column`：以后往 `CardBoard` 里加卡片忘了写，它会落进左列并排在那列末尾，不会再自动找空位。
+- 文档页「失败」卡与 `ErrorCard` 同属左/右列的不同语义，译完态与失败态同时出现时右列会比左列长一截（列高不齐是列式布局的固有表现）。
+- 换页首帧耗时在本机（虚拟显示驱动、2548×1600 物理）是 40–95ms，拆帧后点击反馈先出、内容晚一帧；真实显卡机器上没复现这组数字，收益只在「反馈不再等整块重画」这一层。
+- `CardBoard.Gap` 仍是 `public const`，本可以是 `private`。

@@ -87,7 +87,7 @@
           </StackPanel>
         </Border>
 
-        <Border Style="{StaticResource Card}">
+        <Border Style="{StaticResource Card}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Style="{StaticResource CardTitle}" Text="翻译成"/>
             <StackPanel Orientation="Horizontal">
@@ -104,7 +104,8 @@
           </StackPanel>
         </Border>
 
-        <Border x:Name="ProgressCard" Style="{StaticResource Card}" Visibility="Collapsed">
+        <Border x:Name="ProgressCard" Style="{StaticResource Card}" Visibility="Collapsed"
+                local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Style="{StaticResource CardTitle}" Text="进度"/>
             <TextBlock x:Name="ProgressText" FontSize="12" Text="已完成 0 / 0 段"
@@ -113,7 +114,8 @@
           </StackPanel>
         </Border>
 
-        <Border x:Name="ResultCard" Style="{StaticResource Card}" Visibility="Collapsed">
+        <Border x:Name="ResultCard" Style="{StaticResource Card}" Visibility="Collapsed"
+                local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Style="{StaticResource CardTitle}" Text="翻译完成"/>
             <TextBlock x:Name="ResultText" FontSize="12" TextWrapping="Wrap"
@@ -128,7 +130,7 @@
         </Border>
 
         <Border x:Name="ErrorCard" Style="{StaticResource Card}" Visibility="Collapsed"
-                BorderBrush="{DynamicResource DangerBrush}">
+                BorderBrush="{DynamicResource DangerBrush}" local:CardBoard.Column="1">
           <StackPanel>
             <TextBlock Style="{StaticResource CardTitle}" Text="没能继续"/>
             <TextBlock x:Name="ErrorText" FontSize="12" TextWrapping="Wrap"

@@ -5,9 +5,15 @@ using System.Windows.Controls;
 namespace FastTranslation.App;
 
 /// <summary>
-/// 把卡片逐张放进「当前最矮的那一列」的流式面板：窗口宽时并成多列，窄到一列分不到
-/// <see cref="MinColumnWidth"/> 时自动退化成单列。
+/// 按卡片自己声明的列号排版：宽窗口时并成多列，窄到一列分不到
+/// <see cref="MinColumnWidth"/> 时退化成单列。
 /// </summary>
+/// <remarks>
+/// v88：这里原来是「逐张放进当前最矮的列」的自动分列，效果图里写死的左右归属被它打乱
+/// （文档页的「失败」被塞到右列、设置页的「服务」被塞到左列），全屏下与设计稿逐张错位。
+/// 现在卡片用 <see cref="ColumnProperty"/> 显式声明列号，顺序固定为列优先（先左列后右列），
+/// 退化成单列时按同一顺序竖排，读起来仍与设计稿一致。
+/// </remarks>
 public sealed class CardBoard : Panel
 {
     /// <summary>列与列之间的净间距(像素)。</summary>
@@ -19,9 +25,22 @@ public sealed class CardBoard : Panel
         new FrameworkPropertyMetadata(1, FrameworkPropertyMetadataOptions.AffectsMeasure));
 
     /// <summary>分列之后每列至少要有这么宽，否则并回单列(像素)。</summary>
+    /// <remarks>
+    /// v88：默认值原来是 560，两列要 1136 的可用宽，而 2560×1600 屏最大化后内容区正好卡在
+    /// 1128–1145 之间——差几十像素就掉回单列，用户看到的「全屏和设计稿完全不同」有一部分是这个。
+    /// 500 让两列在 1016 就成立：全屏分两列各约 560，默认 1040 窗口(可用 820)仍是单列。
+    /// </remarks>
     public static readonly DependencyProperty MinColumnWidthProperty = DependencyProperty.Register(
         nameof(MinColumnWidth), typeof(double), typeof(CardBoard),
-        new FrameworkPropertyMetadata(560.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
+        new FrameworkPropertyMetadata(500.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+    /// <summary>子元素所属的列号，从 0(左)开始；超出实际列数时并到最后一列。</summary>
+    public static readonly DependencyProperty ColumnProperty = DependencyProperty.RegisterAttached(
+        "Column", typeof(int), typeof(CardBoard),
+        new FrameworkPropertyMetadata(
+            0,
+            FrameworkPropertyMetadataOptions.AffectsParentMeasure
+            | FrameworkPropertyMetadataOptions.AffectsParentArrange));
 
     /// <summary>想要的列数，默认 1。</summary>
     public int Columns
@@ -37,6 +56,20 @@ public sealed class CardBoard : Panel
         set => SetValue(MinColumnWidthProperty, value);
     }
 
+    /// <summary>读子元素声明的列号。</summary>
+    public static int GetColumn(DependencyObject element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return (int)element.GetValue(ColumnProperty);
+    }
+
+    /// <summary>声明子元素落在哪一列；0 是最左那一列。</summary>
+    public static void SetColumn(DependencyObject element, int value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(ColumnProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         var columns = EffectiveColumns(availableSize.Width);
@@ -50,7 +83,15 @@ public sealed class CardBoard : Panel
             child.Measure(new Size(columnWidth, double.PositiveInfinity));
         }
 
-        File(columns, out var columnHeights);
+        var columnOf = ResolveColumns(columns);
+        var columnHeights = new double[columns];
+        for (var i = 0; i < InternalChildren.Count; i++)
+        {
+            if (columnOf[i] < 0) continue;
+
+            columnHeights[columnOf[i]] += CardHeight(i) + StackedGap(columnOf, i);
+        }
+
         var tallest = 0.0;
         foreach (var height in columnHeights)
         {
@@ -66,7 +107,7 @@ public sealed class CardBoard : Panel
     {
         var columns = EffectiveColumns(finalSize.Width);
         var columnWidth = ColumnWidth(finalSize.Width, columns);
-        var columnOf = File(columns, out _);
+        var columnOf = ResolveColumns(columns);
         var offsets = new double[columns];
         for (var i = 0; i < InternalChildren.Count; i++)
         {
@@ -78,6 +119,7 @@ public sealed class CardBoard : Panel
                 continue;
             }
 
+            if (offsets[column] > 0) offsets[column] += Gap;
             child.Arrange(new Rect(
                 column * (columnWidth + Gap), offsets[column], columnWidth, child.DesiredSize.Height));
             offsets[column] += child.DesiredSize.Height;
@@ -86,37 +128,33 @@ public sealed class CardBoard : Panel
         return finalSize;
     }
 
-    /// <summary>
-    /// 按声明顺序把可见子元素逐张放进当前最矮的一列，返回每张卡所在的列号（不可见的为 -1）。
-    /// </summary>
-    private int[] File(int columns, out double[] columnHeights)
+    /// <summary>每张卡所在列：不可见的为 -1，超出实际列数的并到最后一列。</summary>
+    private int[] ResolveColumns(int columns)
     {
         var columnOf = new int[InternalChildren.Count];
-        columnHeights = new double[columns];
         for (var i = 0; i < InternalChildren.Count; i++)
         {
             var child = InternalChildren[i];
-            if (child.Visibility != Visibility.Visible)
-            {
-                columnOf[i] = -1;
-                continue;
-            }
-
-            // 为什么按最短列放：卡片高度由内容决定、彼此相差几倍，按序号轮流放会出现
-            // 一列很长一列很短；每次挑当前最矮的那一列，后面的卡片自动去补短的那列，
-            // 两列高度差最小，滚到底时不会先滑过一大片空白。
-            var target = 0;
-            for (var c = 1; c < columns; c++)
-            {
-                if (columnHeights[c] < columnHeights[target]) target = c;
-            }
-
-            columnOf[i] = target;
-            columnHeights[target] += child.DesiredSize.Height;
+            columnOf[i] = child.Visibility != Visibility.Visible
+                ? -1
+                : Math.Min(Math.Max(GetColumn(child), 0), columns - 1);
         }
 
         return columnOf;
     }
+
+    /// <summary>这张卡与它上面那张之间的间距；列首的卡不计。</summary>
+    private double StackedGap(int[] columnOf, int index)
+    {
+        for (var i = 0; i < index; i++)
+        {
+            if (columnOf[i] == columnOf[index]) return Gap;
+        }
+
+        return 0;
+    }
+
+    private double CardHeight(int index) => ((UIElement)InternalChildren[index]).DesiredSize.Height;
 
     /// <summary>按可用宽度算有效列数：塞不下 <see cref="MinColumnWidth"/> 就退回单列。</summary>
     private int EffectiveColumns(double availableWidth)

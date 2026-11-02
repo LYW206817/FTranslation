@@ -599,6 +599,24 @@ public partial class App : Application, IResultPresenter
             navTimer.Tick += async (_, _) =>
             {
                 navTimer.Stop();
+
+                // FT_UITEST_SIZE=1456x914 -> 先把窗口改成目标尺寸再量：默认 1040 窗口可用宽只够单列，
+                // 全屏时是两列，布局成本不同，不先调过去量出来的数偏低。
+                var sizeSetting = Environment.GetEnvironmentVariable("FT_UITEST_SIZE");
+                if (!string.IsNullOrEmpty(sizeSetting))
+                {
+                    var parts = sizeSetting.Split('x');
+                    if (parts.Length == 2
+                        && double.TryParse(parts[0], out var windowWidth)
+                        && double.TryParse(parts[1], out var windowHeight))
+                    {
+                        _mainWindow!.WindowState = System.Windows.WindowState.Normal;
+                        _mainWindow.Width = windowWidth;
+                        _mainWindow.Height = windowHeight;
+                        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+                    }
+                }
+
                 MainPageId[] order =
                 [
                     MainPageId.Home, MainPageId.Word, MainPageId.Phrase, MainPageId.Sentence, MainPageId.Review,
@@ -612,7 +630,7 @@ public partial class App : Application, IResultPresenter
                         _mainWindow!.ShowPage(id);
                         var call = wall.ElapsedMilliseconds;
                         await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
-                        Trace($"nav pass={pass} page={id} call={call}ms frame={wall.ElapsedMilliseconds}ms");
+                        Trace($"nav pass={pass} page={id} call={call}ms frame={wall.ElapsedMilliseconds - call}ms");
                         await Task.Delay(150);
                     }
                 }

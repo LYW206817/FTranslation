@@ -233,7 +233,7 @@
             </Border>
           </StackPanel>
 
-          <StackPanel>
+          <StackPanel local:CardBoard.Column="1">
             <TextBlock Text="服务" Style="{StaticResource GroupLabel}"/>
             <Border Style="{StaticResource Card}">
               <StackPanel>
@@ -252,7 +252,7 @@
             </Border>
           </StackPanel>
 
-          <StackPanel>
+          <StackPanel local:CardBoard.Column="1">
             <TextBlock Text="系统" Style="{StaticResource GroupLabel}"/>
             <Border Style="{StaticResource Card}">
               <StackPanel>
