@@ -371,8 +371,8 @@
 - **内存复测(干净启动)**:`tools/qa/mem-soak.ps1 -Minutes 5` 全程 PrivateWS **35.9–39.6MB**(t=17s 38.1 → t=231s 39.6 → t=310s 37.0 回落),WS 120.8–127.2MB,handles 556→584。红线 50MB 有余量;首轮浸泡出现过 47→63→57MB 的爬升,是安装后第一次启动叠加托盘/浮层句柄预热,重启后再测即回到 38MB 区间 —— 结论是**浸泡必须跑在干净启动的实例上**,单点采样或复用旧实例都会误判
 - **便携包重打**:`tools/qa/make-portable.ps1` → 263 条目(262 产物 + `dist/README.txt`)、61616504 字节。注:`Compress-Archive` 在本地化资源文件名上会抛 `PermissionDenied`,故脚本用 `ZipFile.CreateFromDirectory` + 3 次重试
 - **推送 GitHub 私有仓库**(`github.com/LYW206817/FTranslation`):远端只有作者用网页初始化时留下的一个占位提交(Apache-2.0 LICENSE + 两行 README),与本地历史无共同祖先 —— 经确认**覆盖远端**,以本地 5 个提交为准(`git push -u origin master:main --force`),远端 170 个文件、README 为 118 行完整版、LICENSE 为 MIT
-- **提交身份改 GitHub noreply**:原 `user.email` 是 gitee 的 `（已移除）`,GitHub 不认(贡献图不归属)。用 `git filter-branch --env-filter` 把 5 个提交的 author/committer 统一改成 `LYW206817 <210836236+LYW206817@users.noreply.github.com>`(未推送前重写,无副作用);并新增 `.gitattributes`(`* text=auto` + png/jpg/ico/zip/msi/wixpdb 标 binary)消除批量 LF→CRLF 警告
-- **连接方式踩坑**:本机 `https://github.com` **TCP 443 连不通**(api.github.com 可通、github.com 的 443 连接被 reset),但 SSH 22 通畅、`~/.ssh/id_rsa` 已授权该账号 ⇒ remote 用 `git@github.com:LYW206817/FTranslation.git`,并写入仓库级 `core.sshCommand`(指定 key 与 known_hosts 绝对路径,因为 MSYS2 的 `$HOME` 是 `/c/Users/示例用户`,中文路径在 ssh 里会乱码导致 `Could not create directory '/c/Users/\301\365\323\300\315\376/.ssh'`)
+- **提交身份改 GitHub noreply**:原 `user.email` 是 Gitee 的 no-reply 地址,GitHub 不认(贡献图不归属)。用 `git filter-branch --env-filter` 把 5 个提交的 author/committer 统一改成 `LYW206817 <210836236+LYW206817@users.noreply.github.com>`(未推送前重写,无副作用);并新增 `.gitattributes`(`* text=auto` + png/jpg/ico/zip/msi/wixpdb 标 binary)消除批量 LF→CRLF 警告
+- **连接方式踩坑**:本机 `https://github.com` **TCP 443 连不通**(api.github.com 可通、github.com 的 443 连接被 reset),但 SSH 22 通畅、`~/.ssh/id_rsa` 已授权该账号 ⇒ remote 用 `git@github.com:LYW206817/FTranslation.git`,并写入仓库级 `core.sshCommand`(指定 key 与 known_hosts 绝对路径,因为 MSYS2 的 `$HOME` 落在中文用户名下(如 `/c/Users/示例用户`),中文路径在 ssh 里会乱码)
 
 ## v26 设置页布局重做(2026-10-26)✅
 

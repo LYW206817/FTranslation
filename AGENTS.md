@@ -17,8 +17,8 @@ Windows 桌面划词翻译工具 + 一个自建后端。选中文本 → 浮动�
 - `site/` — 产品介绍静态单页(纯 HTML/CSS,没有构建步骤)
 - `deploy/` — 一台 ECS 的部署文件(systemd + Caddy + SQLite),用法见 `deploy/README.md`
 - `tests/` — 四个 xunit 项目(Core / Platform.Windows / Providers.QwenMt / Server)
-- `docs/IMPL.md` — 按版本号累加的实现记录(以文末最新的 `## vN` 小节为准);`docs/superpowers/specs/` — 大功能设计规格;`docs/playbooks/` — 低频操作的 runbook
-- `.agents/` — 交付级设计 / 问题 / 需求文档(见「文档输出规范」)
+- `docs/IMPL.md` — 按版本号累加的实现记录(以文末最新的 `## vN` 小节为准);`docs/superpowers/specs/` — 可公开的设计规格;`docs/playbooks/` — 低频操作的 runbook
+- `.agents/` — 交付级设计 / 问题 / 需求文档(**只留本机、不提交**,含定价与成本等内部信息,见 `.gitignore`)
 - `installer/` — Inno Setup 脚本与简中语言包;`tools/qa/` — 本机验证脚本;`publish/` — 构建产物与临时探针(**整个目录在 .gitignore 里;里面被引用的脚本只存在于本机**)
 
 ## 密钥与令牌
@@ -199,9 +199,9 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 文档输出规范
 
-1. 设计文档放 `.agents/design`,实现计划放同目录的 `{日期}-{描述}-实现计划.md`,不要塞进设计文档正文。
-2. 问题分析放 `.agents/issue`(现状只有 `.gitkeep`,还没真用过);需求文档放 `.agents/requirement`。
-3. 大功能的方案讨论放 `docs/superpowers/specs/`;`specs` 写方案与取舍,`.agents/design` 写交付设计(含效果图与实现计划),两边不要重复写同一份内容。
+1. 设计文档放 `.agents/design`,实现计划放同目录的 `{日期}-{描述}-实现计划.md`,不要塞进设计文档正文。**`.agents/` 只留本机、不进公开仓库**(见 `.gitignore`)。
+2. 问题分析放 `.agents/issue`;需求文档放 `.agents/requirement`。
+3. 可公开的大功能方案讨论放 `docs/superpowers/specs/`;`.agents/design` 写交付设计(含效果图与实现计划),两边不要重复写同一份内容。**含定价、成本、防刷细则的商业敏感文档不进公开仓库。**
 4. 同一个需求的文档尽量写在一起(超过 500 行再分批),不要平铺一堆同主题不同版本的文档。
 5. 文件名 `{需求日期}-{需求描述}-{输出类型}.{扩展名}`,例如 `2023-05-01-新增固定域开关-设计文档.md`。
 6. 文本文件用 UTF-8;PowerShell 脚本按上面「踩坑」存成带 BOM 的 UTF-8。
