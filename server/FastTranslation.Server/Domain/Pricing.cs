@@ -50,4 +50,37 @@ public static class Pricing
 
     public static long ImageCostMicros(string? model) =>
         (long)decimal.Round(For(model).PerImage * 1_000_000m, 0, MidpointRounding.AwayFromZero);
+
+    /// <summary>各模型相对 flash 的额度倍率。缺项按 1.0 计，与 <see cref="For"/> 回落 flash 的口径一致。</summary>
+    private static readonly Dictionary<string, decimal> QuotaMultipliers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["qwen-mt-flash"] = 1.0m,
+        ["qwen-mt-plus"] = 2.7m,
+        ["qwen-mt-lite"] = 0.85m,
+    };
+
+    /// <summary>
+    /// 把「模型原始字符数」折算成「flash 等价额度字符」。
+    /// <para>
+    /// 倍率来自实测每字符成本：flash 3.11、plus 8.33、lite 2.60 微元（单价取自 <see cref="Table"/>，
+    /// token/字符比取本机划词样本 输入 2.02、输出 0.87）。plus/flash = 2.68、lite/flash = 0.84，
+    /// 取整成 2.7 与 0.85——成本比会随输入输出结构在 ±5% 内浮动，不必精确到小数点后两位。
+    /// </para>
+    /// <para>
+    /// 不做折算的话，plus 与 flash 按 1:1 扣额度，用户用 5.9 元就能买走 7.33 元的成本；
+    /// 而 lite 反而比它真实成本收得更贵。额度单位统一成 flash 等价字符后，
+    /// 「1 额度字符 ≈ 3.1 微元」对任何模型都成立。
+    /// </para>
+    /// </summary>
+    /// <param name="model">请求里的模型名，空或未知按 flash 计。</param>
+    /// <param name="rawChars">该请求的原始字符数。</param>
+    /// <returns>应记入额度与预检的字符数；非零请求至少记 1，避免小文本被四舍五入成免费。</returns>
+    public static int QuotaChars(string? model, int rawChars)
+    {
+        if (rawChars <= 0) return 0;
+        var multiplier = !string.IsNullOrWhiteSpace(model) && QuotaMultipliers.TryGetValue(model, out var found)
+            ? found
+            : 1.0m;
+        return Math.Max(1, (int)decimal.Round(rawChars * multiplier, MidpointRounding.AwayFromZero));
+    }
 }

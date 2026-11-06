@@ -55,7 +55,7 @@ public static class SpeechEndpoints
             return;
         }
 
-        // 额度按秒折字符:按最小会话(MinSeconds×QuotaCharsPerSecond)预检,连 10 秒都讲不起就别进来。
+        // 额度按秒折字符:按最小会话(MinSeconds×QuotaCharsPerSecond)预检,连最短会话都讲不起就别进来。
         var requestedChars = gateway.Speech.MinSeconds * gateway.Speech.QuotaCharsPerSecond;
         var (deviceId, _) = GatewayEndpoints.Device(context, principal, store);
         var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);

@@ -118,6 +118,26 @@ public class SpeechEndpointTests : IClassFixture<SpeechGatewayFactory>, IClassFi
     }
 
     [Fact]
+    public async Task Asr_admits_a_session_when_only_the_shortest_billable_is_left()
+    {
+        // v98: 最短计费 10 秒 → 5 秒,预检门槛从 200 字符降到 100 字符。
+        // 免费档日额度 2,000 先烧掉 1,850 只剩 150:按旧的 200 门槛必须 429,按 5 秒门槛必须放行。
+        // 闸门全过但请求没带 WS 升级头,端点收在 400——用 400/429 之差断言「预检放行了」。
+        var client = await SignedInAsync(_factory, PlanTier.Free);
+        var burn = await client.PostAsJsonAsync("/v1/chat/completions", new
+        {
+            model = "qwen-mt-flash",
+            messages = new[] { new { role = "user", content = new string('a', 1_850) } },
+            translation_options = new { source_lang = "en", target_lang = "zh" },
+        });
+        burn.EnsureSuccessStatusCode();
+
+        var response = await client.GetAsync("/v1/asr");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Asr_returns_429_when_the_account_already_has_a_session()
     {
         // 并发闸门是单例,测试可以先替这个账号占住唯一的名额,再打端点看它 429。
