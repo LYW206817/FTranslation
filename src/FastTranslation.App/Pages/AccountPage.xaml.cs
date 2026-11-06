@@ -169,12 +169,18 @@ public partial class AccountPage : UserControl
                 var result = await _account.RegisterAsync(email, password, code, CancellationToken.None);
                 if (!result.Succeeded) { SetError(RegisterError(result.Error!)); return; }
                 PasswordBox.Clear();
+                // 面板从表单切到已登录卡片是唯一反馈，用户看不出「成功」还是「什么都没发生」(v98)
+                ToastWindow.Show("注册成功,已自动登录,免费额度立刻可用。");
                 await LoadUsageAsync();
                 return;
             }
             var signIn = await _account.SignInAsync(email, password, CancellationToken.None);
             if (!signIn.Succeeded) { SetError(signIn.Error!.Display); return; }
             PasswordBox.Clear();
+            var profile = _account.Session?.Profile;
+            ToastWindow.Show(profile is null
+                ? "登录成功。"
+                : $"登录成功:{profile.Email}({profile.PlanDisplay})");
             await LoadUsageAsync();
         }
         finally

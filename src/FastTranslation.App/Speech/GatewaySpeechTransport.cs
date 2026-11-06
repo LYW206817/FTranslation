@@ -120,7 +120,10 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
     private Uri AsrUri()
     {
         var scheme = _gatewayBaseUri.Scheme == "https" ? "wss" : "ws";
-        var path = _gatewayBaseUri.AbsolutePath.TrimEnd('/') + "/v1/asr";
+        // v94: 传进来的 base 已经带 /v1（App 的 GatewayBaseUrl() = host + "/v1"，与 /v1/image、
+        // /v1/ocr 同口径），这里再拼一次 /v1 会打出不存在的 /v1/v1/asr：预检拿到 404 而不是
+        // 闸门全过的 400，会话在连接阶段就被判死。服务端注册的是 app.Map("/v1/asr")。
+        var path = _gatewayBaseUri.AbsolutePath.TrimEnd('/') + "/asr";
         return new UriBuilder(_gatewayBaseUri) { Scheme = scheme, Path = path }.Uri;
     }
 

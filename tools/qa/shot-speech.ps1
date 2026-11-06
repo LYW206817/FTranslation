@@ -90,6 +90,7 @@ try {
   Save-Shot 'speech'               "speech-$Theme-page.png"
   Save-Shot 'speech-window'        "speech-$Theme-window.png"
   Save-Shot 'speech-window-failed' "speech-$Theme-failed.png"
+  Save-Shot 'speech-window-paused' "speech-$Theme-paused.png"
 }
 finally {
   Stop-Process -Name FastTranslation -Force -ErrorAction SilentlyContinue

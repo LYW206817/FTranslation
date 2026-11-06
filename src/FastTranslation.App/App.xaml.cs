@@ -299,6 +299,7 @@ public partial class App : Application, IResultPresenter
             () => _updates?.CheckAsync(interactive: true));
         _mainWindow.SettingsRequested += () => ShowPage(MainPageId.Settings);
         _mainWindow.ScreenshotRequested += RunScreenshotTranslation;
+        _mainWindow.SpeechRequested += RunSpeechTranslation;
         _mainWindow.Closing += (_, args) =>
         {
             if (_reallyExiting) return;
@@ -748,10 +749,10 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
               }
-        else if (uitest is "speech" or "speech-window" or "speech-window-failed")
+        else if (uitest is "speech" or "speech-window" or "speech-window-failed" or "speech-window-paused")
         {
             // FT_UITEST=speech* -> 语音页与字幕浮窗的对比形态。不采集、不联网、不烧额度：
-            // 浮窗直接喂演示行，failed 形态只换头部状态。
+            // 浮窗直接喂演示行，failed/paused 形态只换头部状态。
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
             uiTimer.Tick += (_, _) =>
             {
@@ -781,8 +782,45 @@ public partial class App : Application, IResultPresenter
                     _speechWindow.ShowLine(new SpeechTranscriptLine(3, "We're seeing strong demand in the enterprise segment.",
                         "企业级市场的需求非常强劲。", false, DateTimeOffset.Now), show, max);
                     _speechWindow.SetUsage(840);
+                    if (uitest == "speech-window-paused") _speechWindow.PauseSession();
                 }
                 catch (Exception ex) { Trace($"uitest speech: {ex}"); }
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is not null && uitest.StartsWith("page-", StringComparison.OrdinalIgnoreCase))
+        {
+            // FT_UITEST=page-<枚举名> -> 停在指定页给截图核对（不动数据、不联网）。
+            // 必须像其他分支一样延时：OnStartup 里同步导航赶在窗口首帧布局之前，内容区会是空的。
+            var target = Enum.TryParse<MainPageId>(uitest[5..], ignoreCase: true, out var id) ? id : MainPageId.Home;
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                ShowPage(target);
+            };
+            uiTimer.Start();
+        }
+        else if (uitest is "toast" or "toast-action")
+        {
+            // FT_UITEST=toast* -> 提示条的两种形态（纯提示 / 带动作按钮）
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    if (uitest == "toast")
+                    {
+                        ToastWindow.Show("注册成功,已自动登录,免费额度立刻可用。");
+                    }
+                    else
+                    {
+                        ToastWindow.Show("未登录:免费额度、生词本同步与语音翻译都用不了。", "去登录",
+                            () => ShowPage(MainPageId.Account));
+                    }
+                }
+                catch (Exception ex) { Trace($"uitest toast: {ex}"); }
             };
             uiTimer.Start();
         }
@@ -1396,9 +1434,25 @@ public partial class App : Application, IResultPresenter
         {
             Trace($"account restore: {ex}");
         }
+        // Core 一路 ConfigureAwait(false)，续跑可能已经不在 UI 线程上；提示条是窗口，必须调度回去
+        _ = Dispatcher.BeginInvoke(PromptSignInWhenSignedOut);
     }
 
-    private void ShowAccount() => ShowPage(MainPageId.Plan);
+    /// <summary>
+    /// 启动时没登录态就给一条引导（用户反馈：进去什么提示都没有，不知道免费额度要用账号换）。
+    /// 判定点必须在 TryRestoreAsync **之后**：本地 token 还在读的时候算「未登录」会每次启动都瞎提示。
+    /// </summary>
+    private void PromptSignInWhenSignedOut()
+    {
+        if (_account is not { IsSignedIn: false }) return;
+        // 首次运行的引导窗正在收集 API Key，再压一条「先登录」只是噪音
+        if (!_settings.FirstRunCompleted) return;
+        ToastWindow.Show("未登录:免费额度、生词本同步与语音翻译都用不了。", "去登录",
+            () => ShowPage(MainPageId.Account));
+    }
+
+    // 托盘「账号」与各处「先登录」引导的目的地：菜单项写的就是「账号」，落点必须是账号页(v98)
+    private void ShowAccount() => ShowPage(MainPageId.Account);
 
     private void ShowNotes() => ShowPage(MainPageId.Word);
 
@@ -1455,6 +1509,13 @@ public partial class App : Application, IResultPresenter
             ShowSpeechWindow();
             return;
         }
+        if (_speechWindow is { IsPaused: true })
+        {
+            // 暂停期间再按热键/托盘 = 接着讲。不能当全新会话：那会把留着字幕的窗口清空(v98)
+            ShowSpeechWindow();
+            OnSpeechResumeRequested();
+            return;
+        }
         if (_account is not { IsSignedIn: true })
         {
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
@@ -1463,30 +1524,37 @@ public partial class App : Application, IResultPresenter
         Observe(StartSpeechSessionAsync(), "语音启动失败");
     }
 
-    private async Task StartSpeechSessionAsync()
+    private async Task StartSpeechSessionAsync(bool resume = false)
     {
         var account = _account!;
-        // 额度预检：语音按 20 字符/秒计，剩余不足 1 分钟直接拒绝，
-        // 免得窗口开了、会话建了才开始 429
+        // 额度预检必须查服务端会查的每一个桶（月度 + 免费档的日额度），
+        // 判定收在 SpeechQuotaGate 里，免得窗口开了、会话建了才开始 429
         var usage = await account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
         if (!usage.Succeeded || usage.Value is null)
         {
             _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息,请稍后再试");
             return;
         }
-        SetSpeechQuotaHint(usage.Value.RemainingMonthlyChars);
-        if (usage.Value.RemainingMonthlyChars < 20 * 60)
+        SetSpeechQuotaHint(usage.Value);
+        if (SpeechQuotaGate.Refusal(usage.Value) is { } refusal)
         {
-            _tray?.ShowBalloon("语音翻译", "语音额度不足,本月剩余不够 1 分钟,下月恢复");
+            _tray?.ShowBalloon("语音翻译", refusal);
             return;
         }
 
-        _speechWindow ??= new SpeechWindow();
-        _speechWindow.StopRequested += OnSpeechStopRequested;
-        _speechWindow.ClearRequested += () => { };
-        // 浮窗被点 X 就收尾整个会话，不能让会话在看不见的窗口里继续烧额度
-        _speechWindow.Closed += (_, _) => { _speechWindow = null; EndSpeechSession(null); };
-        _speechWindow.BeginSession();
+        // 浮窗只在第一条会话创建：暂停/继续要留字幕，而事件重复订阅会让一次点击收尾两次(v98)
+        if (_speechWindow is null)
+        {
+            _speechWindow = new SpeechWindow();
+            _speechWindow.StopRequested += OnSpeechStopRequested;
+            _speechWindow.PauseRequested += OnSpeechPauseRequested;
+            _speechWindow.ResumeRequested += OnSpeechResumeRequested;
+            _speechWindow.ClearRequested += () => { };
+            // 浮窗被点 X 就收尾整个会话，不能让会话在看不见的窗口里继续烧额度
+            _speechWindow.Closed += (_, _) => { _speechWindow = null; EndSpeechSession(null); };
+        }
+        if (resume) _speechWindow.ResumeSession();
+        else _speechWindow.BeginSession();
 
         // 传输与字幕服务的生命周期都挂在会话上，EndSpeechSession 统一释放
         var transport = new GatewaySpeechTransport(
@@ -1510,10 +1578,10 @@ public partial class App : Application, IResultPresenter
             DispatcherPriority.Background,
             () => _speechWindow?.ShowLine(line, _settings.SpeechShowSource, _settings.SpeechMaxSentences));
         coordinator.Failed += message => Dispatcher.BeginInvoke(() => EndSpeechSession(message));
-        // 服务端按 max(秒,10)*20 记额度，这里同口径换算成「已用 N 字符」
+        // 服务端按 max(秒,MinBilledSeconds)×CharsPerSecond 记额度，这里必须同口径换算成「已用 N 字符」
         coordinator.UsageObserved += seconds => Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
-            () => _speechWindow?.SetUsage((long)(Math.Max(seconds, 10) * 20)));
+            () => _speechWindow?.SetUsage((long)(Math.Max(seconds, SpeechQuotaGate.MinBilledSeconds) * SpeechQuotaGate.CharsPerSecond)));
 
         StartSpeechCapture();
 
@@ -1565,10 +1633,15 @@ public partial class App : Application, IResultPresenter
         StartSpeechCapture();
     }
 
-    private void SetSpeechQuotaHint(int remainingChars)
+    // 免费档的日额度通常比月度先到顶。只报「本月还能讲几分钟」会让人在开场被拒时
+    // 完全想不通（本月明明还剩六千字符），所以两个窗口都报出来。
+    private void SetSpeechQuotaHint(AccountUsage usage)
     {
-        var minutes = remainingChars / (20 * 60);
-        _mainWindow?.SetSpeechQuota($"语音按 20 字符/秒计费,本月剩余可讲约 {minutes} 分钟");
+        var monthly = usage.RemainingMonthlyChars / SpeechQuotaGate.OneMinuteChars;
+        var text = usage.RemainingDailyChars is { } daily
+            ? $"语音按 20 字符/秒计费,今天可讲约 {daily / SpeechQuotaGate.OneMinuteChars} 分钟,本月约 {monthly} 分钟"
+            : $"语音按 20 字符/秒计费,本月剩余可讲约 {monthly} 分钟";
+        _mainWindow?.SetSpeechQuota(text);
     }
 
     private async Task RefreshSpeechQuotaHintAsync()
@@ -1577,7 +1650,7 @@ public partial class App : Application, IResultPresenter
         var usage = await _account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
         if (usage.Succeeded && usage.Value is not null)
         {
-            SetSpeechQuotaHint(usage.Value.RemainingMonthlyChars);
+            SetSpeechQuotaHint(usage.Value);
         }
     }
 
@@ -1609,6 +1682,28 @@ public partial class App : Application, IResultPresenter
 
     private void OnSpeechStopRequested() => EndSpeechSession(null);
 
+    /// <summary>
+    /// 暂停 = 真的结束这条 WS 会话，而不是挂着连接不采集。理由（v98，服务端实测口径）：
+    /// 服务端给会话设的是墙钟硬顶 <c>CancelAfter(sessionSeconds)</c>，空闲期照常计时，暂停白吃会话寿命；
+    /// 更要命的是收尾有两条记账路径——一条 usage 帧都没收到时按<b>整段墙钟</b>兜底（v81 防「连上就砍」白嫖），
+    /// 开局就暂停、一句没说的那段会被全记到额度上（免费档一次会话上限 100 秒 = 当日全部额度）。
+    /// 代价：每轮重开多付一次最短计费保底（5 秒 = 100 字符）。
+    /// </summary>
+    private void OnSpeechPauseRequested() => EndSpeechSession(null, paused: true);
+
+    private void OnSpeechResumeRequested()
+    {
+        if (_speechCoordinator is not null) return;
+        if (_account is not { IsSignedIn: true })
+        {
+            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            return;
+        }
+        // 继续要走完整的预检：暂停这段时间日额度可能已经见底，那时 StartSpeechSessionAsync 会自己
+        // 弹气泡并把窗口留在「已暂停」，不能假装已经接上了
+        Observe(StartSpeechSessionAsync(resume: true), "语音启动失败");
+    }
+
     /// <summary>观察后台任务的异常。</summary>
     /// <remarks>fire-and-forget 的 Task 无人 await 时异常会被静默丢弃，语音链路一静默失败用户只看到窗口一直转圈，
     /// 所以统一收口到 EndSpeechSession 显示原因。</remarks>
@@ -1620,7 +1715,7 @@ public partial class App : Application, IResultPresenter
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
 
-    private void EndSpeechSession(string? error)
+    private void EndSpeechSession(string? error, bool paused = false)
     {
         var coordinator = _speechCoordinator;
         var resampler = _speechResampler;
@@ -1672,7 +1767,9 @@ public partial class App : Application, IResultPresenter
 
         _speechTransport = null;
         _speechSubtitles = null;
-        _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
+        // 暂停只改浮窗显示（留字幕与累计值）；「结束」才写已结束并把「继续」禁掉
+        if (paused) _speechWindow?.PauseSession();
+        else _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
     }
 
     private void ShowSpeechWindow()

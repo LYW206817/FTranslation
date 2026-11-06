@@ -48,8 +48,12 @@ public sealed class SpeechTranscriptService : IDisposable
         _time = time ?? TimeProvider.System;
         if (_options.DebounceMs > 0)
         {
-            // 真实会话用系统定时器；测试注入 TimeProvider 或直接调 DrainDebounce 手动驱动
-            _timer = _time.CreateTimer(DrainDebounce, null, TimeSpan.FromMilliseconds(_options.DebounceMs), Timeout.InfiniteTimeSpan);
+            // v94: 定时器挂成无限期不启动，改由「终稿入队」来调度（见 SubmitSentence）。
+            // 原来这里在构造时就起一个 500ms 的一次性倒计时（period=Infinite），而服务是在会话
+            // 开始那一刻构造的——500ms 后唯一那次触发时 _pending 还是空的，直接 return，
+            // 之后再也没有第二次：整个会话的终稿全堆在 _pending 里等一次不会来的闹钟，
+            // 字幕只有原文、译文永远不回填（实测 final 帧 3 次、翻译回调调用 0 次）。
+            _timer = _time.CreateTimer(DrainDebounce, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -68,6 +72,7 @@ public sealed class SpeechTranscriptService : IDisposable
     public void SubmitSentence(int sentenceId, string text, bool final)
     {
         SpeechTranscriptLine line;
+        bool schedule = false;
         lock (_gate)
         {
             if (_lines.TryGetValue(sentenceId, out var existing))
@@ -83,8 +88,17 @@ public sealed class SpeechTranscriptService : IDisposable
             EvictOverflow();
             if (final && !_pending.Contains(sentenceId))
             {
+                // 只有本批的第一句才设闹钟：同一防抖窗口里后续的终稿直接搭车，到点合成一批送 MT。
+                // 批取走后 _pending 清空，下一句终稿重新计时的就是这里。
+                schedule = _pending.Count == 0;
                 _pending.Add(sentenceId);
             }
+        }
+
+        // Change 放在锁外：定时器回调会进 DrainDebounce 抢同一把锁，持锁调度可能自锁。
+        if (schedule)
+        {
+            _timer?.Change(TimeSpan.FromMilliseconds(_options.DebounceMs), Timeout.InfiniteTimeSpan);
         }
 
         LineUpdated?.Invoke(line);
