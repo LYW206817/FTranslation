@@ -137,12 +137,12 @@ public static class AuthEndpoints
             return Results.BadRequest(new ErrorResponse("refresh_token_required"));
         }
 
-        if (store.ConsumeRefreshToken(TokenService.HashRefreshToken(request.RefreshToken)) is not { } userId)
+        if (store.ConsumeRefreshToken(TokenService.HashRefreshToken(request.RefreshToken)) is not { } owner)
         {
             return Results.Json(new ErrorResponse("refresh_token_invalid"), statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        var user = store.FindUserById(userId);
+        var user = store.FindUserById(owner.UserId);
         if (user is null || user.Disabled)
         {
             return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
@@ -151,7 +151,12 @@ public static class AuthEndpoints
         // 轮换后每条登录链上只保留一个有效的 refresh token。
         var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt);
         var refreshToken = TokenService.CreateRefreshToken();
-        store.SaveRefreshToken(user.Id, TokenService.HashRefreshToken(refreshToken), database.NowUnix + (options.RefreshTokenDays * 86_400L));
+        // 轮换后的令牌继续跟着原设备，移除设备时才能把整条登录链一起吊销。
+        store.SaveRefreshToken(
+            user.Id,
+            TokenService.HashRefreshToken(refreshToken),
+            database.NowUnix + (options.RefreshTokenDays * 86_400L),
+            owner.DeviceId);
 
         return Results.Ok(new AuthResponse(
             accessToken,
@@ -177,7 +182,11 @@ public static class AuthEndpoints
     {
         var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt);
         var refreshToken = TokenService.CreateRefreshToken();
-        store.SaveRefreshToken(user.Id, TokenService.HashRefreshToken(refreshToken), database.NowUnix + (options.RefreshTokenDays * 86_400L));
+        store.SaveRefreshToken(
+            user.Id,
+            TokenService.HashRefreshToken(refreshToken),
+            database.NowUnix + (options.RefreshTokenDays * 86_400L),
+            device.Id);
 
         return new AuthResponse(
             accessToken,

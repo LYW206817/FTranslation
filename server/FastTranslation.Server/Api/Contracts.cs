@@ -69,7 +69,11 @@ public sealed record MessageResponse(string Message);
 
 public sealed record DeviceRequest(string? Fingerprint, string? Name);
 
-public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt);
+/// <summary><paramref name="IsCurrent"/> 按调用方送来的 X-FT-Device 指纹判定；缺头时为 false。</summary>
+public sealed record DeviceDto(Guid Id, string Name, long CreatedAt, long LastSeenAt, bool IsCurrent = false);
+
+/// <summary>设备上限由服务端下发，避免客户端写死一个会随策略变化而漂移的数字。</summary>
+public sealed record DeviceListResponse(IReadOnlyList<DeviceDto> Devices, int MaxDevices);
 
 /// <summary>
 /// <paramref name="Days"/> 为 null 时保留已有的到期时间；为 0 时清除（永久授权）；

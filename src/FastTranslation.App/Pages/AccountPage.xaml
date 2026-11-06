@@ -178,6 +178,63 @@
 
           <Border Style="{StaticResource Card}">
             <StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="登录设备" Style="{StaticResource CardTitle}"/>
+                <TextBlock x:Name="DeviceCountText" Grid.Column="1" Style="{StaticResource Hint}"
+                           Margin="0" VerticalAlignment="Center"/>
+              </Grid>
+              <TextBlock x:Name="DeviceLimitHint" Style="{StaticResource Hint}" Margin="0,0,0,4"
+                         Text="换新电脑前，先移除不用的设备，把名额空出来。"/>
+
+              <ItemsControl x:Name="DeviceItems">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
+                            Padding="0,9">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel>
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <Border Background="{DynamicResource BrandFillBrush}" CornerRadius="4"
+                                    Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Visibility="{Binding CurrentBadgeVisibility}">
+                              <TextBlock Text="当前" FontSize="10"
+                                         Foreground="{DynamicResource BrandTextBrush}"/>
+                            </Border>
+                          </StackPanel>
+                          <TextBlock Text="{Binding DetailLine}" Style="{StaticResource Hint}"
+                                     Margin="0,3,0,0"/>
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Content="移除" Tag="{Binding Id}"
+                                Style="{StaticResource SmallButton}" Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding RemoveVisibility}"
+                                Click="RemoveDevice_Click"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock x:Name="DeviceEmptyText" Style="{StaticResource Hint}" Margin="0,8,0,0"
+                         Text="设备列表读取中…"/>
+            </StackPanel>
+          </Border>
+
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
               <TextBlock Text="修改名称" Style="{StaticResource CardTitle}"/>
               <TextBox x:Name="NameBox" AutomationProperties.Name="名称" MaxLength="24"
                        TextChanged="Input_Changed"/>

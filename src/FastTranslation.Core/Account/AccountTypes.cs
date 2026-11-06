@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace FastTranslation.Core.Account;
 
 /// <summary>
@@ -26,6 +28,9 @@ public enum AccountErrorCode
     PasswordTooShort,
     PasswordUnchanged,
     InvalidProfile,
+    DeviceLimit,
+    DeviceIsCurrent,
+    DeviceMissing,
 }
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
@@ -51,6 +56,9 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.PasswordTooShort => "新密码至少 8 位。",
         AccountErrorCode.PasswordUnchanged => "新密码和当前密码一样,换一个吧。",
         AccountErrorCode.InvalidProfile => "名字最多 24 个字,不能包含换行等特殊字符。",
+        AccountErrorCode.DeviceLimit => "设备数量已达上限。请先在任意一台已登录的设备上打开账号页,移除一台不用的设备;如果旧设备都不在了,请联系我们。",
+        AccountErrorCode.DeviceIsCurrent => "这是当前正在使用的设备,不能移除。",
+        AccountErrorCode.DeviceMissing => "这台设备已经不在列表里了,刷新后再试。",
         _ => "账号服务器出错了,请稍后再试。",
     };
 }
@@ -113,6 +121,43 @@ public sealed record AccountUsage(
     public string DailyLine => HasDaily
         ? $"{UsedDailyChars ?? 0:N0} / {QuotaDailyChars!.Value:N0} 字符(今日)"
         : "今日不限(付费版只有月度额度)";
+}
+
+/// <summary>
+/// 一台已登记的设备。指纹不下发给客户端：它只是服务端用来判断「当前设备」的凭据。
+/// <paramref name="LastSeenAtUnix"/> 是服务端最后一次登记/登录时间，不是每次翻译的时间。
+/// </summary>
+public sealed record AccountDevice(
+    Guid Id,
+    string Name,
+    long CreatedAtUnix,
+    long LastSeenAtUnix,
+    bool IsCurrent)
+{
+    /// <summary>当前设备固定显示「这台电脑」：用户不需要猜，也避免把机器名带进截图。</summary>
+    public string DisplayName => IsCurrent
+        ? "这台电脑"
+        : string.IsNullOrWhiteSpace(Name) ? "未命名设备" : Name;
+
+    public string LastSeenDisplay => DescribeLastSeen(LastSeenAtUnix, DateTimeOffset.Now);
+
+    /// <summary>相对时间；客户端时钟比服务端慢时按「刚刚」处理，不显示负数。</summary>
+    public static string DescribeLastSeen(long unixSeconds, DateTimeOffset now)
+    {
+        var seen = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+        var delta = now - seen;
+        if (delta < TimeSpan.FromMinutes(1)) return "刚刚";
+        if (delta < TimeSpan.FromHours(1)) return Math.Max(1, (int)delta.TotalMinutes) + " 分钟前";
+        if (delta < TimeSpan.FromDays(1)) return (int)delta.TotalHours + " 小时前";
+        if (delta < TimeSpan.FromDays(30)) return (int)delta.TotalDays + " 天前";
+        return seen.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+}
+
+/// <summary>设备列表与上限。上限跟服务端策略走，客户端不写死。</summary>
+public sealed record AccountDeviceList(IReadOnlyList<AccountDevice> Devices, int MaxDevices)
+{
+    public string CountLine => $"已登记 {Devices.Count} / {MaxDevices} 台";
 }
 
 /// <summary>客户端保存的已登录会话：令牌及其所属的资料。</summary>

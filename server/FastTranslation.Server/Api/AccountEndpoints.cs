@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FastTranslation.Server.Auth;
 using FastTranslation.Server.Domain;
+using FastTranslation.Server.Gateway;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +15,9 @@ public static class AccountEndpoints
 
         group.MapGet("/me", Me);
         group.MapGet("/usage", Usage);
+        group.MapGet("/devices", ListDevices);
         group.MapPost("/devices", RegisterDevice);
+        group.MapDelete("/devices/{id:guid}", RemoveDevice);
         group.MapPatch("/profile", UpdateProfile);
         group.MapPost("/password", ChangePassword);
     }
@@ -156,9 +159,58 @@ public static class AccountEndpoints
 
         var device = store.RegisterDevice(principal.GetUserId(), request.Fingerprint, request.Name ?? string.Empty);
         return device.Device is { } registered
-            ? Results.Ok(new DeviceDto(registered.Id, registered.Name, registered.CreatedAt, registered.LastSeenAt))
+            ? Results.Ok(ToDeviceDto(registered, isCurrent: true))
             : Results.BadRequest(new ErrorResponse(device.Error!));
     }
+
+    /// <summary>
+    /// 账号页的设备列表。当前设备按请求头 X-FT-Device 里的指纹标记；客户端
+    /// 不送指纹时全部按“非当前”返回，删除接口也不会阻止删任何一台。
+    /// </summary>
+    private static IResult ListDevices(HttpContext context, ClaimsPrincipal principal, AccountStore store)
+    {
+        var fingerprint = CallerFingerprint(context);
+        var devices = store.ListDevices(principal.GetUserId())
+            .Select(device => ToDeviceDto(
+                device,
+                fingerprint.Length > 0 && string.Equals(device.Fingerprint, fingerprint, StringComparison.Ordinal)))
+            .ToList();
+
+        return Results.Ok(new DeviceListResponse(devices, Plans.MaxDevicesPerAccount));
+    }
+
+    /// <summary>
+    /// 移除一台设备。当前设备不能从自己身上移除：界面已经隐藏了那个按钮，
+    /// 这里再挡一次，免得直接调接口把正在用的设备删掉后一脸茫然。
+    /// </summary>
+    private static IResult RemoveDevice(
+        Guid id,
+        HttpContext context,
+        ClaimsPrincipal principal,
+        AccountStore store)
+    {
+        var userId = principal.GetUserId();
+        if (store.FindDevice(userId, id) is not { } device)
+        {
+            return Results.NotFound(new ErrorResponse("device_missing"));
+        }
+
+        var fingerprint = CallerFingerprint(context);
+        if (fingerprint.Length > 0 && string.Equals(device.Fingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new ErrorResponse("device_is_current"));
+        }
+
+        return store.DeleteDevice(userId, id)
+            ? Results.Ok(ToDeviceDto(device, isCurrent: false))
+            : Results.NotFound(new ErrorResponse("device_missing"));
+    }
+
+    private static string CallerFingerprint(HttpContext context) =>
+        context.Request.Headers[GatewayEndpoints.DeviceHeaderName].ToString().Trim();
+
+    private static DeviceDto ToDeviceDto(DeviceRecord device, bool isCurrent) =>
+        new(device.Id, device.Name, device.CreatedAt, device.LastSeenAt, isCurrent);
 }
 
 /// <summary>

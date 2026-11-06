@@ -5,7 +5,7 @@ using FastTranslation.Core.Account;
 namespace FastTranslation.App.Pages;
 
 /// <summary>
-/// 账号页：你是谁，以及围绕这件事能改的三样东西（名字、密码、退出登录）。登录也在这里，
+/// 账号页：你是谁，以及围绕这件事能改的东西（名字、密码、登录设备、退出登录）。登录也在这里，
 /// 因为大家找「账号」就是找这里。
 ///
 /// <para>
@@ -36,7 +36,9 @@ public partial class AccountPage : UserControl
     public void Reload()
     {
         Render();
-        if (_account.Session is not null) _ = LoadUsageAsync();
+        if (_account.Session is null) return;
+        _ = LoadUsageAsync();
+        _ = LoadDevicesAsync();
     }
 
     // 会话可能在本页第一次打开之后才到（启动恢复是异步的），而那时 Reload 已经跑过了，
@@ -44,7 +46,9 @@ public partial class AccountPage : UserControl
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         Render();
-        if (_account.Session is not null) _ = LoadUsageAsync();
+        if (_account.Session is null) return;
+        _ = LoadUsageAsync();
+        _ = LoadDevicesAsync();
     });
 
     private void Render()
@@ -52,7 +56,13 @@ public partial class AccountPage : UserControl
         var session = _account.Session;
         SignedOutPanel.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
         SignedInPanel.Visibility = session is null ? Visibility.Collapsed : Visibility.Visible;
-        if (session is null) return;
+        if (session is null)
+        {
+            // 退出登录后清掉上一个账号的设备名，别让它们在下一帧里闪一下
+            DeviceItems.ItemsSource = null;
+            DeviceCountText.Text = string.Empty;
+            return;
+        }
 
         var profile = session.Profile;
         AvatarText.Text = profile.Initial;
@@ -100,7 +110,82 @@ public partial class AccountPage : UserControl
         }
     }
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
+    private async void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await LoadUsageAsync();
+            await LoadDevicesAsync();
+        }
+        catch (Exception ex)
+        {
+            // 这两个调用走 AccountApiClient，正常失败都会变成 AccountError；到这里是
+            // 意料之外的异常，不能让它从 async void 里冒出去把进程带走。
+            SetStatus("刷新失败,请稍后重试。", isError: true);
+            System.Diagnostics.Debug.WriteLine("account refresh: " + ex);
+        }
+    }
+
+    // ---------------- 设备管理 ----------------
+
+    private async Task LoadDevicesAsync()
+    {
+        if (_account.Session is null) return;
+        var result = await _account.ReadDevicesAsync(CancellationToken.None);
+        if (!result.Succeeded)
+        {
+            DeviceItems.ItemsSource = null;
+            DeviceCountText.Text = string.Empty;
+            DeviceEmptyText.Text = "读不到设备列表:" + result.Error!.Display;
+            DeviceEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var list = result.Value!;
+        var rows = list.Devices.Select(device => new AccountDeviceRow(device)).ToList();
+        DeviceItems.ItemsSource = rows;
+        DeviceCountText.Text = list.CountLine;
+        DeviceLimitHint.Text = $"每个账号最多 {list.MaxDevices} 台。换新电脑前，先移除不用的设备，把名额空出来。";
+        DeviceEmptyText.Text = "还没有登记设备。";
+        DeviceEmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void RemoveDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || sender is not Button button || button.Tag is not Guid deviceId) return;
+        var name = button.DataContext is AccountDeviceRow row ? row.DisplayName : "这台设备";
+
+        // 移除是破坏性操作，先问一句；系统 MessageBox 不认调色板，统一用 NoticeWindow
+        if (!NoticeWindow.Confirm(Window.GetWindow(this), "移除设备",
+                $"移除「{name}」后,这台设备会退出登录,需要时重新登录即可。"))
+        {
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            var result = await _account.RemoveDeviceAsync(deviceId, CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                SetStatus(result.Error!.Display, isError: true);
+                return;
+            }
+
+            ToastWindow.Show($"已移除「{name}」。");
+            SetStatus("设备已移除。", isError: false);
+            await LoadDevicesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus("移除设备时出错,请稍后重试。", isError: true);
+            System.Diagnostics.Debug.WriteLine("remove device: " + ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
 
     private void GotoPlan_Click(object sender, RoutedEventArgs e) => PlanRequested?.Invoke();
 
@@ -312,4 +397,30 @@ public partial class AccountPage : UserControl
     }
 
     private void Password_Changed(object sender, RoutedEventArgs e) => SetError(null);
+}
+
+/// <summary>
+/// 设备列表的一行。做成独立 view model 只为让绑定拿到「当前设备」对应的
+/// 徽标与按钮可见性；当前设备不能被自己移除，所以不显示「移除」。
+/// </summary>
+public sealed class AccountDeviceRow
+{
+    public AccountDeviceRow(AccountDevice device)
+    {
+        Id = device.Id;
+        DisplayName = device.DisplayName;
+        DetailLine = "上次登录 " + device.LastSeenDisplay;
+        CurrentBadgeVisibility = device.IsCurrent ? Visibility.Visible : Visibility.Collapsed;
+        RemoveVisibility = device.IsCurrent ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public Guid Id { get; }
+
+    public string DisplayName { get; }
+
+    public string DetailLine { get; }
+
+    public Visibility CurrentBadgeVisibility { get; }
+
+    public Visibility RemoveVisibility { get; }
 }

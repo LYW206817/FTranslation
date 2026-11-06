@@ -65,6 +65,11 @@ public sealed class ServerDatabase
         // 删除该行，同时丢失审计记录。
         EnsureColumn(connection, "redeem_codes", "revoked_at", "INTEGER");
 
+        // v102: 设备移除要能吊销那台设备的登录链。refresh token 原本只记账号，
+        // 没有设备维度，移除后旧设备仍能续期；加一列把每轮登录绑到设备上。
+        // 旧行为 NULL，升级前发出的令牌不受影响（只能等它自然过期）。
+        EnsureColumn(connection, "refresh_tokens", "device_id", "TEXT");
+
         // 复习状态（设计 §4.1）。六列全是 NOT NULL DEFAULT，这样旧数据库可以
         // 原地迁移：每条已有记录都成为第 0 档的未评分卡片。
         EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
@@ -200,6 +205,7 @@ public sealed class ServerDatabase
         CREATE TABLE IF NOT EXISTS refresh_tokens (
             id         TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_id  TEXT,
             token_hash TEXT NOT NULL UNIQUE,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,

@@ -44,6 +44,7 @@ public class AccountClientTests
         public string LastMethod { get; private set; } = string.Empty;
         public string LastBody { get; private set; } = string.Empty;
         public AuthenticationHeaderValue? LastAuthorization { get; private set; }
+        public string? LastDeviceHeader { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -51,6 +52,9 @@ public class AccountClientTests
             LastUri = request.RequestUri;
             LastMethod = request.Method.Method;
             LastAuthorization = request.Headers.Authorization;
+            LastDeviceHeader = request.Headers.TryGetValues("X-FT-Device", out var deviceValues)
+                ? deviceValues.FirstOrDefault()
+                : null;
             LastBody = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
@@ -201,6 +205,87 @@ public class AccountClientTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("http://127.0.0.1:5199/api/v1/account/usage?fingerprint=fp-1", handler.LastUri!.ToString());
+    }
+
+    private const string DevicesJson = """
+    {
+      "devices": [
+        { "id": "11111111-1111-4111-8111-111111111111", "name": "QA-PC-1",
+          "createdAt": 1790000000, "lastSeenAt": 1800000000, "isCurrent": false },
+        { "id": "22222222-2222-4222-8222-222222222222", "name": "REAL-MACHINE",
+          "createdAt": 1790000001, "lastSeenAt": 1800000001, "isCurrent": true }
+      ],
+      "maxDevices": 3
+    }
+    """;
+
+    [Fact]
+    public async Task Devices_are_listed_with_the_calling_fingerprint_in_the_header()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, DevicesJson);
+
+        var result = await client.GetDevicesAsync("access-1", "fp-1", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("http://127.0.0.1:5199/api/v1/account/devices", handler.LastUri!.ToString());
+        Assert.Equal("fp-1", handler.LastDeviceHeader);
+        Assert.Equal(3, result.Value!.MaxDevices);
+        Assert.Equal(2, result.Value.Devices.Count);
+        Assert.True(result.Value.Devices[1].IsCurrent);
+        // 当前设备的机器名永远不显示，统一叫「这台电脑」
+        Assert.Equal("这台电脑", result.Value.Devices[1].DisplayName);
+        Assert.Equal("QA-PC-1", result.Value.Devices[0].DisplayName);
+    }
+
+    [Fact]
+    public async Task Removing_a_device_uses_DELETE_and_the_device_header()
+    {
+        var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var (client, handler) = Build(HttpStatusCode.OK, """
+            { "id": "11111111-1111-4111-8111-111111111111", "name": "QA-PC-1",
+              "createdAt": 1790000000, "lastSeenAt": 1800000000, "isCurrent": false }
+            """);
+
+        var result = await client.RemoveDeviceAsync("access-1", id, "fp-1", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("DELETE", handler.LastMethod);
+        Assert.Equal("http://127.0.0.1:5199/api/v1/account/devices/" + id.ToString("D"),
+            handler.LastUri!.ToString());
+        Assert.Equal("fp-1", handler.LastDeviceHeader);
+    }
+
+    [Theory]
+    [InlineData("device_is_current", AccountErrorCode.DeviceIsCurrent)]
+    [InlineData("device_missing", AccountErrorCode.DeviceMissing)]
+    public async Task Device_errors_map_to_their_codes(string code, AccountErrorCode expected)
+    {
+        var (client, _) = Build(HttpStatusCode.BadRequest, "{\"error\":\"" + code + "\"}");
+
+        var result = await client.RemoveDeviceAsync("access-1", Guid.NewGuid(), "fp", CancellationToken.None);
+
+        Assert.Equal(expected, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Device_limit_surfaces_as_DeviceLimit()
+    {
+        var (client, _) = Build(HttpStatusCode.BadRequest, """{"error":"device_limit_reached"}""");
+
+        var result = await client.LoginAsync("a@b.test", "password123", "fp", "PC", CancellationToken.None);
+
+        Assert.Equal(AccountErrorCode.DeviceLimit, result.Error!.Code);
+    }
+
+    [Fact]
+    public void Device_last_seen_is_relative_and_never_negative()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+
+        Assert.Equal("刚刚", AccountDevice.DescribeLastSeen(now.ToUnixTimeSeconds() + 30, now));
+        Assert.Equal("5 分钟前", AccountDevice.DescribeLastSeen(now.ToUnixTimeSeconds() - 300, now));
+        Assert.Equal("2 小时前", AccountDevice.DescribeLastSeen(now.ToUnixTimeSeconds() - 7_200, now));
+        Assert.Equal("3 天前", AccountDevice.DescribeLastSeen(now.ToUnixTimeSeconds() - (3 * 86_400), now));
     }
 
     [Fact]

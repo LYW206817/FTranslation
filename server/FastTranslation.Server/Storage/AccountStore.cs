@@ -221,6 +221,94 @@ public sealed class AccountStore(ServerDatabase database)
         return reader.Read() ? ReadDevice(reader) : null;
     }
 
+    /// <summary>账号页的设备列表，最近登记的排在前面。</summary>
+    public IReadOnlyList<DeviceRecord> ListDevices(Guid userId)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, user_id, fingerprint, name, created_at, last_seen_at
+            FROM devices WHERE user_id = $userId
+            ORDER BY last_seen_at DESC, created_at DESC
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+
+        using var reader = command.ExecuteReader();
+        var devices = new List<DeviceRecord>();
+        while (reader.Read()) devices.Add(ReadDevice(reader));
+        return devices;
+    }
+
+    /// <summary>
+    /// 移除一台设备。同一设备上的 refresh token 必须一起吊销：否则它只是从列表里
+    /// 消失，旧设备仍能续期，下一次翻译又会把名额占回来。设备级日用量也一并清掉。
+    ///
+    /// <para>
+    /// SQLite 的 <c>foreign_keys</c> 是连接级 pragma，而这里每次操作都用新连接，
+    /// schema 里的 <c>ON DELETE CASCADE</c> 不会生效——子行必须显式删。
+    /// </para>
+    /// </summary>
+    public bool DeleteDevice(Guid userId, Guid deviceId)
+    {
+        var user = userId.ToString("D");
+        var device = deviceId.ToString("D");
+
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        // 先确认设备属于这个账号：不先查就直接删 usage_daily，会允许用别人的
+        // deviceId 抹掉对方的日用量，即使随后的 devices 删除返回 0。
+        using (var owned = connection.CreateCommand())
+        {
+            owned.Transaction = transaction;
+            owned.CommandText = "SELECT 1 FROM devices WHERE id = $deviceId AND user_id = $userId";
+            owned.Parameters.AddWithValue("$deviceId", device);
+            owned.Parameters.AddWithValue("$userId", user);
+            if (owned.ExecuteScalar() is null)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        using (var revoke = connection.CreateCommand())
+        {
+            revoke.Transaction = transaction;
+            revoke.CommandText = """
+                UPDATE refresh_tokens SET revoked_at = $now
+                WHERE user_id = $userId AND device_id = $deviceId AND revoked_at IS NULL
+                """;
+            revoke.Parameters.AddWithValue("$now", database.NowUnix);
+            revoke.Parameters.AddWithValue("$userId", user);
+            revoke.Parameters.AddWithValue("$deviceId", device);
+            revoke.ExecuteNonQuery();
+        }
+
+        using (var daily = connection.CreateCommand())
+        {
+            daily.Transaction = transaction;
+            daily.CommandText = "DELETE FROM usage_daily WHERE device_id = $deviceId";
+            daily.Parameters.AddWithValue("$deviceId", device);
+            daily.ExecuteNonQuery();
+        }
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM devices WHERE id = $deviceId AND user_id = $userId";
+            delete.Parameters.AddWithValue("$deviceId", device);
+            delete.Parameters.AddWithValue("$userId", user);
+            if (delete.ExecuteNonQuery() == 0)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        transaction.Commit();
+        return true;
+    }
+
     public UsageSnapshot ReadUsage(Guid userId, Guid? deviceId)
     {
         using var connection = database.Open();
@@ -300,43 +388,53 @@ public sealed class AccountStore(ServerDatabase database)
         transaction.Commit();
     }
 
-    public void SaveRefreshToken(Guid userId, string tokenHash, long expiresAt)
+    public void SaveRefreshToken(Guid userId, string tokenHash, long expiresAt, Guid? deviceId = null)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO refresh_tokens (id, user_id, token_hash, created_at, expires_at, revoked_at)
-            VALUES ($id, $userId, $hash, $now, $expiresAt, NULL)
+            INSERT INTO refresh_tokens (id, user_id, device_id, token_hash, created_at, expires_at, revoked_at)
+            VALUES ($id, $userId, $deviceId, $hash, $now, $expiresAt, NULL)
             """;
         command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("D"));
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$deviceId", (object?)deviceId?.ToString("D") ?? DBNull.Value);
         command.Parameters.AddWithValue("$hash", tokenHash);
         command.Parameters.AddWithValue("$now", database.NowUnix);
         command.Parameters.AddWithValue("$expiresAt", expiresAt);
         command.ExecuteNonQuery();
     }
 
-    /// <summary>消费一个 refresh token（一次性轮换）。返回所属用户 id，无效时返回 null。</summary>
-    public Guid? ConsumeRefreshToken(string tokenHash)
+    /// <summary>
+    /// 消费一个 refresh token（一次性轮换）。返回所属账号与设备；设备为 null
+    /// 表示 v102 之前签发的旧令牌，轮换后也继续保持 null。无效时返回 null。
+    /// </summary>
+    public RefreshTokenOwner? ConsumeRefreshToken(string tokenHash)
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
 
         Guid userId;
+        Guid? deviceId;
         using (var select = connection.CreateCommand())
         {
             select.Transaction = transaction;
             select.CommandText = """
-                SELECT user_id FROM refresh_tokens
+                SELECT user_id, device_id FROM refresh_tokens
                 WHERE token_hash = $hash AND revoked_at IS NULL AND expires_at > $now
                 """;
             select.Parameters.AddWithValue("$hash", tokenHash);
             select.Parameters.AddWithValue("$now", database.NowUnix);
 
-            if (select.ExecuteScalar() is not string text || !Guid.TryParse(text, out userId))
+            using (var reader = select.ExecuteReader())
             {
-                transaction.Rollback();
-                return null;
+                if (!reader.Read() || !Guid.TryParse(reader.GetString(0), out userId))
+                {
+                    transaction.Rollback();
+                    return null;
+                }
+
+                deviceId = reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1));
             }
         }
 
@@ -350,7 +448,7 @@ public sealed class AccountStore(ServerDatabase database)
         }
 
         transaction.Commit();
-        return userId;
+        return new RefreshTokenOwner(userId, deviceId);
     }
 
     public int RevokeAllRefreshTokens(Guid userId)
@@ -474,5 +572,8 @@ public sealed class AccountStore(ServerDatabase database)
 }
 
 public sealed record DeviceResult(bool Succeeded, DeviceRecord? Device, string? Error);
+
+/// <summary>一条 refresh token 属于哪个账号、哪台设备（旧令牌没有设备）。</summary>
+public sealed record RefreshTokenOwner(Guid UserId, Guid? DeviceId);
 
 public sealed record VerificationRecord(string CodeHash, long ExpiresAt, int Attempts, long LastSentAt);

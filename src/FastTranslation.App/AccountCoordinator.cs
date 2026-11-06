@@ -156,6 +156,17 @@ public sealed class AccountCoordinator
     public Task<AccountApiResult<AccountUsage>> ReadUsageAsync(CancellationToken cancellationToken) =>
         WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken, _deviceFingerprint), cancellationToken);
 
+    /// <summary>设备列表。带上本机指纹，服务端才能标出「这台电脑」。</summary>
+    public Task<AccountApiResult<AccountDeviceList>> ReadDevicesAsync(CancellationToken cancellationToken) =>
+        WithSessionAsync(token => _client.GetDevicesAsync(token, _deviceFingerprint, cancellationToken), cancellationToken);
+
+    /// <summary>移除另一台设备；服务端会同时吊销那台设备的 refresh token。</summary>
+    public Task<AccountApiResult<AccountDevice>> RemoveDeviceAsync(
+        Guid deviceId, CancellationToken cancellationToken) =>
+        WithSessionAsync(
+            token => _client.RemoveDeviceAsync(token, deviceId, _deviceFingerprint, cancellationToken),
+            cancellationToken);
+
     /// <summary>
     /// 兑换会改写套餐，所以刷新后的资料要就地替换已存储的那份——否则窗口会一直显示
     /// 免费版，直到下一次登录。

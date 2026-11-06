@@ -91,6 +91,123 @@ public sealed class AccountStoreTests : IDisposable
     }
 
     [Fact]
+    public void ListDevices_ReturnsOnlyThisAccountsDevices()
+    {
+        var owner = CreateUser("devices@example.com");
+        var other = CreateUser("other-devices@example.com");
+        var first = _store.RegisterDevice(owner.Id, "fp-a", "pc-a").Device!;
+        var second = _store.RegisterDevice(owner.Id, "fp-b", "pc-b").Device!;
+        _store.RegisterDevice(other.Id, "fp-c", "pc-c");
+
+        var devices = _store.ListDevices(owner.Id);
+
+        Assert.Equal(2, devices.Count);
+        Assert.Contains(devices, device => device.Id == first.Id);
+        Assert.Contains(devices, device => device.Id == second.Id);
+        Assert.DoesNotContain(devices, device => device.UserId != owner.Id);
+    }
+
+    [Fact]
+    public void DeleteDevice_RemovesTheRowAndItsDailyUsage()
+    {
+        var user = CreateUser("delete-device@example.com");
+        var removed = _store.RegisterDevice(user.Id, "fp-remove", "pc").Device!;
+        var kept = _store.RegisterDevice(user.Id, "fp-keep", "pc").Device!;
+        _store.RecordUsage(user.Id, removed.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix);
+
+        Assert.True(_store.DeleteDevice(user.Id, removed.Id));
+
+        Assert.Null(_store.FindDevice(user.Id, removed.Id));
+        Assert.NotNull(_store.FindDevice(user.Id, kept.Id));
+        // 子行必须显式删除：SQLite 的 foreign_keys 是连接级开关，CASCADE 不会生效
+        Assert.Equal(0, _store.ReadUsage(user.Id, removed.Id).DailyChars);
+    }
+
+    [Fact]
+    public void DeleteDevice_RefusesAnotherAccountsDevice()
+    {
+        var owner = CreateUser("owner-device@example.com");
+        var intruder = CreateUser("intruder-device@example.com");
+        var device = _store.RegisterDevice(owner.Id, "fp-owned", "pc").Device!;
+        _store.RecordUsage(owner.Id, device.Id, 50, "qwen-mt-flash", 0, 0, 0, _database.NowUnix);
+
+        Assert.False(_store.DeleteDevice(intruder.Id, device.Id));
+
+        Assert.NotNull(_store.FindDevice(owner.Id, device.Id));
+        Assert.Equal(50, _store.ReadUsage(owner.Id, device.Id).DailyChars);
+    }
+
+    [Fact]
+    public void DeleteDevice_RevokesOnlyThatDevicesRefreshTokens()
+    {
+        var user = CreateUser("revoke-device@example.com");
+        var removed = _store.RegisterDevice(user.Id, "fp-revoke", "pc").Device!;
+        var kept = _store.RegisterDevice(user.Id, "fp-keep-revoke", "pc").Device!;
+        var removedHash = FastTranslation.Server.Auth.TokenService.HashRefreshToken("removed-chain");
+        var keptHash = FastTranslation.Server.Auth.TokenService.HashRefreshToken("kept-chain");
+        _store.SaveRefreshToken(user.Id, removedHash, _database.NowUnix + 600, removed.Id);
+        _store.SaveRefreshToken(user.Id, keptHash, _database.NowUnix + 600, kept.Id);
+
+        Assert.True(_store.DeleteDevice(user.Id, removed.Id));
+
+        Assert.Null(_store.ConsumeRefreshToken(removedHash));
+        var survivor = _store.ConsumeRefreshToken(keptHash);
+        Assert.Equal(user.Id, survivor!.UserId);
+        Assert.Equal(kept.Id, survivor.DeviceId);
+    }
+
+    [Fact]
+    public void Migration_OldDatabaseGainsTheRefreshDeviceColumn()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ft-server-tests", Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        try
+        {
+            using (var raw = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path};Pooling=false"))
+            {
+                raw.Open();
+                using var create = raw.CreateCommand();
+                create.CommandText = """
+                    CREATE TABLE users (
+                        id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+                        plan INTEGER NOT NULL DEFAULT 0, plan_expires_at INTEGER,
+                        created_at INTEGER NOT NULL, disabled INTEGER NOT NULL DEFAULT 0);
+                    CREATE TABLE refresh_tokens (
+                        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+                        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER);
+                    """;
+                create.ExecuteNonQuery();
+            }
+
+            var database = new ServerDatabase(path);
+            database.Initialize();
+
+            using var connection = database.Open();
+            using var probe = connection.CreateCommand();
+            probe.CommandText = "PRAGMA table_info(refresh_tokens)";
+            using var reader = probe.ExecuteReader();
+            var columns = new List<string>();
+            while (reader.Read()) columns.Add(reader.GetString(1));
+
+            Assert.Contains("device_id", columns);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try
+            {
+                File.Delete(path);
+                File.Delete(path + "-wal");
+                File.Delete(path + "-shm");
+            }
+            catch (IOException)
+            {
+                // 尽力而为:残留的临时文件绝不能导致测试运行失败。
+            }
+        }
+    }
+
+    [Fact]
     public void RecordUsage_AccumulatesMonthlyAndDaily()
     {
         var user = CreateUser("usage@example.com");
@@ -118,7 +235,7 @@ public sealed class AccountStoreTests : IDisposable
         var hash = FastTranslation.Server.Auth.TokenService.HashRefreshToken(token);
         _store.SaveRefreshToken(user.Id, hash, _database.NowUnix + 600);
 
-        Assert.Equal(user.Id, _store.ConsumeRefreshToken(hash));
+        Assert.Equal(user.Id, _store.ConsumeRefreshToken(hash)!.UserId);
         Assert.Null(_store.ConsumeRefreshToken(hash));
     }
 

@@ -9,13 +9,16 @@ namespace FastTranslation.Core.Account;
 /// <summary>
 /// 负责 FastTranslation 账号服务（/api/v1/auth、/api/v1/account）。
 /// 直接手写在 HttpClient + System.Text.Json 之上：项目禁止引入 HTTP 框架，
-/// 而接口面只有五个调用。网络或格式问题从不抛异常——所有失败都以
+/// 而接口面很小。网络或格式问题从不抛异常——所有失败都以
 /// <see cref="AccountErrorCode"/> 返回，好让界面只有一条「出问题了」的路径。
 /// </summary>
 public sealed class AccountApiClient
 {
     /// <summary>开发默认值。服务端部署后会把生产主机名改掉。</summary>
     public const string DefaultBaseUrl = "http://127.0.0.1:5199";
+
+    /// <summary>网关与账号接口共用的设备指纹头。放在头里而不是查询串，避免指纹进访问日志。</summary>
+    public const string DeviceHeaderName = "X-FT-Device";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -146,6 +149,40 @@ public sealed class AccountApiClient
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 账号页的设备列表。指纹放在请求头里，服务端用它标出「这台电脑」；
+    /// 不送也不会失败，只是没有当前设备标记。
+    /// </summary>
+    public async Task<AccountApiResult<AccountDeviceList>> GetDevicesAsync(
+        string accessToken, string? deviceFingerprint, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Get, "api/v1/account/devices", accessToken, null, cancellationToken, deviceFingerprint)
+            .ConfigureAwait(false);
+        return await ReadAsync<DeviceListResponse, AccountDeviceList>(
+            response,
+            body => new AccountDeviceList(body.Devices.Select(device => device.ToDevice()).ToList(), body.MaxDevices),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 移除另一台设备。当前设备的指纹照样要带上：服务端据此拒绝「移除自己」，
+    /// 避免界面之外的调用把正在用的设备删掉。
+    /// </summary>
+    public async Task<AccountApiResult<AccountDevice>> RemoveDeviceAsync(
+        string accessToken, Guid deviceId, string? deviceFingerprint, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Delete,
+            "api/v1/account/devices/" + deviceId.ToString("D"),
+            accessToken,
+            null,
+            cancellationToken,
+            deviceFingerprint).ConfigureAwait(false);
+        return await ReadAsync<DeviceResponse, AccountDevice>(
+            response, body => body.ToDevice(), cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>尽力而为：退出登录失败绝不能阻塞本地令牌清除。</summary>
     public async Task<AccountApiResult<bool>> LogoutAsync(string accessToken, CancellationToken cancellationToken)
     {
@@ -194,13 +231,18 @@ public sealed class AccountApiClient
 
     /// <summary>返回 null 表示传输层本身失败，由调用方上报 <see cref="AccountErrorCode.Network"/>。</summary>
     private async Task<HttpResponseMessage?> SendAsync(
-        HttpMethod method, string path, string? accessToken, object? body, CancellationToken cancellationToken)
+        HttpMethod method, string path, string? accessToken, object? body, CancellationToken cancellationToken,
+        string? deviceFingerprint = null)
     {
         using var request = new HttpRequestMessage(method, _baseUrl + "/" + path);
         if (body is not null) request.Content = JsonContent.Create(body, body.GetType(), options: JsonOptions);
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        }
+        if (!string.IsNullOrWhiteSpace(deviceFingerprint))
+        {
+            request.Headers.TryAddWithoutValidation(DeviceHeaderName, deviceFingerprint.Trim());
         }
         // 用 ResponseHeadersRead：卡住的响应体必须表现为超时，而不是冻住 UI 线程。
         // 调用本身有保护：DNS/连接被拒/TLS/超时会让 HttpClient 抛异常，
@@ -278,6 +320,9 @@ public sealed class AccountApiClient
                 case "password_unchanged": return AccountErrorCode.PasswordUnchanged;
                 case "display_name_too_long":
                 case "display_name_invalid": return AccountErrorCode.InvalidProfile;
+                case "device_limit_reached": return AccountErrorCode.DeviceLimit;
+                case "device_is_current": return AccountErrorCode.DeviceIsCurrent;
+                case "device_missing": return AccountErrorCode.DeviceMissing;
             }
         }
         return status switch
@@ -364,6 +409,23 @@ public sealed class AccountApiClient
 
         public AccountProfile ToProfile() =>
             new(Id, Email, Plan, QuotaMonthly, QuotaDaily, PlanExpiresAt, DisplayName);
+    }
+
+    private sealed class DeviceListResponse
+    {
+        [JsonPropertyName("devices")] public List<DeviceResponse> Devices { get; init; } = new();
+        [JsonPropertyName("maxDevices")] public int MaxDevices { get; init; }
+    }
+
+    private sealed class DeviceResponse
+    {
+        [JsonPropertyName("id")] public Guid Id { get; init; }
+        [JsonPropertyName("name")] public string Name { get; init; } = string.Empty;
+        [JsonPropertyName("createdAt")] public long CreatedAt { get; init; }
+        [JsonPropertyName("lastSeenAt")] public long LastSeenAt { get; init; }
+        [JsonPropertyName("isCurrent")] public bool IsCurrent { get; init; }
+
+        public AccountDevice ToDevice() => new(Id, Name, CreatedAt, LastSeenAt, IsCurrent);
     }
 
     private sealed class UsageResponse
