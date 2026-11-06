@@ -83,8 +83,10 @@
       </Grid>
       <!-- v91：hero 按效果图重做——左边是「当前套餐」大字 + 118px 用量环，右边是价格与入口，
            右列带一层冷暖薄渐变和一道发丝线把它和左边分开。42px 的套餐名是整页的视觉锚点，
-           原来的 13px 标题做不到这一点。 -->
-      <Border Style="{StaticResource Card}" Padding="0" ClipToBounds="True">
+           原来的 13px 标题做不到这一点。
+           v99：外层不写 ClipToBounds——矩形裁剪发生在 Effect 之后，会把投影切得只剩四角三角
+           残影（用户反馈）；裁切交给右侧渐变面板自己收圆角。 -->
+      <Border Style="{StaticResource Card}" Padding="0">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="1.12*"/>
@@ -154,9 +156,11 @@
             </Grid>
           </StackPanel>
 
+          <!-- 外层 Card 不裁切（裁切会切坏投影，见上面 v99），所以这块渐变面板必须自己收圆角，
+               否则方角顶在卡片的圆角外面（用户反馈 v98）。右侧两角跟着卡片收成 16，左侧仍贴白区。 -->
           <Border Grid.Column="1" Background="{DynamicResource HeroPanelBrush}"
                   BorderBrush="{DynamicResource HairBrush}" BorderThickness="1,0,0,0"
-                  Padding="26,24,28,24">
+                  CornerRadius="0,16,16,0" Padding="26,24,28,24">
             <StackPanel VerticalAlignment="Center">
               <TextBlock x:Name="SubscribeTitle" Text="订阅后解锁单词本与四档复习"
                          FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"

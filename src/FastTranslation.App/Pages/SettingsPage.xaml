@@ -149,7 +149,7 @@
                 <local:FtComboBox x:Name="ModelCombo" Grid.Column="1" Width="210"
                                   AutomationProperties.Name="模型">
                   <ComboBoxItem Content="Flash(快速,默认)"/>
-                  <ComboBoxItem Content="Plus(更高质量)"/>
+                  <ComboBoxItem Content="Plus(更高质量,消耗 2.7 倍额度)"/>
                 </local:FtComboBox>
               </Grid>
             </Border>

@@ -545,6 +545,10 @@
     <!-- v85 改掉 v61 的判断：当年去掉投影的理由是"浅底上一圈灰外发光会显脏"。雾光布局的底
          不是纯白而是一片冷雾渐变，卡片不带影子就贴不住纸面；脏的根源是**中性灰**影子，
          所以阴影色相跟着 Shadow 令牌走，落在蓝底上是加深而不是发灰。 -->
+    <!-- v98 试过但已回退：WPF 的 Effect 连子树一起投影，所以想把影子拆到一张没有子元素的
+         底板上（FtCard + CardShell 两层）。实测更糟——底板会在卡片四边和四角露出一圈残影，
+         圆角写死和 TemplatedParent 绑定两种写法结果一样，回退到单 Border 带 Effect。
+         用量环与进度条的观感差异要另找办法，不要再走这条路。 -->
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
@@ -568,13 +572,15 @@
     </Style>
 
     <!-- 主内容区的大卡：没有默认内边距，标题栏/正文/底栏各自由页面摆位。
-         ClipToBounds 是为了圆角能把卡片内贴边的色块切齐（译文左侧那道竖线）。 -->
+         v99 去掉 ClipToBounds：矩形裁剪发生在 Effect 之后，会把投影伸出盒外的部分全切掉，
+         只在圆角与方角之间留下四块三角残影（用户反馈）。卡内贴边色块要自己收圆角，
+         或另包一层带 ClipToBounds 的内 Border 去裁——裁剪和投影不能同一个 Border 兼。
+         也别走「把 Effect 拆到无子元素的底板」：v98 末实测会在卡片边缘留一圈残影并已回退。 -->
     <Style x:Key="CardSurface" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="CornerRadius" Value="16"/>
       <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
-      <Setter Property="ClipToBounds" Value="True"/>
     </Style>
 
     <!-- 顶栏那几枚白色标签（语言、模型、积分）。影子比卡片轻一档，

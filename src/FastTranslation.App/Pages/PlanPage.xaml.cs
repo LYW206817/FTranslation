@@ -116,7 +116,9 @@ public partial class PlanPage : UserControl
         RingProgress.Data = new PathGeometry(new[] { figure });
     }
 
-    private const double RingRadius = 53;
+    // v99: Ellipse 的描边画在元素盒内侧（几何 = 盒 - 描边），106 盒的环中线半径是 (106-12)/2 = 47，
+    // 不是盒的一半 53。弧原先按 53 画，圆头正好骑在灰环外沿上（用户反馈）。
+    private const double RingRadius = 47;
 
     private static Point RingPoint(double degrees)
     {
