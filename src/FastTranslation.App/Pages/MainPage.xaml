@@ -42,9 +42,12 @@
           <TextBlock DockPanel.Dock="Top" Text="原文" FontSize="11.5" Margin="16,13,16,0"
                      Foreground="{DynamicResource TextMutedBrush}"/>
 
+          <!-- 按钮与快捷键提示同在一行：按钮靠左，提示跟在后面。
+               原来这里写的是 HorizontalAlignment="Right"，但按钮没标 Dock 就默认按 Left 停靠，
+               右对齐在这个槽位里是空转的（渲染一直在左边），改成写明实际行为(v98) -->
           <DockPanel DockPanel.Dock="Bottom" Margin="16,0,16,14">
             <Button x:Name="TranslateButton" Style="{StaticResource PrimaryButton}"
-                    Content="翻译" Padding="24,9" HorizontalAlignment="Right"
+                    Content="翻译" Padding="18,5" DockPanel.Dock="Left"
                     Click="Translate_Click"/>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
               <Border Style="{StaticResource Kbd}">
@@ -58,7 +61,9 @@
             </StackPanel>
           </DockPanel>
 
-          <Grid Margin="16,8,16,0">
+          <!-- 下边距 10 是给输入框的聚焦环留的：全局 TextBox 模板里的 ring 是 2 粗且 Margin="-2"，
+               会探出控件边界；原来这里是 0，聚焦时蓝框正好压在「翻译」按钮顶上(v98) -->
+          <Grid Margin="16,8,16,10">
             <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0" Padding="0"
                      FontSize="15.5" AcceptsReturn="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
