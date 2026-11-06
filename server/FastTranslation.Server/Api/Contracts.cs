@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FastTranslation.Server.Api;
 
 /// <summary>
@@ -123,7 +125,8 @@ public sealed record SaveNoteRequest(
     string? SourceLang,
     string? TargetLang,
     string? Model,
-    string? OriginApp);
+    string? OriginApp,
+    JsonElement? Dictionary = null);
 
 public sealed record UpdateNoteRequest(string? Kind, string? Note);
 
@@ -146,7 +149,8 @@ public sealed record NoteDto(
     string LastGrade = "",
     int ReviewCount = 0,
     int Lapses = 0,
-    long ReviewedAt = 0);
+    long ReviewedAt = 0,
+    JsonElement? Dictionary = null);
 
 /// <summary>一页数据加上账号总数，客户端无需第二次请求即可显示“1 / 20”。</summary>
 public sealed record NotePageResponse(IReadOnlyList<NoteDto> Items, int Total, int Limit, int Offset);

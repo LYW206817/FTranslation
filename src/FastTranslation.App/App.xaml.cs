@@ -817,6 +817,34 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "notes-demo")
+        {
+            // FT_UITEST=notes-demo -> 单词本详情里词典块的截图入口。喂一条本地词库形态的
+            // 演示词条，不注册账号、不连服务端；真实保存链路由 Server/Core 测试覆盖。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    var note = new Note(
+                        Guid.NewGuid(), NoteKind.Word, "charge", "指控", "en", "zh", "ECDICT", "chrome", "",
+                        1761700000, 1761700000,
+                        Dictionary: new DictionaryEntry(
+                            "charge", "/tʃɑːdʒ/",
+                            [
+                                new DictionarySense("n.", ["指控", "费用", "冲锋", "电荷"]),
+                                new DictionarySense("v.", ["控诉", "收费", "使充电"]),
+                            ],
+                            ["charges", "charged", "charging"],
+                            ["高考", "四级", "六级", "考研"]));
+                    ShowMainWindow();
+                    _mainWindow?.ShowNoteDemo(note);
+                }
+                catch (Exception ex) { Trace($"uitest notes-demo: {ex}"); }
+            };
+            uiTimer.Start();
+        }
         else if (uitest is not null && uitest.StartsWith("page-", StringComparison.OrdinalIgnoreCase))
         {
             // FT_UITEST=page-<枚举名> -> 停在指定页给截图核对（不动数据、不联网）。
@@ -1294,7 +1322,9 @@ public partial class App : Application, IResultPresenter
                 result.TargetLanguage,
                 result.Model,
                 originApp,
-                CancellationToken.None);
+                CancellationToken.None,
+                // 本地词库命中的单词卡把词性/多义项一起存进单词本，复习时才有词典可看
+                dictionary: result.Dictionary);
             if (saved.Succeeded)
             {
                 _card?.MarkSaved();

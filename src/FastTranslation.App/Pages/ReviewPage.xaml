@@ -186,6 +186,10 @@
                         HorizontalAlignment="Center" Margin="0,0,0,16"/>
                 <TextBlock x:Name="AnswerText" FontSize="17" LineHeight="28" TextWrapping="Wrap"
                            TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <!-- 单词卡保存的词条多显示一段音标/词性/义项；普通译文没有这一段 -->
+                <TextBlock x:Name="DictionaryText" FontSize="13" LineHeight="22" TextWrapping="Wrap"
+                           TextAlignment="Center" Margin="0,10,0,0"
+                           Foreground="{DynamicResource TextMutedBrush}" Visibility="Collapsed"/>
                 <TextBlock x:Name="OriginText" FontSize="11" Margin="0,14,0,0" TextAlignment="Center"
                            Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
                 <TextBlock x:Name="AnnotationText" FontSize="12" Margin="0,8,0,0" TextAlignment="Center"

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FastTranslation.Server.Api;
 using FastTranslation.Server.Domain;
 using Xunit;
@@ -64,6 +65,62 @@ public class NotesEndpointTests : IClassFixture<ServerFactory>
         response.EnsureSuccessStatusCode();
 
         Assert.Equal(expected, (await response.Content.ReadFromJsonAsync<NoteDto>())!.Kind);
+    }
+
+    [Fact]
+    public async Task Save_RoundTripsTheDictionarySnapshot()
+    {
+        var client = await SignedInClientAsync();
+        var dictionary = JsonSerializer.SerializeToElement(new
+        {
+            headword = "bank",
+            phonetic = "/bæŋk/",
+            senses = new[] { new { partOfSpeech = "n.", definitions = new[] { "银行", "堤" } } },
+            forms = new[] { "banks" },
+            tags = new[] { "四级" },
+        });
+
+        var response = await SaveAsync(client, Pair("bank", "银行") with { Dictionary = dictionary });
+        response.EnsureSuccessStatusCode();
+        var saved = (await response.Content.ReadFromJsonAsync<NoteDto>())!;
+
+        Assert.Equal("bank", saved.Dictionary!.Value.GetProperty("headword").GetString());
+        Assert.Equal("银行", saved.Dictionary.Value.GetProperty("senses")[0].GetProperty("definitions")[0].GetString());
+
+        // 列表也要带着词典返回，否则单词本详情只有译文没有词性。
+        var page = await client.GetFromJsonAsync<NotePageResponse>("/api/v1/notes/");
+        var listed = Assert.Single(page!.Items);
+        Assert.Equal("bank", listed.Dictionary!.Value.GetProperty("headword").GetString());
+    }
+
+    [Fact]
+    public async Task Save_BackfillsTheDictionaryForAnExistingNote()
+    {
+        var client = await SignedInClientAsync();
+        var first = await (await SaveAsync(client, Pair("bank", "银行")))
+            .Content.ReadFromJsonAsync<NoteDto>();
+        Assert.Null(first!.Dictionary);
+
+        var dictionary = JsonSerializer.SerializeToElement(new { headword = "bank", phonetic = "/bæŋk/" });
+        var second = await (await SaveAsync(client, Pair("bank", "银行") with { Dictionary = dictionary }))
+            .Content.ReadFromJsonAsync<NoteDto>();
+
+        Assert.Equal(first.Id, second!.Id);
+        Assert.Equal("bank", second.Dictionary!.Value.GetProperty("headword").GetString());
+    }
+
+    [Fact]
+    public async Task Save_IgnoresOversizedDictionaryButKeepsTheNote()
+    {
+        var client = await SignedInClientAsync();
+        var tooLarge = JsonSerializer.SerializeToElement(new { pad = new string('x', 9000) });
+
+        var response = await SaveAsync(client, Pair("bank", "银行") with { Dictionary = tooLarge });
+        response.EnsureSuccessStatusCode();
+        var saved = (await response.Content.ReadFromJsonAsync<NoteDto>())!;
+
+        Assert.Null(saved.Dictionary);
+        Assert.Equal("bank", saved.SourceText);
     }
 
     [Fact]

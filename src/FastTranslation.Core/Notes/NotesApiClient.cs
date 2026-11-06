@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Lexicon;
 
 namespace FastTranslation.Core.Notes;
 
@@ -44,11 +45,12 @@ public sealed class NotesApiClient
         string targetLang,
         string model,
         string originApp,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DictionaryEntry? dictionary = null)
     {
         var body = new SaveBody(
             kind is { } k ? NoteKinds.ToWire(k) : null,
-            sourceText, targetText, sourceLang, targetLang, model, originApp);
+            sourceText, targetText, sourceLang, targetLang, model, originApp, dictionary);
         var response = await SendAsync(HttpMethod.Post, "api/v1/notes/", accessToken, body, cancellationToken)
             .ConfigureAwait(false);
         return await ReadAsync<NoteResponse, Note>(response, ToNote, cancellationToken).ConfigureAwait(false);
@@ -244,13 +246,15 @@ public sealed class NotesApiClient
         note.LastGrade,
         note.ReviewCount,
         note.Lapses,
-        note.ReviewedAt);
+        note.ReviewedAt,
+        note.Dictionary);
 
     // ---- 线上数据结构 ----
 
     private sealed record SaveBody(
         string? Kind, string SourceText, string TargetText,
-        string SourceLang, string TargetLang, string Model, string OriginApp);
+        string SourceLang, string TargetLang, string Model, string OriginApp,
+        DictionaryEntry? Dictionary);
 
     private sealed record UpdateBody(string? Kind, string? Note);
 
@@ -280,6 +284,7 @@ public sealed class NotesApiClient
         [JsonPropertyName("reviewCount")] public int ReviewCount { get; init; }
         [JsonPropertyName("lapses")] public int Lapses { get; init; }
         [JsonPropertyName("reviewedAt")] public long ReviewedAt { get; init; }
+        [JsonPropertyName("dictionary")] public DictionaryEntry? Dictionary { get; init; }
     }
 
     private sealed class PageResponse

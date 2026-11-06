@@ -1,3 +1,5 @@
+using FastTranslation.Core.Lexicon;
+
 namespace FastTranslation.Core.Notes;
 
 /// <summary>
@@ -57,7 +59,8 @@ public sealed record Note(
     string LastGrade = "",
     int ReviewCount = 0,
     int Lapses = 0,
-    long ReviewedAt = 0)
+    long ReviewedAt = 0,
+    DictionaryEntry? Dictionary = null)
 {
     public string KindDisplay => NoteKinds.Display(Kind);
 

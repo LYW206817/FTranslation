@@ -268,6 +268,9 @@ public partial class ReviewPage : UserControl
         RevealMask.Visibility = Visibility.Collapsed;
         AnswerPanel.Visibility = Visibility.Visible;
         AnswerText.Text = note.TargetText;
+        var dictionaryText = note.Dictionary?.ToDisplayText() ?? string.Empty;
+        DictionaryText.Text = dictionaryText;
+        DictionaryText.Visibility = dictionaryText.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         OriginText.Text = note.OriginLine;
         AnnotationText.Text = note.Annotation;
         AnnotationText.Visibility = string.IsNullOrWhiteSpace(note.Annotation)

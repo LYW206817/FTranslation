@@ -23,6 +23,7 @@ public partial class MainPage : UserControl
     private CancellationTokenSource? _translateCts;
     private string? _lastSource;      // 产出当前结果的那一对原文，按原样保存
     private string? _lastTarget;
+    private FastTranslation.Core.Lexicon.DictionaryEntry? _lastDictionary;
     private bool _saving;
 
     /// <summary>「配置 Key」需要设置页，但页面不能自己切换页面。</summary>
@@ -109,6 +110,7 @@ public partial class MainPage : UserControl
         SaveButton.IsEnabled = false;
         _lastSource = null;
         _lastTarget = null;
+        _lastDictionary = null;
 
         var cts = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _translateCts, cts);
@@ -125,6 +127,7 @@ public partial class MainPage : UserControl
                 SaveButton.IsEnabled = true;
                 _lastSource = text;
                 _lastTarget = result.TranslatedText;
+                _lastDictionary = result.Dictionary;
             }
             else
             {
@@ -162,7 +165,8 @@ public partial class MainPage : UserControl
                 targetLang: string.IsNullOrWhiteSpace(settings.TargetLanguage) ? "auto" : settings.TargetLanguage,
                 model: settings.Model,
                 originApp: string.Empty,          // 来源就是本程序，记下来没有意义
-                cancellationToken: CancellationToken.None);
+                cancellationToken: CancellationToken.None,
+                dictionary: _lastDictionary);
 
             if (saved.Succeeded)
             {

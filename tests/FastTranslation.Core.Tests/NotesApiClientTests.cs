@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Lexicon;
 using FastTranslation.Core.Notes;
 using Xunit;
 
@@ -21,6 +22,29 @@ public class NotesApiClientTests
       "note": "习语",
       "createdAt": 1761700000,
       "updatedAt": 1761700100
+    }
+    """;
+
+    private const string DictionaryNoteJson = """
+    {
+      "id": "8f1a2c3d-0000-4000-8000-0000000000cc",
+      "kind": "word",
+      "sourceText": "bank",
+      "targetText": "银行",
+      "sourceLang": "en",
+      "targetLang": "zh",
+      "model": "ECDICT",
+      "originApp": "chrome",
+      "note": "",
+      "createdAt": 1761700000,
+      "updatedAt": 1761700000,
+      "dictionary": {
+        "headword": "bank",
+        "phonetic": "/bæŋk/",
+        "senses": [{ "partOfSpeech": "n.", "definitions": ["银行", "堤"] }],
+        "forms": ["banks"],
+        "tags": ["四级"]
+      }
     }
     """;
 
@@ -81,6 +105,29 @@ public class NotesApiClientTests
         Assert.Equal("POST", handler.LastMethod);
         Assert.Equal("Bearer", handler.LastAuthorization!.Scheme);
         Assert.Contains("\"kind\":\"phrase\"", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task Save_sends_the_dictionary_and_maps_it_back()
+    {
+        var (client, handler) = BuildClient(HttpStatusCode.OK, DictionaryNoteJson);
+        var entry = new DictionaryEntry(
+            "bank", "/bæŋk/",
+            [new DictionarySense("n.", ["银行", "堤"])],
+            ["banks"], ["四级"]);
+
+        var result = await client.SaveAsync(
+            "token-1", NoteKind.Word, "bank", "银行", "en", "zh", "ECDICT", "chrome",
+            CancellationToken.None, entry);
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("\"dictionary\"", handler.LastBody);
+        Assert.Contains("\"partOfSpeech\"", handler.LastBody);
+        var saved = result.Value!.Dictionary!;
+        Assert.Equal("bank", saved.Headword);
+        Assert.Equal("/bæŋk/", saved.Phonetic);
+        Assert.Equal("银行", saved.Senses[0].Definitions[0]);
+        Assert.Equal(new[] { "四级" }, saved.Tags);
     }
 
     [Theory]

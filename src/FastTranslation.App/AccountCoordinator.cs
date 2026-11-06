@@ -1,5 +1,6 @@
 using FastTranslation.Core;
 using FastTranslation.Core.Account;
+using FastTranslation.Core.Lexicon;
 using FastTranslation.Core.Notes;
 
 namespace FastTranslation.App;
@@ -236,12 +237,14 @@ public sealed class AccountCoordinator
         string targetLang,
         string model,
         string originApp,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DictionaryEntry? dictionary = null)
     {
         if (_notes is null) return Task.FromResult(AccountApiResult<Note>.Fail(AccountErrorCode.NotSignedIn));
         return WithSessionAsync(
             token => _notes.SaveAsync(
-                token, kind, sourceText, targetText, sourceLang, targetLang, model, originApp, cancellationToken),
+                token, kind, sourceText, targetText, sourceLang, targetLang, model, originApp,
+                cancellationToken, dictionary),
             cancellationToken);
     }
 

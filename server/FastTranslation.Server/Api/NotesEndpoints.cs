@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Mvc;
@@ -58,9 +59,22 @@ public static class NotesEndpoints
             ? parsed
             : NoteClassifier.Classify(source);
 
+        // 词典快照只透传不解析：服务端不需要理解词性结构，只限制大小，
+        // 免得坏客户端把单行撑到几 MB。超限时只丢词典，词条本身照常保存。
+        var dictionaryJson = request.Dictionary is { ValueKind: JsonValueKind.Object } dictionary
+            && dictionary.GetRawText().Length <= 8192
+                ? dictionary.GetRawText()
+                : string.Empty;
+
         // 双击「保存」会把同一对内容提交两次；这只算一条记录，而不是两条。
         if (store.FindLive(userId, kind, source) is { } existing)
         {
+            // v105: 老词条（词典功能之前保存的）重新保存时顺手补上词典快照，
+            // 否则用户会看到「再存一次还是没有词性」。
+            if (existing.DictionaryJson.Length == 0 && dictionaryJson.Length > 0)
+            {
+                existing = store.SetDictionary(userId, existing.Id, dictionaryJson) ?? existing;
+            }
             return Results.Ok(ToDto(existing));
         }
 
@@ -77,7 +91,8 @@ public static class NotesEndpoints
             string.IsNullOrWhiteSpace(request.SourceLang) ? "auto" : request.SourceLang!,
             string.IsNullOrWhiteSpace(request.TargetLang) ? "auto" : request.TargetLang!,
             request.Model ?? string.Empty,
-            request.OriginApp ?? string.Empty);
+            request.OriginApp ?? string.Empty,
+            dictionaryJson);
 
         return Results.Ok(ToDto(created));
     }
@@ -239,5 +254,21 @@ public static class NotesEndpoints
         note.LastGrade,
         note.ReviewCount,
         note.Lapses,
-        note.ReviewedAt);
+        note.ReviewedAt,
+        ParseDictionary(note.DictionaryJson));
+
+    /// <summary>旧行或手工改坏的行按「没有词典」处理，词条本身照常返回。</summary>
+    private static JsonElement? ParseDictionary(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

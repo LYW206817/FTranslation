@@ -22,7 +22,8 @@ public sealed record NoteRecord(
     string LastGrade = "",
     int ReviewCount = 0,
     int Lapses = 0,
-    long ReviewedAt = 0);
+    long ReviewedAt = 0,
+    string DictionaryJson = "");
 
 /// <summary>
 /// /api/v1/notes 背后的所有 SQL 语句。删除是软删除（<c>deleted_at</c>），因为这些行会
@@ -36,24 +37,25 @@ public sealed class NoteStore(ServerDatabase database)
 
     public NoteRecord Create(
         Guid userId, NoteKind kind, string sourceText, string targetText,
-        string sourceLang, string targetLang, string model, string originApp)
+        string sourceLang, string targetLang, string model, string originApp,
+        string dictionaryJson = "")
     {
         var now = database.NowUnix;
         var record = new NoteRecord(
             Guid.NewGuid(), userId, kind,
             Trim(sourceText, 5000), Trim(targetText, 5000),
             Trim(sourceLang, 16), Trim(targetLang, 16), Trim(model, 64), Trim(originApp, 128), string.Empty,
-            now, now);
+            now, now, DictionaryJson: Trim(dictionaryJson, 8192));
 
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO notes (id, user_id, kind, source_text, target_text, source_lang, target_lang,
                                model, origin_app, note, created_at, updated_at, deleted_at,
-                               stage, due_at, last_grade, review_count, lapses, reviewed_at)
+                               stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json)
             VALUES ($id, $userId, $kind, $source, $target, $sourceLang, $targetLang,
                     $model, $originApp, '', $now, $now, NULL,
-                    0, 0, '', 0, 0, 0)
+                    0, 0, '', 0, 0, 0, $dictionaryJson)
             """;
         command.Parameters.AddWithValue("$id", record.Id.ToString("D"));
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
@@ -64,6 +66,7 @@ public sealed class NoteStore(ServerDatabase database)
         command.Parameters.AddWithValue("$targetLang", record.TargetLang);
         command.Parameters.AddWithValue("$model", record.Model);
         command.Parameters.AddWithValue("$originApp", record.OriginApp);
+        command.Parameters.AddWithValue("$dictionaryJson", record.DictionaryJson);
         command.Parameters.AddWithValue("$now", now);
         command.ExecuteNonQuery();
         return record;
@@ -80,7 +83,7 @@ public sealed class NoteStore(ServerDatabase database)
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
             FROM notes
             WHERE user_id = $userId AND kind = $kind AND source_text = $source AND deleted_at IS NULL
             ORDER BY created_at DESC LIMIT 1
@@ -130,7 +133,7 @@ public sealed class NoteStore(ServerDatabase database)
         var sql = new System.Text.StringBuilder("""
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL
             """);
@@ -163,7 +166,7 @@ public sealed class NoteStore(ServerDatabase database)
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
             FROM notes
             WHERE id = $id AND user_id = $userId AND deleted_at IS NULL
             """;
@@ -172,6 +175,25 @@ public sealed class NoteStore(ServerDatabase database)
 
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadNote(reader) : null;
+    }
+
+    /// <summary>
+    /// 只补词典快照，不动 updated_at。用于老词条第一次从词典卡重新保存时补齐——
+    /// 用户看不出这是一次写操作，不该改变「更新时间」。
+    /// </summary>
+    public NoteRecord? SetDictionary(Guid userId, Guid id, string dictionaryJson)
+    {
+        var existing = FindById(userId, id);
+        if (existing is null) return null;
+
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE notes SET dictionary_json = $json WHERE id = $id AND user_id = $userId";
+        command.Parameters.AddWithValue("$json", Trim(dictionaryJson, 8192));
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.ExecuteNonQuery();
+        return existing with { DictionaryJson = Trim(dictionaryJson, 8192) };
     }
 
     /// <summary>部分更新：参数为 null 时该列保持不变（客户端只发送变化的部分）。</summary>
@@ -221,7 +243,7 @@ public sealed class NoteStore(ServerDatabase database)
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL AND stage >= 1 AND due_at <= $now
             ORDER BY due_at ASC
@@ -252,7 +274,7 @@ public sealed class NoteStore(ServerDatabase database)
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at
+                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0
             ORDER BY created_at ASC
@@ -346,5 +368,6 @@ public sealed class NoteStore(ServerDatabase database)
         reader.GetString(14),
         reader.GetInt32(15),
         reader.GetInt32(16),
-        reader.GetInt64(17));
+        reader.GetInt64(17),
+        reader.GetString(18));
 }

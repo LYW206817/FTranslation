@@ -78,6 +78,8 @@ public sealed class ServerDatabase
         EnsureColumn(connection, "notes", "review_count", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "lapses", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "reviewed_at", "INTEGER NOT NULL DEFAULT 0");
+        // v105: 单词卡保存时的词典快照（JSON）。老行留空，客户端按「没有词典」展示。
+        EnsureColumn(connection, "notes", "dictionary_json", "TEXT NOT NULL DEFAULT ''");
 
         // v101: 新卡日配额要按「今天第一次评分」计数，而不是「今天创建」。
         // 只用 stage/reviewed_at 区分不了「今天首学」与「老卡今天复习」，所以单独记第一次评分时间。
@@ -242,6 +244,7 @@ public sealed class ServerDatabase
             review_count INTEGER NOT NULL DEFAULT 0,
             lapses      INTEGER NOT NULL DEFAULT 0,
             reviewed_at INTEGER NOT NULL DEFAULT 0,
+            dictionary_json TEXT NOT NULL DEFAULT '',
             first_reviewed_at INTEGER NOT NULL DEFAULT 0
         );
 

@@ -24,6 +24,7 @@ public partial class NotesPage : UserControl
     private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(320) };
 
     private Note? _selected;
+    private bool _demo;
     private bool _loading;
     private bool _grading;
     private bool _suppressKindChange;
@@ -75,6 +76,22 @@ public partial class NotesPage : UserControl
     /// <summary>公开出去，好让 App 在结果卡保存后刷新当前可见的书架。</summary>
     public void Reload() => _ = LoadAsync();
 
+    /// <summary>
+    /// QA 截图用：喂一条演示词条。词典卡在单词本里的排版无法靠空列表核对，
+    /// 又不该为了截图去注册账号/升级套餐，所以只在这个入口绕过服务端。
+    /// </summary>
+    internal void ShowDemo(Note note)
+    {
+        _demo = true;
+        _loadCts?.Cancel();
+        _items.Clear();
+        _items.Add(note);
+        _total = 1;
+        EmptyText.Visibility = Visibility.Collapsed;
+        NotesList.SelectedItem = note;
+        Render();
+    }
+
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (!_account.IsSignedIn) Render();
@@ -82,6 +99,7 @@ public partial class NotesPage : UserControl
 
     private async Task LoadAsync()
     {
+        if (_demo) return; // 截图演示数据不会被真实列表覆盖
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         var cts = new CancellationTokenSource();
@@ -101,7 +119,7 @@ public partial class NotesPage : UserControl
         try
         {
             var page = await _account.ListNotesAsync(_shelf, _search, 200, 0, cts.Token);
-            if (cts.IsCancellationRequested) return;
+            if (cts.IsCancellationRequested || _demo) return;
             _items.Clear();
             if (page.Succeeded)
             {
@@ -144,7 +162,7 @@ public partial class NotesPage : UserControl
         EmptyText.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         if (_loading && _items.Count == 0) EmptyText.Text = "正在加载…";
-        if (!_account.IsSignedIn)
+        if (!_account.IsSignedIn && !_demo)
         {
             EmptyText.Text = "先登录账号,保存的单词就能跨设备同步。";
             EmptyText.Visibility = Visibility.Visible;
@@ -160,6 +178,10 @@ public partial class NotesPage : UserControl
     {
         DetailSource.Text = note.SourceText;
         DetailTarget.Text = note.TargetText;
+        var dictionaryText = note.Dictionary?.ToDisplayText() ?? string.Empty;
+        DetailDictionary.Text = dictionaryText;
+        DetailDictionary.Visibility = dictionaryText.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        DetailDictionaryLabel.Visibility = DetailDictionary.Visibility;
         DetailOrigin.Text = note.OriginLine + (string.IsNullOrWhiteSpace(note.Model) ? string.Empty : " · " + note.Model);
         NoteBox.Text = note.Annotation;
         DetailStatus.Text = string.Empty;

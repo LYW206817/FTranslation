@@ -32,6 +32,25 @@ public class WordShapeTests
         Assert.Null(WordShape.TryNormalize(new string('a', WordShape.MaxLength + 1)));
 }
 
+public class DictionaryEntryTests
+{
+    [Fact]
+    public void Display_text_keeps_phonetic_senses_forms_and_tags()
+    {
+        var entry = new DictionaryEntry(
+            "bank", "/bæŋk/",
+            [new DictionarySense("n.", ["银行", "堤"])],
+            ["banks"], ["四级"]);
+
+        var text = entry.ToDisplayText();
+
+        Assert.Contains("/bæŋk/", text);
+        Assert.Contains("n. 银行；堤", text);
+        Assert.Contains("变形 banks", text);
+        Assert.Contains("词表 四级", text);
+    }
+}
+
 public class EcdictTextTests
 {
     [Fact]

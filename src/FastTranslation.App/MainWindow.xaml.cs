@@ -310,6 +310,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>切换到指定页面；同一个页面重复调用只刷新内容，不重建控件。</summary>
+    /// <summary>QA 截图入口：把一条带词典的演示词条放进对应书架，不登录、不联网。</summary>
+    internal void ShowNoteDemo(Note note)
+    {
+        var page = note.Kind switch
+        {
+            NoteKind.Word => MainPageId.Word,
+            NoteKind.Phrase => MainPageId.Phrase,
+            _ => MainPageId.Sentence,
+        };
+        if (Build(page) is NotesPage notes) notes.ShowDemo(note);
+        ShowPage(page);
+    }
+
     public void ShowPage(MainPageId page)
     {
         // 重建同一个页面会丢掉里面已经输入的内容，所以缓存页面只做刷新——而这次刷新

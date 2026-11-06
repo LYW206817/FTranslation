@@ -195,6 +195,12 @@
               <TextBlock x:Name="DetailTarget" FontSize="14" TextWrapping="Wrap"
                          Foreground="{DynamicResource TextPrimaryBrush}"/>
 
+              <!-- 只有从词典卡保存的单词才有这段；老词条保持原来的两项布局 -->
+              <TextBlock x:Name="DetailDictionaryLabel" Text="词典" Style="{StaticResource FieldLabel}"
+                         Margin="0,14,0,6" Visibility="Collapsed"/>
+              <TextBlock x:Name="DetailDictionary" FontSize="13" LineHeight="22" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextPrimaryBrush}" Visibility="Collapsed"/>
+
               <!-- 四档：顺手标一下（D12），与复习窗的四个按钮同一套调度 -->
               <TextBlock Text="复习" Style="{StaticResource FieldLabel}" Margin="0,16,0,6"/>
               <StackPanel x:Name="GradePanel" Orientation="Horizontal">
