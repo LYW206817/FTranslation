@@ -147,11 +147,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         AccountApiResult<ReviewQueue> result;
         try
         {
-            result = await _account.ReviewQueueAsync(now - (now % 86_400L), 20, 50, CancellationToken.None);
+            var dayStart = ReviewSchedule.StartOfLocalDay(DateTimeOffset.Now);
+            result = await _account.ReviewQueueAsync(dayStart, 20, 50, CancellationToken.None);
         }
         catch (Exception)
         {

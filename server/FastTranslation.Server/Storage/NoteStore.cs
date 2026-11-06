@@ -237,48 +237,48 @@ public sealed class NoteStore(ServerDatabase database)
         return items;
     }
 
-    /// <summary>今天保存且未评分的卡片，最旧的在前。第 0 档恰好等于“从未评分”，因此不需要额外的队列表。</summary>
-    public (IReadOnlyList<NoteRecord> Items, int Total) ListFresh(Guid userId, long dayStartUnix, int limit)
+    /// <summary>
+    /// 从未评分过的卡片，最旧的在前。第 0 档恰好等于“从未评分”，因此不需要额外的队列表。
+    /// <para>
+    /// v101: 这里**不再按 created_at 过滤**。旧实现把「今天创建的卡」当成「今天要学的卡」，
+    /// 用户某天存了卡却没学完，第二天起它们既不进 due（stage 还是 0）也不进 fresh，永久消失。
+    /// 日上限交给调用方按配额截断；没被学掉的卡会留到下一次。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<NoteRecord> ListFresh(Guid userId, int limit)
     {
         using var connection = database.Open();
-
-        using var count = connection.CreateCommand();
-        count.CommandText = """
-            SELECT COUNT(*) FROM notes
-            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
-            """;
-        count.Parameters.AddWithValue("$userId", userId.ToString("D"));
-        count.Parameters.AddWithValue("$dayStart", dayStartUnix);
-        var total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
-
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
                    model, origin_app, note, created_at, updated_at,
                    stage, due_at, last_grade, review_count, lapses, reviewed_at
             FROM notes
-            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0
             ORDER BY created_at ASC
             LIMIT $limit
             """;
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
-        command.Parameters.AddWithValue("$dayStart", dayStartUnix);
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
 
         var items = new List<NoteRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read()) items.Add(ReadNote(reader));
-        return (items, total);
+        return items;
     }
 
-    /// <summary>今日配额已经消耗掉多少张新卡片。</summary>
-    public int CountFreshSince(Guid userId, long dayStartUnix)
+    /// <summary>
+    /// 这个时间窗内**第一次**被评分的卡片数，也就是已经消耗掉的日配额。
+    /// 同一张卡今天再复习几次都只算一张：first_reviewed_at 只有从 0 变一次。
+    /// </summary>
+    public int CountIntroducedSince(Guid userId, long dayStartUnix)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT COUNT(*) FROM notes
-            WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+            WHERE user_id = $userId AND deleted_at IS NULL
+              AND stage >= 1 AND first_reviewed_at >= $dayStart
             """;
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
         command.Parameters.AddWithValue("$dayStart", dayStartUnix);
@@ -302,7 +302,8 @@ public sealed class NoteStore(ServerDatabase database)
             UPDATE notes
             SET stage = $stage, due_at = $dueAt, last_grade = $grade,
                 review_count = review_count + 1, lapses = $lapses,
-                reviewed_at = $reviewedAt, updated_at = $reviewedAt
+                reviewed_at = $reviewedAt, updated_at = $reviewedAt,
+                first_reviewed_at = CASE WHEN first_reviewed_at = 0 THEN $reviewedAt ELSE first_reviewed_at END
             WHERE id = $id AND user_id = $userId
             """;
         command.Parameters.AddWithValue("$stage", stage);

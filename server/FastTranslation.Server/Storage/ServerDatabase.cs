@@ -74,6 +74,21 @@ public sealed class ServerDatabase
         EnsureColumn(connection, "notes", "lapses", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "notes", "reviewed_at", "INTEGER NOT NULL DEFAULT 0");
 
+        // v101: 新卡日配额要按「今天第一次评分」计数，而不是「今天创建」。
+        // 只用 stage/reviewed_at 区分不了「今天首学」与「老卡今天复习」，所以单独记第一次评分时间。
+        EnsureColumn(connection, "notes", "first_reviewed_at", "INTEGER NOT NULL DEFAULT 0");
+
+        // 迁移前就已经评过分的卡：用最后一次评分时间回填，避免它们在下一次复习时
+        // 被误算成「今天首次学习」，白吃掉当天的 20 张新卡配额。
+        using (var backfill = connection.CreateCommand())
+        {
+            backfill.CommandText = """
+                UPDATE notes SET first_reviewed_at = reviewed_at
+                WHERE stage >= 1 AND first_reviewed_at = 0
+                """;
+            backfill.ExecuteNonQuery();
+        }
+
         // 复习队列是按到期时间扫描的唯一查询；这个部分索引让它保持
         // 很小。之所以在这里建而不是放进 Schema，是因为在已有数据库上，
         // notes 表要到上面的 EnsureColumn 调用之后才拥有 due_at。
@@ -81,6 +96,14 @@ public sealed class ServerDatabase
         index.CommandText =
             "CREATE INDEX IF NOT EXISTS ix_notes_user_due ON notes(user_id, due_at) WHERE deleted_at IS NULL";
         index.ExecuteNonQuery();
+
+        // 日配额只查「今天首次评分的卡」，索引把扫描限制在这个窗口内。
+        using var firstReviewedIndex = connection.CreateCommand();
+        firstReviewedIndex.CommandText = """
+            CREATE INDEX IF NOT EXISTS ix_notes_user_first_reviewed
+            ON notes(user_id, first_reviewed_at) WHERE deleted_at IS NULL AND stage >= 1
+            """;
+        firstReviewedIndex.ExecuteNonQuery();
     }
 
     /// <summary>仅当表存在且尚未包含该列时才添加。</summary>
@@ -212,7 +235,8 @@ public sealed class ServerDatabase
             last_grade  TEXT NOT NULL DEFAULT '',
             review_count INTEGER NOT NULL DEFAULT 0,
             lapses      INTEGER NOT NULL DEFAULT 0,
-            reviewed_at INTEGER NOT NULL DEFAULT 0
+            reviewed_at INTEGER NOT NULL DEFAULT 0,
+            first_reviewed_at INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE INDEX IF NOT EXISTS ix_notes_user_kind ON notes(user_id, kind, created_at DESC);

@@ -130,8 +130,8 @@ public partial class ReviewPage : UserControl
             return;
         }
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var dayStart = now - (now % 86_400L);
+        // 日配额按用户本地零点重置；服务端只认这个数字，不猜时区。
+        var dayStart = ReviewSchedule.StartOfLocalDay(DateTimeOffset.Now);
         var result = await _account.ReviewQueueAsync(dayStart, NewLimit, QueueLimit, CancellationToken.None);
         if (!result.Succeeded)
         {

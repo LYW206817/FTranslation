@@ -59,15 +59,69 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
     public async Task Review_FreshQuotaShrinksWhenMoreCardsThanTheLimitExist()
     {
         var client = await _factory.SignedInNotesClientAsync();
-        await client.SaveNoteAsync(NotesTestHelpers.Pair("alpha", "甲"));
+        var first = (await (await client.SaveNoteAsync(NotesTestHelpers.Pair("alpha", "甲")))
+            .Content.ReadFromJsonAsync<NoteDto>())!;
         await client.SaveNoteAsync(NotesTestHelpers.Pair("beta", "乙"));
         await client.SaveNoteAsync(NotesTestHelpers.Pair("gamma", "丙"));
 
         var queue = (await client.GetFromJsonAsync<ReviewQueueResponse>("/api/v1/notes/review?newLimit=2"))!;
 
-        // 今天保存的每张卡都已计入配额,所以没有剩余。
-        Assert.Equal(0, queue.FreshQuota);
+        // 还没评分,今天的新卡配额是满的;列表按配额截到 2 张。
+        Assert.Equal(2, queue.FreshQuota);
+        Assert.Equal(2, queue.Fresh.Count);
         Assert.Equal(2, queue.NewLimit);
+
+        await client.PostAsJsonAsync($"/api/v1/notes/{first.Id}/review", new GradeNoteRequest("known"));
+
+        var after = (await client.GetFromJsonAsync<ReviewQueueResponse>("/api/v1/notes/review?newLimit=2"))!;
+        Assert.Equal(1, after.FreshQuota);
+        Assert.Single(after.Fresh);
+    }
+
+    /// <summary>v101: 没学完的新卡不能随创建日期过期。把 dayStart 推到明天,
+    /// 今天留下的 stage 0 仍然要在队列里,而且配额从新的一天重新算。</summary>
+    [Fact]
+    public async Task Review_UngradedFreshCardsSurviveIntoTheNextDay()
+    {
+        var client = await _factory.SignedInNotesClientAsync();
+        var first = (await (await client.SaveNoteAsync(NotesTestHelpers.Pair("alpha", "甲")))
+            .Content.ReadFromJsonAsync<NoteDto>())!;
+        await client.SaveNoteAsync(NotesTestHelpers.Pair("beta", "乙"));
+
+        await client.PostAsJsonAsync($"/api/v1/notes/{first.Id}/review", new GradeNoteRequest("known"));
+
+        // 今天已经用掉 1 个名额。
+        var today = (await client.GetFromJsonAsync<ReviewQueueResponse>(
+            "/api/v1/notes/review?newLimit=1"))!;
+        Assert.Equal(0, today.FreshQuota);
+        Assert.Empty(today.Fresh);
+
+        // 明天:配额重置,昨天没学的 beta 仍然在队列里。
+        var tomorrow = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+        var next = (await client.GetFromJsonAsync<ReviewQueueResponse>(
+            $"/api/v1/notes/review?newLimit=1&dayStart={tomorrow}"))!;
+        Assert.Equal(1, next.FreshQuota);
+        Assert.Single(next.Fresh);
+        Assert.Equal("beta", next.Fresh[0].SourceText);
+    }
+
+    /// <summary>同一张卡当天复习多次只占一个「新卡」名额;否则点两次「忘记」
+    /// 就会把日配额翻倍消耗。</summary>
+    [Fact]
+    public async Task Review_QuotaCountsFirstReviewOnly()
+    {
+        var client = await _factory.SignedInNotesClientAsync();
+        var saved = (await (await client.SaveNoteAsync(NotesTestHelpers.Pair("resilient", "有韧性")))
+            .Content.ReadFromJsonAsync<NoteDto>())!;
+
+        await client.PostAsJsonAsync($"/api/v1/notes/{saved.Id}/review", new GradeNoteRequest("forgot"));
+        await client.PostAsJsonAsync($"/api/v1/notes/{saved.Id}/review", new GradeNoteRequest("fuzzy"));
+
+        var queue = (await client.GetFromJsonAsync<ReviewQueueResponse>("/api/v1/notes/review?newLimit=2"))!;
+
+        // 两次评分只消耗 1 个名额:还剩 1 个,但队列里已经没有别的 stage 0。
+        Assert.Equal(1, queue.FreshQuota);
+        Assert.Empty(queue.Fresh);
     }
 
     [Fact]
@@ -210,8 +264,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
 
             // 三张都是新卡,所以到期队列为空,新卡堆里则是全部三张。
             Assert.Empty(store.ListDue(user.Id, time.Unix, 50));
-            var (fresh, freshTotal) = store.ListFresh(user.Id, 0, 50);
-            Assert.Equal(3, freshTotal);
+            var fresh = store.ListFresh(user.Id, 50);
             Assert.Equal(3, fresh.Count);
 
             // 强制三个不同的到期时间,且都在过去。
@@ -223,7 +276,9 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
             Assert.Equal(new[] { a.Id, c.Id, b.Id }, due.Select(note => note.Id));
 
             // 不再有新卡:每张卡都已离开 stage 0。
-            Assert.Equal(0, store.CountFreshSince(user.Id, 0));
+            Assert.Empty(store.ListFresh(user.Id, 50));
+            Assert.Equal(3, store.CountIntroducedSince(user.Id, time.Unix - 1));
+            Assert.Equal(0, store.CountIntroducedSince(user.Id, time.Unix + 1));
         }
         finally
         {
@@ -246,6 +301,104 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
 
             time.Advance(TimeSpan.FromSeconds(61));
             Assert.Single(store.ListDue(user.Id, time.Unix, 50));
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    /// <summary>v101: 没学完的新卡不能因为过了零点就从队列里消失。</summary>
+    [Fact]
+    public void Store_ListFreshKeepsCardsFromEarlierDays()
+    {
+        var time = new ManualTimeProvider(1_800_000_000L);
+        var (database, store, dispose) = NewStore(time);
+        try
+        {
+            var user = new AccountStore(database).CreateUser("carry@example.com", "hash", PlanTier.Standard);
+            var note = store.Create(user.Id, NoteKind.Word, "carry", "遗留", "en", "zh", "", "");
+
+            time.Advance(TimeSpan.FromDays(3));
+
+            var fresh = store.ListFresh(user.Id, 50);
+            Assert.Single(fresh);
+            Assert.Equal(note.Id, fresh[0].Id);
+
+            // 旧实现的谓词（created_at >= 当日零点）会把这张三天前的卡排除在外；
+            // 这条断言把「修的是什么」钉住，避免以后有人把过滤条件加回去。
+            using var connection = database.Open();
+            using var legacy = connection.CreateCommand();
+            legacy.CommandText = """
+                SELECT COUNT(*) FROM notes
+                WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0 AND created_at >= $dayStart
+                """;
+            legacy.Parameters.AddWithValue("$userId", user.Id.ToString("D"));
+            legacy.Parameters.AddWithValue("$dayStart", time.Unix - time.Unix % 86_400L);
+            Assert.Equal(0L, (long)legacy.ExecuteScalar()!);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    /// <summary>日配额只按「第一次评分」计数:同一张卡今天复习两次仍只占一个名额。</summary>
+    [Fact]
+    public void Store_CountIntroducedSinceUsesTheFirstReview()
+    {
+        var time = new ManualTimeProvider(1_800_000_000L);
+        var (database, store, dispose) = NewStore(time);
+        try
+        {
+            var user = new AccountStore(database).CreateUser("first@example.com", "hash", PlanTier.Standard);
+            var a = store.Create(user.Id, NoteKind.Word, "alpha", "甲", "en", "zh", "", "");
+            var b = store.Create(user.Id, NoteKind.Word, "beta", "乙", "en", "zh", "", "");
+
+            store.SetReview(user.Id, a.Id, 1, time.Unix + 600, "forgot", time.Unix);
+            store.SetReview(user.Id, b.Id, 1, time.Unix + 600, "fuzzy", time.Unix);
+            // 同一张卡 60 秒后再复习一次:first_reviewed_at 不能被覆盖。
+            store.SetReview(user.Id, a.Id, 2, time.Unix + 86_400, "fuzzy", time.Unix + 60);
+
+            Assert.Equal(2, store.CountIntroducedSince(user.Id, time.Unix - 1));
+            Assert.Equal(0, store.CountIntroducedSince(user.Id, time.Unix + 30));
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    /// <summary>v101 迁移:旧的已评分卡把 reviewed_at 回填成 first_reviewed_at,
+    /// 否则它们下一次复习会被当成「今天首学」,白吃当天配额。</summary>
+    [Fact]
+    public void Migration_BackfillsFirstReviewedAtForExistingGradedCards()
+    {
+        var time = new ManualTimeProvider(1_800_000_000L);
+        var (database, store, dispose) = NewStore(time);
+        try
+        {
+            var user = new AccountStore(database).CreateUser("legacy@example.com", "hash", PlanTier.Standard);
+            var note = store.Create(user.Id, NoteKind.Word, "legacy", "遗留", "en", "zh", "", "");
+
+            using (var connection = database.Open())
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = """
+                    UPDATE notes SET stage = 2, reviewed_at = 123, first_reviewed_at = 0
+                    WHERE id = $id
+                    """;
+                command.Parameters.AddWithValue("$id", note.Id.ToString("D"));
+                command.ExecuteNonQuery();
+            }
+
+            database.Initialize();
+
+            using var verify = database.Open();
+            using var select = verify.CreateCommand();
+            select.CommandText = "SELECT first_reviewed_at FROM notes WHERE id = $id";
+            select.Parameters.AddWithValue("$id", note.Id.ToString("D"));
+            Assert.Equal(123L, (long)select.ExecuteScalar()!);
         }
         finally
         {
@@ -309,6 +462,7 @@ public class NotesReviewTests : IClassFixture<ServerFactory>
             Assert.Equal("INTEGER", columns["review_count"]);
             Assert.Equal("INTEGER", columns["lapses"]);
             Assert.Equal("INTEGER", columns["reviewed_at"]);
+            Assert.Equal("INTEGER", columns["first_reviewed_at"]);
 
             // 旧数据行变成一张未评分的卡,而不是一张坏卡。
             var store = new NoteStore(database);

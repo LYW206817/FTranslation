@@ -165,13 +165,15 @@ public static class NotesEndpoints
         var take = Math.Clamp(limit ?? DefaultQueueLimit, 1, 200);
 
         var due = store.ListDue(userId, database.NowUnix, take);
-        var fresh = store.ListFresh(userId, start, Math.Max(1, wantedNew));
-        var alreadyQueued = store.CountFreshSince(userId, start);
-        var quota = Math.Max(0, wantedNew - alreadyQueued);
+        // v101: 配额按「今天第一次评分」算，列表则包含所有未学的新卡（不按创建日期过滤）。
+        // 旧实现两者都按 created_at >= dayStart，跨天没学完的新卡会永久消失。
+        var introduced = store.CountIntroducedSince(userId, start);
+        var quota = Math.Max(0, wantedNew - introduced);
+        IReadOnlyList<NoteRecord> fresh = quota == 0 ? [] : store.ListFresh(userId, quota);
 
         return Results.Ok(new ReviewQueueResponse(
             due.Select(ToDto).ToList(),
-            fresh.Items.Select(ToDto).ToList(),
+            fresh.Select(ToDto).ToList(),
             due.Count,
             quota,
             take,

@@ -120,7 +120,7 @@ public sealed record NoteDeleted(bool Deleted);
 /// <summary>单词本的一页，外加上账号级总数，好让窗口显示数量。</summary>
 public sealed record NotePage(IReadOnlyList<Note> Items, int Total);
 
-/// <summary>一天的队列：按时间到期的，加上今日配额内的新卡。</summary>
+/// <summary>一天的队列：按时间到期的，加上当日配额内的新卡（没学完的会留到以后）。</summary>
 public sealed record ReviewQueue(
     IReadOnlyList<Note> Due,
     IReadOnlyList<Note> Fresh,

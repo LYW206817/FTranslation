@@ -20,6 +20,16 @@ public static class ReviewSchedule
 {
     public const int MaxStage = 7;
 
+    /// <summary>
+    /// 调用方本地日期的零点（unix 秒）。服务端不猜时区，新卡日配额按这个边界重置。
+    /// <para>
+    /// v101: 客户端原先用 <c>utcNow - utcNow % 86400</c>，UTC+8 用户的新卡配额实际在本地 08:00
+    /// 才重置，且 00:00–08:00 存的卡会在 08:00 后从队列里消失。
+    /// </para>
+    /// </summary>
+    public static long StartOfLocalDay(DateTimeOffset now) =>
+        new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset).ToUnixTimeSeconds();
+
     /// <summary>评分后等待的秒数，按结果阶段索引。索引 0 表示「从未评分」。</summary>
     public static readonly IReadOnlyList<long> IntervalsSeconds = new long[]
     {

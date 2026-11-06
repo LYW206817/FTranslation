@@ -11,16 +11,17 @@
 | [impl/IMPL-v21-40.md](impl/IMPL-v21-40.md) | v21–v40 | 320 |
 | [impl/IMPL-v41-60.md](impl/IMPL-v41-60.md) | v41–v60 | 772 |
 | [impl/IMPL-v61-80.md](impl/IMPL-v61-80.md) | v61–v80 | 851 |
-| [impl/IMPL-v81-100.md](impl/IMPL-v81-100.md) | v81–v100(当前最新一册) | 614 |
+| [impl/IMPL-v81-100.md](impl/IMPL-v81-100.md) | v81–v100 | 782 |
+| [impl/IMPL-v101-120.md](impl/IMPL-v101-120.md) | v101–v120(当前最新一册) | 50 |
 
 ## 怎么找东西
 
-- 看「最近改了什么」:打开最新一册的文末,现在是 [impl/IMPL-v81-100.md](impl/IMPL-v81-100.md)。
+- 看「最近改了什么」:打开最新一册的文末,现在是 [impl/IMPL-v101-120.md](impl/IMPL-v101-120.md)。
 - 按版本号定位:`grep -rn '^## v78' docs/impl/`。
 - 按关键词找坑:`grep -rn '剪贴板\|UIA\|DPI' docs/impl/`,命中后再读那一节。
 
 ## 新条目写到哪一册
 
-1. 落在编号区间包含新 `vN` 的那一册——现在 v100 写进 `impl/IMPL-v81-100.md`；v101 起新开 `impl/IMPL-v101-120.md`。
-2. 一册写满 20 个版本就新开下一册(下一个是 `IMPL-v101-120.md`),并在上面的表里加一行。
-3. 追加中文的踩坑照旧:若 bash heredoc 带中文报错,先用写文件工具落到 `publish/*.md`,再 `cat >> docs/impl/IMPL-v81-100.md`。
+1. 落在编号区间包含新 `vN` 的那一册——现在 v101 写进 `impl/IMPL-v101-120.md`；v121 起新开 `impl/IMPL-v121-140.md`。
+2. 一册写满 20 个版本就新开下一册(下一个是 `IMPL-v121-140.md`),并在上面的表里加一行。
+3. 追加中文的踩坑照旧:若 bash heredoc 带中文报错,先用写文件工具落到 `publish/*.md`,再 `cat >> docs/impl/IMPL-v101-120.md`。

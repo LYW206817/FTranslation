@@ -166,4 +166,30 @@ public class ReviewScheduleTests
             Assert.False(string.IsNullOrWhiteSpace(ReviewSchedule.Display(grade)));
         }
     }
+
+    /// <summary>v101: 日配额边界必须是调用方的本地零点,不是 UTC 零点。</summary>
+    [Fact]
+    public void StartOfLocalDay_UsesTheCallersOffset()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 7, 30, 0, TimeSpan.FromHours(8));
+
+        var localMidnight = ReviewSchedule.StartOfLocalDay(now);
+        var expected = new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.FromHours(8)).ToUnixTimeSeconds();
+        Assert.Equal(expected, localMidnight);
+
+        // 同一时刻的 UTC 零点是前一天 08:00（本地），两者相差 16 小时。
+        var utcMidnight = now.ToUnixTimeSeconds() - now.ToUnixTimeSeconds() % 86_400L;
+        Assert.Equal(16 * 3600L, localMidnight - utcMidnight);
+    }
+
+    [Fact]
+    public void StartOfLocalDay_HandlesNegativeOffsets()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 22, 0, 0, TimeSpan.FromHours(-5));
+
+        var expected = new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
+        Assert.Equal(expected, ReviewSchedule.StartOfLocalDay(now));
+        Assert.NotEqual(now.ToUnixTimeSeconds() - now.ToUnixTimeSeconds() % 86_400L,
+            ReviewSchedule.StartOfLocalDay(now));
+    }
 }
