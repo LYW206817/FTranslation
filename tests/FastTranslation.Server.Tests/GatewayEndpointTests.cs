@@ -121,6 +121,32 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     }
 
     [Fact]
+    public async Task PlusChat_BillsFlashEquivalentChars()
+    {
+        var client = await SignedInClientAsync(PlanTier.Light);
+        var before = await ReadUsageAsync(client);
+
+        (await ChatAsync(client, 100, model: "qwen-mt-plus")).EnsureSuccessStatusCode();
+
+        var after = await ReadUsageAsync(client);
+        Assert.Equal(before.UsedMonthlyChars + 270, after.UsedMonthlyChars);
+    }
+
+    [Fact]
+    public async Task PlusPrecheck_ReservesTheMultipliedQuota_WhileFlashStillFits()
+    {
+        // 只改记账不改预检的话,plus 能把剩余额度透支掉:闸门按 100 放行,账上却记 270。
+        // 这里把日额度压到剩 200,同一个额度下 plus(需 270)必须被拒、flash(需 100)必须能过。
+        var client = await SignedInClientAsync(PlanTier.Free);
+        (await ChatAsync(client, 1800)).EnsureSuccessStatusCode();
+
+        var plus = await ChatAsync(client, 100, model: "qwen-mt-plus");
+        Assert.Equal(HttpStatusCode.TooManyRequests, plus.StatusCode);
+
+        (await ChatAsync(client, 100)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Chat_UsesReportedUsageWhenUpstreamSuppliesIt()
     {
         var client = await SignedInClientAsync(PlanTier.Light);

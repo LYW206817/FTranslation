@@ -61,7 +61,7 @@ public static class GatewayEndpoints
             return Fail(StatusCodes.Status413PayloadTooLarge, "text_too_long");
         }
 
-        if (Intent(context, principal, store, database, gateway, limiter, chars) is { } refusal)
+        if (Intent(context, principal, store, database, gateway, limiter, Pricing.QuotaChars(model, chars)) is { } refusal)
         {
             return refusal;
         }
@@ -83,10 +83,13 @@ public static class GatewayEndpoints
             tokensOut = reportedOut;
         }
 
+        // v97: 额度记「flash 等价字符」而不是原始字符——plus 的真实成本是 flash 的 2.68 倍，
+        // 按 1:1 记会让用户用低价档买走高价成本。预检与记账必须用同一个折算值，
+        // 否则闸门按 100 放行、账上记 270，剩余额度能被 plus 直接透支掉。
         store.RecordUsage(
             userId,
             deviceId,
-            chars,
+            Pricing.QuotaChars(model, chars),
             model,
             (int)Math.Min(tokensIn, int.MaxValue),
             (int)Math.Min(tokensOut, int.MaxValue),

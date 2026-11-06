@@ -27,7 +27,7 @@
         "WorkspaceId": "__WORKSPACE_ID__",
         "Model": "qwen-audio-3.1-asr-flash-streaming",
         "QuotaCharsPerSecond": 20,
-        "MinSeconds": 10,
+        "MinSeconds": 5,
         "MaxSecondsPerSession": 1800,
         "MaxConcurrentSessionsPerUser": 1,
         "DailyBudgetMicros": 2000000
