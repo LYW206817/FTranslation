@@ -24,7 +24,7 @@
             </StackPanel>
             <TextBlock x:Name="QuotaText" Style="{StaticResource Hint}"/>
             <TextBlock Style="{StaticResource Hint}"
-                       Text="开启后，电脑里正在播放的声音（会议、视频、通话）会被实时转成字幕并翻译。采集的是系统回环声音，不会上传音频，只有识别出的文字会送去翻译。"/>
+                       Text="开启后，电脑里正在播放的声音（会议、视频、通话）会被实时转成字幕并翻译。采集的是系统回环声音；音频会经服务端转发给识别接口，服务端不保存音频，只记录本次会话的用量。"/>
           </StackPanel>
         </Border>
 
