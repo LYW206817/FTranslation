@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using FastTranslation.Core.Lexicon;
 
 namespace FastTranslation.Core;
 
@@ -11,12 +12,18 @@ public sealed class TranslationService
     private const int CacheCapacity = 500;
 
     private readonly ITranslationProvider _provider;
+    private readonly ILexicon? _lexicon;
     private readonly ConcurrentDictionary<string, TranslationResult> _cache = new();
     private readonly object _cacheEvictionLock = new();
     private readonly LinkedList<string> _cacheOrder = new();
     private CancellationTokenSource? _inFlight;
 
-    public TranslationService(ITranslationProvider provider) => _provider = provider;
+    /// <param name="lexicon">本地词库；缺失时所有输入都走在线翻译。</param>
+    public TranslationService(ITranslationProvider provider, ILexicon? lexicon = null)
+    {
+        _provider = provider;
+        _lexicon = lexicon;
+    }
 
     public event Action<TranslationResult>? RequestCompleted;
 
@@ -44,6 +51,39 @@ public sealed class TranslationService
         {
             TouchCacheKey(cacheKey);
             return Task.FromResult(cached with { FromCache = true });
+        }
+
+        if (external.IsCancellationRequested)
+        {
+            return Task.FromResult(new TranslationResult(text, string.Empty, source, target, settings.Model, 0, false)
+            { Error = TranslationError.Cancelled() });
+        }
+
+        // 单个英文词先查本地词库：词性与多义项是 MT 模型给不出的，本地命中还不需要
+        // 网络、不消耗额度。只有「英→中」才成立——ECDICT 是英汉词典，反向查不到。
+        if (_lexicon is not null
+            && target == LanguageCatalog.ChineseCode
+            && source == LanguageCatalog.EnglishCode
+            && WordShape.TryNormalize(normalized) is { } headword)
+        {
+            var lookupStarted = Environment.TickCount64;
+            if (_lexicon.TryLookup(headword, out var dictionary))
+            {
+                var local = new TranslationResult(
+                    normalized, dictionary.Summary, source, target,
+                    Lexicon.DictionaryEntry.SourceName, Environment.TickCount64 - lookupStarted, FromCache: false)
+                {
+                    Dictionary = dictionary,
+                };
+                // 词库命中不建立新的 in-flight，但上一笔在线请求仍要按「最后一次输入赢」
+                // 取消；否则它晚到的译文会盖掉这张词典卡。
+                var superseded = Interlocked.Exchange(ref _inFlight, null);
+                try { superseded?.Cancel(); } catch { }
+                _cache[cacheKey] = local;
+                EvictIfNeeded(cacheKey);
+                RequestCompleted?.Invoke(local);
+                return Task.FromResult(local);
+            }
         }
 
         var previous = Interlocked.Exchange(ref _inFlight, new CancellationTokenSource());

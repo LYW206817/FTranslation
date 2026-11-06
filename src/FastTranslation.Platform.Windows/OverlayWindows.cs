@@ -9,6 +9,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using FastTranslation.Core;
+using FastTranslation.Core.Lexicon;
 
 namespace FastTranslation.Platform.Windows;
 
@@ -403,6 +404,7 @@ public sealed class ResultCardWindow : IDisposable
     private readonly Ellipse _spinner;
     private readonly DockPanel _header;
     private readonly DockPanel _footer;
+    private readonly StackPanel _dictionaryPanel;
     private readonly RotateTransform _spinnerRotate = new();
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
     private System.Windows.DpiScale _dpi = new(1.0, 1.0);
@@ -443,6 +445,8 @@ public sealed class ResultCardWindow : IDisposable
             // 网关回落时会在这里多一句“这次用了你自己的 Key”，420 宽度下必须换行才不截断
             TextWrapping = TextWrapping.Wrap,
         };
+        // 词典块替代译文行显示：两者同时出现时同一个词会重复一遍，卡片也过高。
+        _dictionaryPanel = new StackPanel { Visibility = Visibility.Collapsed };
 
         _spinner = new Ellipse
         {
@@ -505,7 +509,7 @@ public sealed class ResultCardWindow : IDisposable
         footer.Children.Add(actions);
         footer.Children.Add(_statusBlock);
 
-        var content = new StackPanel { Children = { header, body, footer } };
+        var content = new StackPanel { Children = { header, body, _dictionaryPanel, footer } };
 
         var root = new Border
         {
@@ -586,6 +590,8 @@ public sealed class ResultCardWindow : IDisposable
     public void ShowLoading(string previewText, CapturedSelection selection)
     {
         RestoreFullChrome();
+        _dictionaryPanel.Visibility = Visibility.Collapsed;
+        _targetBlock.Visibility = Visibility.Visible;
         _sourceBlock.Text = TrimForDisplay(previewText, 120);
         _targetBlock.Text = "正在翻译…";
         _targetBlock.Foreground = FtTheme.TextSecondary;
@@ -608,10 +614,21 @@ public sealed class ResultCardWindow : IDisposable
         _saveButton.IsEnabled = true;
         _saveButton.Visibility = result.Succeeded ? Visibility.Visible : Visibility.Collapsed;
         _sourceBlock.Text = TrimForDisplay(result.RequestText, 160);
+        _dictionaryPanel.Visibility = Visibility.Collapsed;
+        _targetBlock.Visibility = Visibility.Visible;
         if (result.Succeeded)
         {
             _targetBlock.Foreground = FtTheme.TextPrimary;
-            _targetBlock.Text = result.TranslatedText;
+            if (result.Dictionary is { Senses.Count: > 0 } dictionary)
+            {
+                RenderDictionary(dictionary);
+                _dictionaryPanel.Visibility = Visibility.Visible;
+                _targetBlock.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                _targetBlock.Text = result.TranslatedText;
+            }
             _statusBlock.Text = StatusLine(result);
             var writable = selection.IsWritable;
             _replaceButton.Visibility = writable ? Visibility.Visible : Visibility.Collapsed;
@@ -686,6 +703,8 @@ public sealed class ResultCardWindow : IDisposable
         _sourceBlock.Visibility = Visibility.Collapsed;
         _header.Margin = new Thickness(0);
         _footer.Margin = new Thickness(0);
+        _dictionaryPanel.Visibility = Visibility.Collapsed;
+        _targetBlock.Visibility = Visibility.Visible;
         _targetBlock.Foreground = FtTheme.Notice;
         _targetBlock.Text = message;
         _statusBlock.Text = string.Empty;
@@ -721,6 +740,70 @@ public sealed class ResultCardWindow : IDisposable
     {
         _saveButton.Content = "已保存";
         _saveButton.IsEnabled = false;
+    }
+
+    /// <summary>
+    /// 词典块：音标一行，词性 + 释义若干行，最后是词形与考试标签。
+    /// 义项最多展示 4 组、每组 6 条——完整词条能到十几条，全放会把卡片撑出屏幕，
+    /// 而划词场景要的是「一眼看懂」。
+    /// </summary>
+    private void RenderDictionary(DictionaryEntry entry)
+    {
+        _dictionaryPanel.Children.Clear();
+        if (!string.IsNullOrWhiteSpace(entry.Phonetic))
+        {
+            _dictionaryPanel.Children.Add(new TextBlock
+            {
+                Text = entry.Phonetic,
+                FontSize = 12,
+                Foreground = FtTheme.TextSecondary,
+                Margin = new Thickness(0, -2, 0, 6),
+            });
+        }
+
+        foreach (var sense in entry.Senses.Take(4))
+        {
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var pos = new TextBlock
+            {
+                Text = sense.PartOfSpeech.Length == 0 ? "·" : sense.PartOfSpeech,
+                FontSize = 12,
+                FontStyle = FontStyles.Italic,
+                Foreground = FtTheme.Brand,
+                Margin = new Thickness(0, 2, 8, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            var definitions = new TextBlock
+            {
+                Text = string.Join("；", sense.Definitions.Take(6)),
+                FontSize = 13,
+                Foreground = FtTheme.TextPrimary,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 20,
+            };
+            Grid.SetColumn(definitions, 1);
+            row.Children.Add(pos);
+            row.Children.Add(definitions);
+            _dictionaryPanel.Children.Add(row);
+        }
+
+        var meta = new List<string>();
+        if (entry.Forms.Count > 0) meta.Add("变形 " + string.Join(" · ", entry.Forms.Take(4)));
+        if (entry.Tags.Count > 0) meta.Add("词表 " + string.Join(" · ", entry.Tags));
+        if (meta.Count > 0)
+        {
+            _dictionaryPanel.Children.Add(new TextBlock
+            {
+                Text = string.Join("    ", meta),
+                FontSize = 11,
+                Foreground = FtTheme.TextMuted,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
     }
 
     /// <summary>模型 · 耗时 · 缓存 · tokens，后面再跟上组合 provider 想说的那一句。</summary>

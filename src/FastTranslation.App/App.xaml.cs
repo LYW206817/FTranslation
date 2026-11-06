@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -11,6 +12,7 @@ using FastTranslation.Core.Speech;
 using FastTranslation.App.Speech;
 using FastTranslation.Core.Account;
 using FastTranslation.Core.Documents;
+using FastTranslation.Core.Lexicon;
 using FastTranslation.Core.Notes;
 using FastTranslation.Platform.Windows;
 using FastTranslation.Providers.QwenMt;
@@ -140,7 +142,13 @@ public partial class App : Application, IResultPresenter
 
         // 网关与账号共用主机；单独一个 HttpClient，因为它的超时要盖住服务端自己的上游超时
         _gatewayHttp = CreateApiHttpClient(TimeSpan.FromSeconds(45), GatewayBaseUrl());
-        _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider));
+
+        // 本地词库缺失（旧安装包、手工删文件）不是错误：只是单英文词回到在线翻译，
+        // 所以这里按可选依赖处理，静默降级。索引约 5.8 万条，读取在启动阶段完成，
+        // 免得第一次划词时把索引加载时间算进用户等待里。
+        var lexicon = EcdictLexicon.TryLoad(Path.Combine(AppContext.BaseDirectory, "dictionary", "ecdict.ftd"));
+        if (lexicon is null) Trace("dictionary: ecdict.ftd not found, word lookup falls back to online translation");
+        _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider), lexicon);
 
         // v72: 文档翻译单独一条 provider 链，**不经过 TranslationService**——那个服务每次新请求会
         // 取消上一次在途请求（划词时"最后一次输入赢"），而文档是一份文档几十段并发在飞，
@@ -544,6 +552,27 @@ public partial class App : Application, IResultPresenter
                 ApplyAppearance(ThemePalette.DarkSetting, ThemePalette.ElectroSetting);
             };
             switchTimer.Start();
+        }
+        else if (uitest is "wordcard")
+        {
+            // FT_UITEST=wordcard -> 词典卡的截图入口。走真实的 TranslateAsync，
+            // 顺带验证「单英文词命中本地词库」这条链路；手搓 TranslationResult 证明不了它。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+            uiTimer.Tick += async (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    var origin = CapturedSelection.Empty(
+                        FastTranslation.Platform.Windows.WindowsSelectionCapture.CurrentCursorPoint());
+                    ShowLoading("charge", origin);
+                    var result = await _translation.TranslateAsync("charge", _settings);
+                    Trace($"wordcard: ok={result.Succeeded} model={result.Model} dictionary={result.Dictionary is not null}");
+                    ShowCard(result, origin);
+                }
+                catch (Exception ex) { Trace($"wordcard: {ex}"); }
+            };
+            uiTimer.Start();
         }
         else if (uitest is "translate")
         {

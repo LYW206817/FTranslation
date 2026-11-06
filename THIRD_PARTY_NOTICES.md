@@ -12,6 +12,12 @@ Fast Translation — 第三方声明
 | Microsoft.Data.Sqlite | MIT | 服务端 SQLite 访问(底层 SQLite 为公有领域) |
 | xunit / xunit.runner.visualstudio / Microsoft.NET.Test.Sdk / Microsoft.AspNetCore.Mvc.Testing | Apache-2.0 / MIT | 仅测试项目,不随产品分发 |
 
+随产品分发的数据:
+
+| 数据 | 许可 | 用途 |
+|---|---|---|
+| [ECDICT](https://github.com/skywind3000/ECDICT) | MIT,Copyright (c) 2025 Linwei | 本地英汉词典(`assets/dictionary/ecdict.ftd`)。只保留考试大纲词与有词频的词条,由 `tools/dictionary/build-ecdict.py` 生成;原始 CSV 不随仓库分发 |
+
 构建与分发使用:
 
 - Inno Setup — 安装包编译器,Inno Setup License(可免费用于商业与非商业分发)

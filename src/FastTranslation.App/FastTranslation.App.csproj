@@ -21,6 +21,14 @@
     </Resource>
   </ItemGroup>
   <ItemGroup>
+    <!-- 本地词典（ECDICT 裁剪，MIT）。由 tools/dictionary/build-ecdict.py 生成；
+         它是运行时数据不是编译输入，所以按 Content 复制到输出目录。 -->
+    <Content Include="..\..\assets\dictionary\ecdict.ftd">
+      <Link>dictionary\ecdict.ftd</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\FastTranslation.Platform.Windows\FastTranslation.Platform.Windows.csproj" />
     <ProjectReference Include="..\FastTranslation.Providers.QwenMt\FastTranslation.Providers.QwenMt.csproj" />
   </ItemGroup>

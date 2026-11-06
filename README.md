@@ -39,6 +39,12 @@
 
 写回前会做三重校验：目标窗口句柄仍是取词时那个、锚点元素的 UIA RuntimeId 没变、归一化后的选区文本仍与捕获时一致。任何一项对不上就降级成「已复制」并提示，绝不写错地方。
 
+选中**单个英文单词**时，卡片显示的是词典样式：音标、按词性分组的义项、词形变化与考试标签，数据来自随安装包分发的本地词库（ECDICT），离线查询、不消耗额度；句子和短语仍然走在线翻译。
+
+<p align="center">
+  <img src="assets/screenshots/result-card-word.png" width="60%" alt="单英文词的词典卡：音标、词性与多义项">
+</p>
+
 <p align="center">
   <img src="assets/screenshots/result-card-light.png" width="46%" alt="翻译结果卡 · 浅色">
   <img src="assets/screenshots/result-card-dark.png" width="46%" alt="翻译结果卡 · 深色">
@@ -223,7 +229,7 @@ server/
 site/                                产品介绍静态单页（纯 HTML/CSS，无构建步骤）
 deploy/                              一台 ECS 的部署文件（systemd + Caddy）
 tests/
-  FastTranslation.Core.Tests/              318 个测试（设置、复习调度、文档拆段、额度、语音口径）
+  FastTranslation.Core.Tests/              347 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）
   FastTranslation.Platform.Windows.Tests/  107 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
   FastTranslation.Providers.QwenMt.Tests/   95 个测试（本地假 HTTP 服务）
   FastTranslation.Server.Tests/            233 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
@@ -236,7 +242,7 @@ docs/
   superpowers/specs/   设计规格
 ```
 
-全部 753 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
+全部 782 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
 
 架构上有一条硬约束：**Core 不引用 Win32 也不引用 WPF**，所有平台能力走 `Interfaces.cs` 里的接口，因此 Core 的测试可以在任何机器上跑。
 

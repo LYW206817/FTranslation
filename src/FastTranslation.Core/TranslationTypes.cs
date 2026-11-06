@@ -1,3 +1,5 @@
+using FastTranslation.Core.Lexicon;
+
 namespace FastTranslation.Core;
 
 public enum TranslationErrorCode
@@ -63,6 +65,12 @@ public sealed record TranslationResult(
     /// 不需要解释时 provider 留 null。
     /// </summary>
     public string? Notice { get; init; }
+
+    /// <summary>
+    /// 本地词库命中时的单词卡。只有单英文词且目标语为中文时才会填充；
+    /// 在线翻译结果为 null，界面据此在「一行译文」和「词典块」之间切换。
+    /// </summary>
+    public DictionaryEntry? Dictionary { get; init; }
 
     public bool Succeeded => Error is null;
 }
