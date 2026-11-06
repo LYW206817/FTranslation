@@ -158,6 +158,43 @@ public sealed class SpeechTranscriptServiceTests
         Assert.Equal("", svc.Snapshot()[1].Target);
     }
 
+    [Fact]
+    public async Task The_debounce_timer_fires_on_its_own_after_a_final_sentence()
+    {
+        // v94 回归：定时器曾在构造时就起一次性倒计时，会话开始时 _pending 还空着，那唯一一次
+        // 触发直接 return，之后再也没有第二次——真实会话里译文永远不回填。这里完全不碰
+        // DrainDebounce，只等定时器自己响，正是上面那种写法抓不到的路径。
+        var svc = new SpeechTranscriptService((_, _) => Task.FromResult("你好，世界。"), Options(debounceMs: 30));
+        svc.SubmitSentence(1, "你好，世界", final: true);
+
+        await WaitUntilAsync(() => svc.Snapshot()[0].Target.Length > 0);
+        Assert.Equal("你好，世界。", svc.Snapshot()[0].Target);
+        svc.Dispose();
+    }
+
+    [Fact]
+    public async Task A_later_batch_still_gets_translated_after_the_first_one()
+    {
+        // 一次性闹钟的第二种死法：第一批侥幸赶上了，第二批照样堆在队列里没人管。
+        int calls = 0;
+        var svc = new SpeechTranscriptService(
+            (text, _) =>
+            {
+                calls++;
+                return Task.FromResult(text + "→");
+            },
+            Options(debounceMs: 30));
+
+        svc.SubmitSentence(1, "第一句", final: true);
+        await WaitUntilAsync(() => calls >= 1);
+        Assert.Equal("第一句→", svc.Snapshot()[0].Target);
+
+        svc.SubmitSentence(2, "第二句", final: true);
+        await WaitUntilAsync(() => calls >= 2);
+        Assert.Equal("第二句→", svc.Snapshot()[1].Target);
+        svc.Dispose();
+    }
+
     /// <summary>RunBatchAsync 是 fire-and-forget,断言前轮询到它跑完,不赌调度时机。</summary>
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

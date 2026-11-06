@@ -69,12 +69,14 @@
         </ItemsControl>
       </ScrollViewer>
 
-      <!-- 底部：结束 / 清空 -->
+      <!-- 底部：结束 / 暂停继续 / 清空 -->
       <Border Grid.Row="2" Padding="14,8,14,12" BorderBrush="{DynamicResource HairBrush}"
               BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal">
           <Button x:Name="StopButton" Content="结束" Style="{StaticResource PrimaryButton}"
                   Padding="18,5" Click="Stop_Click"/>
+          <!-- 暂停↔继续 一键双语义，和 StopButton 的 结束↔关闭 同一先例 -->
+          <Button x:Name="PauseButton" Content="暂停" Margin="8,0,0,0" Padding="18,5" Click="Pause_Click"/>
           <Button x:Name="ClearButton" Content="清空" Margin="8,0,0,0" Padding="14,5" Click="Clear_Click"/>
         </StackPanel>
       </Border>

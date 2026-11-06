@@ -51,6 +51,9 @@ public partial class MainWindow : Window
     /// <summary>截图取词归 App 所有；首页只是发起请求。</summary>
     public event Action? ScreenshotRequested;
 
+    /// <summary>语音会话的额度预检、采集与浮窗都在 App 组装，页面只发起请求（与截图同分工）。</summary>
+    public event Action? SpeechRequested;
+
     /// <summary>App 的 FT_UITEST 钩子会读首页的控件；Build() 保证在显示前已就绪。</summary>
     public MainPage PageHome => Build(MainPageId.Home) as MainPage ?? throw new InvalidOperationException("Home is a MainPage.");
 
@@ -236,8 +239,10 @@ public partial class MainWindow : Window
     private SpeechPage Speech()
     {
         if (_speechPage is not null) return _speechPage;
-        _speechPage = new SpeechPage(_settings, _settingsService);
-        return _speechPage;
+        var page = new SpeechPage(_settings, _settingsService);
+        page.SpeechStartRequested += () => SpeechRequested?.Invoke();
+        _speechPage = page;
+        return page;
     }
 
     // v72: 文档作业的三个回调从 App 一路转到这里，再由页面落到控件上。转一层是为了让
