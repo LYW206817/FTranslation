@@ -24,8 +24,9 @@ server/**/data/
 *.db-wal
 *.db-shm
 
-# Qoder IDE 生成的仓库快照，属于本地工具产物
+# Qoder IDE 生成的仓库快照与对话产物，属于本地工具产物
 /.qoder/
+/.qoder-credits/
 
 # 内部设计 / 需求 / 商业文档：只留本机，不随开源仓库发布
 .agents/

@@ -4,7 +4,7 @@
 
 ## 前置事实
 
-- 主仓库 `LYW206817/FTranslation` 是**私有**的;对外只通过更新通道仓库 `LYW206817/FTranslation-Updates`(公开,含 GitHub Pages 的 `version.json`)流通。
+- 主仓库 `LYW206817/FTranslation` 与更新通道仓库 `LYW206817/FTranslation-Updates` 都是**公开**的(2026-11-02 起);对外下载仍只走更新通道仓库(含 GitHub Pages 的 `version.json`)。
 - `github.com` 直连通常不可用,每次发版都要现测;下载与清单靠代理镜像。
 - `publish/` 整个目录被 gitignore:里面被引用的脚本(`poll-manifest.sh`、`poll-manifest.ps1`、`chmread.py`)与 `publish/chm6` 都只存在于本机,换机器要重新准备。
 
