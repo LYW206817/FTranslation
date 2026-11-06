@@ -17,7 +17,7 @@ Windows 桌面划词翻译工具 + 一个自建后端。选中文本 → 浮动�
 - `site/` — 产品介绍静态单页(纯 HTML/CSS,没有构建步骤)
 - `deploy/` — 一台 ECS 的部署文件(systemd + Caddy + SQLite),用法见 `deploy/README.md`
 - `tests/` — 四个 xunit 项目(Core / Platform.Windows / Providers.QwenMt / Server)
-- `docs/IMPL.md` — 按版本号累加的实现记录(以文末最新的 `## vN` 小节为准);`docs/superpowers/specs/` — 可公开的设计规格;`docs/playbooks/` — 低频操作的 runbook
+- `docs/IMPL.md` — 实现记录的**索引**(分册在 `docs/impl/IMPL-vN-M.md`,每 20 个版本一册;新条目写进编号区间匹配的那一册);`docs/superpowers/specs/` — 可公开的设计规格;`docs/playbooks/` — 低频操作的 runbook
 - `.agents/` — 交付级设计 / 问题 / 需求文档(**只留本机、不提交**,含定价与成本等内部信息,见 `.gitignore`)
 - `installer/` — Inno Setup 脚本与简中语言包;`tools/qa/` — 本机验证脚本;`publish/` — 构建产物与临时探针(**整个目录在 .gitignore 里;里面被引用的脚本只存在于本机**)
 
@@ -52,7 +52,23 @@ dotnet build FastTranslation.slnx -c Release   # 必须 0 警告 0 错误(TreatW
 dotnet test                                    # 4 个项目必须全绿,用例数与本机输出为准
 dotnet test tests/FastTranslation.Server.Tests # 只跑服务端
 dotnet run --project server/FastTranslation.Server   # 本地起服务;Development 下缺 SigningKey 会用随机 key
+
+# 命名规范(_camelCase 私有字段、static 与常量 Pascal)只有这个通道求值:
+# dotnet build 不跑 IDE1006 —— 实测 EnforceCodeStyleInBuild 打开后一条都不出。
+# 它也不会自动修这些命名,只报位置;要收就手工改。
+dotnet format style FastTranslation.slnx --diagnostics IDE1006 --severity info --verify-no-changes
 ```
+
+## 公开仓的内容披露
+
+本仓库是公开的(AGPL-3.0),推上去的一切都对外可见:源码、测试与夹具、注释与 `///` 文档注释、分支名、提交说明、以及贴进对话和文档的截图。动手前先按这条筛一遍。
+
+- **派生不等于合成**:把账号、邮箱、域名、订单号换掉,正文、错别字、错误码、事件顺序仍然是当事人的,仍然算泄露。从真实素材改出来的就是派生物,改得再多也是。
+- **要「读起来像真的」的样例数据,凭空写,不要抄**:先列出这个用例必须覆盖哪些行为(哪个字段为空、返回哪个错误码、走哪条降级路径),然后**合上真实素材**照清单编。域名用 `example.com`,标识编造,token 用一眼假的。真实联调记录留在 `.agents/`,不搬进 `tests/`。
+- **不要声称没核实的来源**:提交说明或 PR 里写「新写的」「手工复现的」是事实性断言,reviewer 会当真。拿不准就拿原文比对,**连续 40 个字符以上重合即算派生**。
+- 截图是硬门槛(见「完成标准」第 2 条),但截图里不得出现真实账号、邮箱、手机号、套餐余额、已验证的 API Key 片段、服务器上的真实用户数据。用测试账号,或打码并在验证说明里写清打了什么。
+- 不写具体运营规模与用量(设备数、某用户字符量、真实并发),除非该数字已在公开渠道可引用。
+- 定价、成本、防刷细则只在 `.agents/` 与服务器配置里;`site/`、`docs/`、提交说明只写用户能理解的事实。
 
 本仓库**没有 CI**:构建、测试、截图都必须在本机跑出来,并把输出贴进验证记录。
 
@@ -176,8 +192,8 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 踩过的坑(省时间用)
 
-- **改代码前先看 `docs/IMPL.md`**:同一个坑可能已经踩过并写在那里。文件已 1800 多行(最新一节是 `## v71`),按关键词 grep,再看最近几节,不要从头读。
-- `docs/IMPL.md` 追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/IMPL.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
+- **改代码前先看实现记录**(`docs/impl/`,入口是 `docs/IMPL.md` 的索引):同一个坑可能已经踩过并写在那里。已按每 20 版一册拆开(2026-11-03 拆,单册 300–850 行,最新一册 `IMPL-v81-100.md`),按关键词 `grep -rn '剪贴板' docs/impl/` 定位,再看最近几节,不要从头读。
+- 往分册追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/impl/IMPL-v81-100.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
 - PowerShell 5.1 读**无 BOM** 的 UTF-8 脚本 + 中文注释 → 按 GBK 解码报错;新脚本存成带 BOM 的 UTF-8,或干脆 ASCII-only(`tools/qa` 现状 69 个 `.ps1` 里 34 带 BOM、35 不带,唯一「无 BOM 且含中文」的是 `shot-image-window.ps1`——坑是真的,只是历史脚本没全守)。输出中文前设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`。
 - `cmd /c powershell -Command` 里的 `$_` 会被 cmd 的引号处理吃掉(MSYS2 bash 里单引号内联是正常的) → 先写 `.ps1` 再 `-File`。
 - `Add-Type` 的 P/Invoke 结构体大小必须精确(x64 `INPUT` = 40 字节,多两个 `int pad` 会让 `SendInput` 返回 0);`Add-Type` 用 `-Namespace '' -Name 'X'`。
@@ -187,11 +203,11 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 一次改动算完成,需要同时满足:
 
-1. `dotnet build` 0 警告 0 错误;`dotnet test` 全绿(新增行为带新测试)。
+1. `dotnet build` 0 警告 0 错误;`dotnet test` 全绿(新增行为带新测试);命名不新增 IDE1006 命中(`dotnet build` 查不到命名违规,必须跑「常用命令」里那条 format;存量与已知误报见 `.editorconfig` 注释)。
 2. 桌面端界面 / 安装器改动有截图或像素证据,并说明取样位置;`site/` 改动同样给截图(改前改后各一张)。
 3. 服务端改动:`tests/FastTranslation.Server.Tests` 必绿;不提交 `data/`、`*.db` 与生产配置。
 4. `deploy/` 改动:所有 shell 脚本 `bash -n` 通过;Caddyfile 用 `caddy fmt` / `caddy adapt` 验证(装有 caddy 时)。
-5. `docs/IMPL.md` 追加对应 `vN` 小节:为什么这样改、验证数据、残留风险。
+5. 实现记录追加对应 `vN` 小节(写进 `docs/impl/` 里编号区间匹配的那一册,规则见 `docs/IMPL.md`):为什么这样改、验证数据、残留风险。
 6. 变更已提交并 `git push origin master:main`;需要发布时按 `docs/playbooks/release-and-installer.md` 走完,并核对 `state: uploaded` 与 digest。
 7. 临时文件(令牌、探针产物、生成的 json)清理干净,`git status --short` 里没有意外文件。
 8. 回复末尾按「给我的注释回报」附一段:本次新增的核心逻辑/踩坑注释,以及没做到规范的地方(明说原因)。
@@ -206,6 +222,18 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 5. 文件名 `{需求日期}-{需求描述}-{输出类型}.{扩展名}`,例如 `2023-05-01-新增固定域开关-设计文档.md`。
 6. 文本文件用 UTF-8;PowerShell 脚本按上面「踩坑」存成带 BOM 的 UTF-8。
 7. 除非用户指明,不写独立的总结报告;`docs/IMPL.md` 是实现记录,属于必须写的那类。
+
+## AI 协作边界
+
+上面「密钥与令牌」管的是凭证不外泄,这一节管**对外动作**——凡是别的用户会看见的,都不算本地操作。
+
+- **不要把 AI 生成的正文直接发进 issue 或 PR 的讨论区**。要发,先把内容交给用户过一遍,由他决定发不发、怎么发;讨论区是人和人的对话。
+- **不要自主开 issue、开 PR、加评论标记、关闭或标签他人的 issue**。即使用户说「处理一下」,对外动作仍要单独确认。
+- AI 占比高的提交,在提交说明末尾加一行 trailer 标明工具,例如 `Assisted-by: Qoder`,与 `docs/impl/` 里那节的记录对得上。
+- **已经推送过的提交不要 amend / squash / rebase**:用户按提交历史 review,并对比「上次 review 之后改了什么」,改历史等于毁掉这个对照。要修就补一笔新提交。
+- 改动跨公开与内部两边时(典型:`Pricing.cs` 与 `.agents/` 里的成本记录),公开那一侧只按「公开仓的内容披露」筛过的写法落地,不要因为内部文档里已经写着具体数字就照搬过去。
+- 上游缺陷不静默绕过:怀疑是第三方(百炼端点、镜像源、UIA 行为、Inno)的问题时,先定位并把结论报告给用户,**未经用户同意不在本仓埋绕过**。镜像源取舍按实测,见「自动更新的实现要点」。
+- 没能跑成的验证要列出来。本仓库没有 CI,所有验证都在本机手工执行,漏跑不报错只留隐患 —— 交付时明说哪些检查没做、为什么没做。
 
 ## 提交与合并请求
 

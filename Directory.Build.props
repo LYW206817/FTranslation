@@ -10,5 +10,10 @@
          任何 ComboBox 模板都中招，Fluent 或 Aero2 都一样）。v15 的根因。 -->
     <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <!-- 让 .editorconfig 里的风格规则参与构建（配合上面的 TreatWarningsAsErrors）。
+         只有实测 0 命中的规则才设成 warning：大括号那条有 1470 处现存违规，
+         只能留 suggestion，否则整解决方案立刻编不过。
+         命名规则（IDE1006）不走这个通道，得用 dotnet format 查——见 AGENTS.md。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 </Project>

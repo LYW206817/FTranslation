@@ -1,0 +1,86 @@
+root = true
+
+# 行尾与编码刻意对齐 .gitattributes：core.autocrlf=true，工作树 CRLF、仓内 LF。
+# deploy/** 必须保持 LF —— scp 原样拷贝工作树，bash 会拒绝 CRLF 结尾的 shebang。
+[*]
+charset = utf-8
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[deploy/**]
+end_of_line = lf
+
+# PowerShell 5.1 会把无 BOM 的 UTF-8 按 GBK 解码，带中文注释的脚本直接报错
+# （AGENTS.md「踩过的坑」）。让编辑器按 BOM 保存新脚本；历史脚本不会被自动转换。
+[*.{ps1,psm1,psd1}]
+charset = utf-8-bom
+
+# Markdown 里行尾两个空格是硬换行，裁掉会改排版
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+[*.{csproj,props,targets,slnx,json,yml,yaml,xaml}]
+indent_size = 2
+
+[*.cs]
+# ===== 在 dotnet build 通道里实测有效、且当前 0 命中的规则 =====
+# 缺访问修饰符、用 is null 而非 ReferenceEquals：全解决方案实测各 0 处违规，
+# 所以敢设成 warning —— 它们会挡住未来的新增违规。
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+
+# ===== 实测有大量现存违规，只能降到 suggestion =====
+# csharp_prefer_braces：全解决方案实测 1470 处（多为 guard clause 写法）。
+# 设成 warning 会当场炸掉 TreatWarningsAsErrors，所以留 suggestion；
+# 真要收成硬门槛，得单开一次批量格式化并单独 review。
+csharp_prefer_braces = true:suggestion
+dotnet_sealing_preference = required:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+
+# ===== 命名规则：只有 dotnet format 求值，dotnet build 不跑它们 =====
+# 实测结论：EnforceCodeStyleInBuild 下 IDE1006 一条不出；只有
+# `dotnet format style --severity info` 会报，且它也无法自动修 IDE1006。
+# 所以命名靠 AGENTS.md 里的 gate 命令把关，不进构建门槛。
+# 两条实测踩过的坑，别再改回去（都在本仓库全量验证过）：
+#   1) required_modifiers 不支持 !static 取反 —— 整条规则静默不生效；
+#   2) 想按「只约束 static readonly」写成 required_modifiers = readonly
+#      或 static readonly，实测会把 243 处普通 `_camelCase` 私有字段误判成
+#      该用 Pascal，比正确的写法多出一大堆假违规。用 static 这一档最准。
+#   代价：`private static` 可变字段（如 ToastWindow._current）会被要求写成
+#   Pascal —— 全解决方案目前只有 1 处，属已知误报，别照它改代码。
+dotnet_naming_rule.static_fields_pascal.symbols = static_field_symbols
+dotnet_naming_rule.static_fields_pascal.style = pascal_style
+dotnet_naming_rule.static_fields_pascal.severity = suggestion
+dotnet_naming_symbols.static_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.static_field_symbols.required_modifiers = static
+
+dotnet_naming_rule.constants_pascal.symbols = constant_symbols
+dotnet_naming_rule.constants_pascal.style = pascal_style
+dotnet_naming_rule.constants_pascal.severity = suggestion
+dotnet_naming_symbols.constant_symbols.applicable_kinds = constant
+
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_style
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
+
+dotnet_naming_style.pascal_style.capitalization = pascal_case
+dotnet_naming_style.underscore_camel_style.capitalization = camel_case
+dotnet_naming_style.underscore_camel_style.required_prefix = _
+
+# ===== 比较与文化：现网有命中，先留 suggestion =====
+dotnet_diagnostic.CA1307.severity = suggestion
+dotnet_diagnostic.CA1309.severity = suggestion
+dotnet_diagnostic.CA1305.severity = suggestion
