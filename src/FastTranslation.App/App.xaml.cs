@@ -38,6 +38,7 @@ public partial class App : Application, IResultPresenter
     private WasapiLoopbackCapture? _speechCapture;
     private AudioResampler? _speechResampler;
     private SpeechWindow? _speechWindow;
+    private bool _speechHiddenForCapture;
     private WindowsSelectionCapture? _capture;
     private SelectionCoordinator? _coordinator;
     private SelectionToolbar? _toolbar;
@@ -268,7 +269,9 @@ public partial class App : Application, IResultPresenter
                 result.PicturePending)),
             message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)),
             // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
-            () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")));
+            () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")),
+            // 选框结束（截到或取消）后把临时收起的语音浮窗放回来
+            () => OnUiThread(RestoreSpeechWindowAfterCapture));
         _tray.ScreenshotTranslateRequested += RunScreenshotTranslation;
         _tray.SpeechRequested += RunSpeechTranslation;
 
@@ -1037,8 +1040,15 @@ public partial class App : Application, IResultPresenter
     private void OnHotkey()
     {
         if (!_captureEnabled) return;
+        // v110: 选框遮罩盖着屏幕时不能取词——读到的是遮罩本身，剪贴板兜底还会向遮罩发 Ctrl+C，
+        // 而且任何因此亮出来的工具条都会落进待截画面。前台进程判断是第二道防线。
+        if (_imageCoordinator is { IsPicking: true }) return;
         var fgHandle = Win32Facade.GetForegroundWindowHandle();
         if (fgHandle == 0) return;
+        // v110: 前台是我们自己的窗口时不取词——否则语音字幕、结果卡或设置页输入框里的文字
+        // 会被当成选区；读不到时剪贴板兜底还会向自家窗口发 Ctrl+C，并顺手关掉结果卡。
+        Win32Process.GetWindowThreadProcessId((IntPtr)fgHandle, out var fgPid);
+        if (fgPid == (uint)Environment.ProcessId) return;
         // 解析真正的前台进程：名字为空会绕过终端保护
         //（IsClipboardRisky），让 Ctrl+C 杀掉正在运行的命令（bugbot P1）
         var fgProcess = ProcessNameOf(fgHandle);
@@ -1063,10 +1073,20 @@ public partial class App : Application, IResultPresenter
             return;
         }
 
+        var coordinator = _imageCoordinator!;
+        if (coordinator.IsBusy)
+        {
+            // v110: 以前先把等待窗收起来，再进协调器才发现忙——用户看到的是「窗没了、
+            // 选框也没起来」，以为热键失灵。忙时在收起任何窗口之前就明确提示。
+            ToastWindow.Show("上一张截图还在翻译,请稍候。");
+            return;
+        }
+
         _toolbar?.Hide();
         _card?.Hide();
         _imageWindow?.Hide(); // 浮窗是 Topmost，不先收起会被截进下一张图
-        _ = _imageCoordinator!.RunAsync();
+        HideSpeechWindowForCapture(); // 语音浮窗同样置顶，落在选区里会被 BitBlt 一起截进去
+        _ = coordinator.RunAsync();
     }
 
     private void OnCopyRequested()
@@ -1579,6 +1599,9 @@ public partial class App : Application, IResultPresenter
 
     private void RunSpeechTranslation()
     {
+        // v110: 截图选框期间不能开语音、也不能把已收起的语音浮窗叫回来——它是 Topmost，
+        // 亮出来就会落进随后 BitBlt 截取的那块画面。这里不弹提示：任何新窗口都会被同样截进去。
+        if (_imageCoordinator is { IsPicking: true }) return;
         if (_speechCoordinator is not null)
         {
             // 已在会话中：把浮窗带到前台，再点一次就靠浮窗上的「结束」收尾。
@@ -1870,6 +1893,31 @@ public partial class App : Application, IResultPresenter
             _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
             _mainWindow?.SetSpeechState(error ?? "已结束", isError: error is not null);
         }
+
+        // 截图期间被临时收起的浮窗，会话结束时必须露出来，否则错误状态永远看不见；
+        // 正常截完/取消的回调也会走同一个恢复方法，重复调用无害。
+        RestoreSpeechWindowAfterCapture();
+    }
+
+    /// <summary>截图期间临时收起语音浮窗：它是 Topmost，落在选区里就会被 BitBlt 一起截进图里。</summary>
+    private void HideSpeechWindowForCapture()
+    {
+        if (_speechWindow is not { IsVisible: true } speech) return;
+        _speechHiddenForCapture = true;
+        speech.Hide();
+    }
+
+    /// <summary>
+    /// 选框结束（成功或取消）后把浮窗放回来。用不激活的显示：用户刚离开自己的应用来拖框，
+    /// 再被浮窗抢一次焦点会打断他回到原窗口的操作。
+    /// </summary>
+    private void RestoreSpeechWindowAfterCapture()
+    {
+        if (!_speechHiddenForCapture) return;
+        // 选框还盖着就先不露出来；等 pickFinished 时 picking 已清零，会再走一遍这里恢复。
+        if (_imageCoordinator is { IsPicking: true }) return;
+        _speechHiddenForCapture = false;
+        _speechWindow?.ShowWithoutActivation();
     }
 
     private void ShowSpeechWindow()

@@ -34,9 +34,11 @@ internal sealed class ImageTranslationCoordinator : IDisposable
     private readonly Action<ImageCaptureResult> _present;
     private readonly Action<string> _reportError;
     private readonly Action _waiting;
+    private readonly Action _pickFinished;
     private readonly CancellationTokenSource _lifetime = new();
 
     private int _busy;
+    private int _picking;
 
     public ImageTranslationCoordinator(
         IImageTranslationProvider provider,
@@ -45,7 +47,8 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         Func<AppSettings> settings,
         Action<ImageCaptureResult> present,
         Action<string> reportError,
-        Action waiting)
+        Action waiting,
+        Action pickFinished)
     {
         _provider = provider;
         _ocr = ocr;
@@ -54,7 +57,21 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         _present = present;
         _reportError = reportError;
         _waiting = waiting;
+        _pickFinished = pickFinished;
     }
+
+    /// <summary>
+    /// 是否有一次截图还没走完（选框、翻译或展示回调）。
+    /// App 在收起等待窗之前先查它，免得第二次请求被静默丢弃、界面看起来像没反应。
+    /// </summary>
+    public bool IsBusy => Volatile.Read(ref _busy) != 0;
+
+    /// <summary>
+    /// 是否正处在选框阶段（全屏遮罩已经亮起来）。App 用它挡掉会亮出新窗口的入口：
+    /// 这期间任何可见窗口都可能落进随后 BitBlt 截取的那块画面。与 <see cref="IsBusy"/> 不同，
+    /// 选框结束后的翻译处理阶段不算 picking。
+    /// </summary>
+    public bool IsPicking => Volatile.Read(ref _picking) != 0;
 
     /// <summary>
     /// 一次完整流程：拖框 → 翻译 → 展示。用户取消（Esc/右键/框太小）静默返回。
@@ -73,7 +90,21 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             var originApp = ForegroundInfo.ProcessName();
             WindowsSelectionCapture.Diag("image: pick starting");
 
-            var captured = await ScreenRegionPicker.PickAsync(_lifetime.Token);
+            CapturedImage? captured;
+            Interlocked.Exchange(ref _picking, 1);
+            try
+            {
+                captured = await ScreenRegionPicker.PickAsync(_lifetime.Token);
+            }
+            finally
+            {
+                // 先清 picking 再回调：恢复语音浮窗的方法靠这个状态判断「选框是否还盖着屏幕」。
+                Interlocked.Exchange(ref _picking, 0);
+                // v110: 选框结束（截到或取消）都要通知。App 靠它在截图期间临时收起语音浮窗；
+                // 只在成功路径恢复的话，用户按 Esc 取消后浮窗会一直藏着，而语音会话还在计费。
+                _pickFinished();
+            }
+
             WindowsSelectionCapture.Diag(captured is null
                 ? "image: pick cancelled or produced no region"
                 : $"image: picked {captured.Width}x{captured.Height} at {captured.Left},{captured.Top}, {captured.PngBytes.Length}B");

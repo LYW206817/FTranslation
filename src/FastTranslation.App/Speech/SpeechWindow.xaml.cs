@@ -97,6 +97,18 @@ public sealed partial class SpeechWindow : Window
         UpdateElapsed();
     }
 
+    /// <summary>
+    /// v110: 截图结束后把临时收起的浮窗放回来，但不抢焦点。Show() 默认会激活窗口，
+    /// 用户刚被截图遮罩夺走焦点，再被浮窗抢一次会打断他回到原应用的操作。
+    /// </summary>
+    public void ShowWithoutActivation()
+    {
+        var previous = ShowActivated;
+        ShowActivated = false;
+        Show();
+        ShowActivated = previous;
+    }
+
     /// <summary>会话真的结束（正常或失败）：停计时、灰状态点、可再点一次关闭窗口。暂停不走这里。</summary>
     public void EndSession(string? error, int dropped = 0)
     {
