@@ -19,6 +19,7 @@
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
       <TextBlock x:Name="MessageText" FontSize="12.5" LineHeight="19" TextWrapping="Wrap"
                  VerticalAlignment="Center"
@@ -26,6 +27,11 @@
       <Button x:Name="ActionButton" Grid.Column="1" Content="去登录" Style="{StaticResource PrimaryButton}"
               Padding="12,4" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
               Click="Action_Click"/>
+      <!-- v111：提示条上一直有「×」。自动消失的计时器曾经漏了 Start()，用户反馈它挂在角落
+           取消不掉；现在既会到点自己走，也能立刻关掉。 -->
+      <Button x:Name="CloseButton" Grid.Column="2" Content="&#x2715;"
+              Style="{StaticResource FlatLinkButton}" FontSize="14" Padding="6,2" Margin="10,0,0,0"
+              VerticalAlignment="Top" AutomationProperties.Name="关闭提示" Click="Close_Click"/>
     </Grid>
   </Border>
 </Window>

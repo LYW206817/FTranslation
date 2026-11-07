@@ -84,11 +84,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         WindowChrome.Apply(this);
-        if (Environment.GetEnvironmentVariable("FT_UITEST") is not null)
-        {
-            PreviewMouseLeftButtonDown += (_, _) =>
-                System.IO.File.AppendAllText(System.IO.Path.GetTempPath() + "ft-uitest-errors.log", $"{DateTime.Now:HH:mm:ss.fff} window PreviewMouseDown\n");
-        }
         _translation = translation;
         _account = account;
         _settings = settings;

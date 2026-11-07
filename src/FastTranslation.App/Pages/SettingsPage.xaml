@@ -12,6 +12,10 @@
       <Setter Property="Padding" Value="0,10"/>
     </Style>
 
+    <!-- v111：右侧控件统一留 4px 右外边距。焦点环是 2px、画在控件外 3px（模板 Margin=-3），
+         控件贴住卡片内容右边缘时，环的右半边会被卡片的视觉裁剪吃掉（用户反馈）。这 4px
+         不是留白偏好，是给焦点环的呼吸位；新增右侧贴边的输入类控件也要带上。 -->
+
     <Style x:Key="SKey" TargetType="TextBlock">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -133,7 +137,7 @@
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="目标语言" Style="{StaticResource SKey}"/>
-                <local:FtComboBox x:Name="TargetCombo" Grid.Column="1" Width="170"
+                <local:FtComboBox x:Name="TargetCombo" Grid.Column="1" Width="170" Margin="0,0,4,0"
                                   SelectionChanged="TargetCombo_SelectionChanged"
                                   AutomationProperties.Name="目标语言"/>
               </Grid>
@@ -146,7 +150,7 @@
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="模型" Style="{StaticResource SKey}"/>
-                <local:FtComboBox x:Name="ModelCombo" Grid.Column="1" Width="210"
+                <local:FtComboBox x:Name="ModelCombo" Grid.Column="1" Width="210" Margin="0,0,4,0"
                                   AutomationProperties.Name="模型">
                   <ComboBoxItem Content="Flash(快速,默认)" Tag="qwen-mt-flash"/>
                   <ComboBoxItem Content="Plus(更高质量,消耗 2.7 倍额度)" Tag="qwen-mt-plus"/>
@@ -162,7 +166,7 @@
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="主题" Style="{StaticResource SKey}"/>
-                <local:FtComboBox x:Name="ThemeCombo" Grid.Column="1" Width="170"
+                <local:FtComboBox x:Name="ThemeCombo" Grid.Column="1" Width="170" Margin="0,0,4,0"
                                   SelectionChanged="ThemeCombo_SelectionChanged"
                                   AutomationProperties.Name="主题">
                   <ComboBoxItem Content="跟随系统"/>
@@ -215,7 +219,7 @@
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="划词热键" Style="{StaticResource SKey}"/>
-                <TextBox x:Name="HotkeyBox" Grid.Column="1" Width="170" Text="Ctrl+Alt+T"
+                <TextBox x:Name="HotkeyBox" Grid.Column="1" Width="170" Margin="0,0,4,0" Text="Ctrl+Alt+T"
                          AutomationProperties.Name="划词热键"/>
               </Grid>
             </Border>
@@ -240,7 +244,7 @@
                   <TextBlock Text="留空表示不修改;已保存的 Key 使用 Windows DPAPI 加密在本机存储。"
                              Style="{StaticResource SDesc}"/>
                 </StackPanel>
-                <PasswordBox x:Name="KeyBox" Grid.Column="1" Width="300"
+                <PasswordBox x:Name="KeyBox" Grid.Column="1" Width="300" Margin="0,0,4,0"
                              AutomationProperties.Name="API Key"/>
               </Grid>
             </Border>
@@ -255,7 +259,7 @@
                   <TextBlock Text="自定义服务地址" Style="{StaticResource SKey}"/>
                   <TextBlock Text="留空使用默认 DashScope 地址。" Style="{StaticResource SDesc}"/>
                 </StackPanel>
-                <TextBox x:Name="BaseUrlBox" Grid.Column="1" Width="300"
+                <TextBox x:Name="BaseUrlBox" Grid.Column="1" Width="300" Margin="0,0,4,0"
                          AutomationProperties.Name="自定义服务地址"/>
               </Grid>
             </Border>
@@ -271,7 +275,7 @@
                   <TextBlock Text="留空使用内置账号服务器;自建或测试服务器可在此填写。"
                              Style="{StaticResource SDesc}"/>
                 </StackPanel>
-                <TextBox x:Name="AccountUrlBox" Grid.Column="1" Width="300"
+                <TextBox x:Name="AccountUrlBox" Grid.Column="1" Width="300" Margin="0,0,4,0"
                          AutomationProperties.Name="账号服务地址"/>
               </Grid>
             </Border>

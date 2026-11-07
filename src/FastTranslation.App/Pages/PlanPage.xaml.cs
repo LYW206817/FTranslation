@@ -19,14 +19,34 @@ public partial class PlanPage : UserControl
     private readonly AccountCoordinator _account;
     private bool _busy;
     private bool _yearly = true;
+    private bool _subscribed;
 
     public PlanPage(AccountCoordinator account)
     {
         InitializeComponent();
         _account = account;
-        _account.Changed += OnAccountChanged;
-        Unloaded += (_, _) => _account.Changed -= OnAccountChanged;
+        // v111：与账号页同一个坑——页面缓存会在导航间卸载/重新挂载，只在 Loaded 时订阅，
+        // 否则从本页兑换激活码后，页面会一直停在未登录/旧套餐状态。
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         Render();
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (!_subscribed)
+        {
+            _account.Changed += OnAccountChanged;
+            _subscribed = true;
+        }
+        Render();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (!_subscribed) return;
+        _account.Changed -= OnAccountChanged;
+        _subscribed = false;
     }
 
     /// <summary>页面每次显示时由宿主调用；缓存的页面否则会变旧。</summary>

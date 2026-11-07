@@ -29,8 +29,12 @@
     </Style>
   </UserControl.Resources>
 
+  <!-- v111：登录成功时「登录」按钮随未登录面板一起收起，键盘焦点落到这个 ScrollViewer 上，
+       WPF 会围绕整个账号页画出默认的深色焦点框（用户反馈的那一圈）。它不参与 Tab 导航，
+       不需要焦点指示；关掉后子控件自己的焦点环不受影响。 -->
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                HorizontalContentAlignment="Stretch" Focusable="False">
+                HorizontalContentAlignment="Stretch" Focusable="False"
+                FocusVisualStyle="{x:Null}">
     <!-- 账号页在效果图里是整宽单列：卡片一张压一张，只有未登录的那个表单保留左右并排 -->
     <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
       <TextBlock x:Name="Headline" Text="账号" FontSize="17" FontWeight="SemiBold"
@@ -39,25 +43,34 @@
       <local:CardBoard Columns="1">
         <!-- ================= 未登录 ================= -->
         <Grid x:Name="SignedOutPanel">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="18"/>
-            <ColumnDefinition Width="*"/>
-          </Grid.ColumnDefinitions>
+          <!-- v111：未登录原来是一张表单卡 + 一张说明卡并排，两张卡高度差太多，页面看起来
+               是半空的。改成一张左右分栏的 hero 卡：左列只放登录这一个主任务，右列把
+               「登录后拿到什么」讲清楚。外层 Card 不裁切，所以渐变面板自己收右侧两角。 -->
+          <Border Style="{StaticResource Card}" Padding="0">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.12*"/>
+                <ColumnDefinition Width="0.88*"/>
+              </Grid.ColumnDefinitions>
 
-          <StackPanel Grid.Column="0">
-            <Border Style="{StaticResource Card}">
-              <StackPanel>
-                <TextBlock x:Name="EmailLabel" Text="邮箱" Style="{StaticResource FieldLabelTight}"/>
+              <StackPanel Grid.Column="0" Margin="28,24,28,26">
+                <TextBlock x:Name="FormTitle" Text="登录账号" FontSize="19" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock x:Name="ModeHint" FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="登录后免费额度、生词本与复习进度都跟着账号同步。"/>
+
+                <TextBlock Text="邮箱" Style="{StaticResource FieldLabelTight}" Margin="0,22,0,6"/>
                 <TextBox x:Name="EmailBox" AutomationProperties.Name="邮箱" TextChanged="Input_Changed"/>
-                <TextBlock Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+
+                <TextBlock Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
                 <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="密码"
                              PasswordChanged="Password_Changed"/>
                 <TextBlock x:Name="PasswordHint" Style="{StaticResource Hint}"
                            Text="至少 8 位。忘记密码暂时需要联系我们重置。"/>
 
                 <StackPanel x:Name="CodeRow" Visibility="Collapsed">
-                  <TextBlock Text="邮箱验证码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                  <TextBlock Text="邮箱验证码" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -68,43 +81,92 @@
                             Style="{StaticResource SmallButton}" Click="SendCode_Click"/>
                   </Grid>
                   <TextBlock x:Name="CodeHint" Style="{StaticResource Hint}"
-                             Text="验证码 10 分钟内有效,会发到上面的邮箱。"/>
+                             Text="验证码 10 分钟内有效，会发到上面的邮箱。"/>
                 </StackPanel>
 
                 <TextBlock x:Name="ErrorText" Style="{StaticResource Hint}"
                            Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                  <Button x:Name="SwitchButton" Content="去注册" Click="Switch_Click"/>
-                  <Button x:Name="SubmitButton" Content="登录" MinWidth="96" Margin="0"
-                          Style="{StaticResource PrimaryButton}" Click="Submit_Click"/>
+                <Button x:Name="SubmitButton" Content="登录" Height="38" Margin="0,20,0,0"
+                        HorizontalAlignment="Stretch" Style="{StaticResource PrimaryButton}"
+                        Click="Submit_Click"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                  <TextBlock x:Name="SwitchPrompt" Text="还没有账号？" FontSize="12.5"
+                             VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
+                  <Button x:Name="SwitchButton" Content="去注册" Margin="2,0,0,0"
+                          Style="{StaticResource FlatLinkButton}" Click="Switch_Click"/>
                 </StackPanel>
               </StackPanel>
-            </Border>
 
-            <TextBlock x:Name="ModeHint" Style="{StaticResource Hint}" Margin="2,0,2,0"
-                       Text="登录后就能看到自己的免费额度用量。"/>
-          </StackPanel>
+              <!-- 右列：渐变底 + 左侧发丝线，和套餐页的 hero 用同一套做法（单独收圆角，
+                   不再给外层加 ClipToBounds——矩形裁切会把投影切出四块三角残影）。 -->
+              <Border Grid.Column="1" Background="{DynamicResource HeroPanelBrush}"
+                      BorderBrush="{DynamicResource HairBrush}" BorderThickness="1,0,0,0"
+                      CornerRadius="0,16,16,0" Padding="28,26,28,26">
+                <StackPanel VerticalAlignment="Center">
+                  <Border Width="42" Height="42" CornerRadius="21" HorizontalAlignment="Left"
+                          Background="{DynamicResource BrandFillBrush}">
+                    <TextBlock Text="&#xE77B;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="17" Foreground="{DynamicResource BrandTextBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <TextBlock Text="登录后，这些跟着你走" FontSize="15" FontWeight="SemiBold"
+                             Margin="0,14,0,0" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-          <Border Grid.Column="2" Style="{StaticResource Card}" VerticalAlignment="Top">
-            <StackPanel>
-              <TextBlock Text="登录后有什么不一样" Style="{StaticResource CardTitle}"/>
+                  <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="12" Foreground="{DynamicResource BrandBrush}"
+                               VerticalAlignment="Top" Margin="0,2,0,0"/>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                      <TextBlock Text="免费额度按账号累计" FontSize="12.5" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="不登录也能翻译，但用量只记在本机上，换台机器就找不回来。"
+                                 Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                  </Grid>
 
-              <TextBlock Text="· 免费额度按账号算" FontSize="12" FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <TextBlock Text="不登录也能翻译,但用量记在本机上,换一台机器就找不回来了。"
-                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+                  <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="12" Foreground="{DynamicResource BrandBrush}"
+                               VerticalAlignment="Top" Margin="0,2,0,0"/>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                      <TextBlock Text="生词本存在服务端" FontSize="12.5" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="保存的单词、短语、语句都在账号里，重装或换机器都还在。"
+                                 Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                  </Grid>
 
-              <TextBlock Text="· 生词本存在服务端" FontSize="12" FontWeight="SemiBold" Margin="0,14,0,0"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <TextBlock Text="保存的单词、短语、语句都在账号里,重装或换机器都还在。"
-                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+                  <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="12" Foreground="{DynamicResource BrandBrush}"
+                               VerticalAlignment="Top" Margin="0,2,0,0"/>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                      <TextBlock Text="复习进度跟着账号走" FontSize="12.5" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="每条记到第几档、下次什么时候再看，都记在账号上。"
+                                 Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                  </Grid>
 
-              <TextBlock Text="· 复习进度跟着账号走" FontSize="12" FontWeight="SemiBold" Margin="0,14,0,0"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <TextBlock Text="每条记到第几档、下次什么时候再看,都记在账号上。"
-                         Style="{StaticResource Hint}" Margin="0,3,0,0"/>
-            </StackPanel>
+                  <TextBlock Text="每个账号最多 3 台设备，换新电脑前先移除不用的那台即可。"
+                             Style="{StaticResource Hint}" Margin="0,18,0,0"/>
+                </StackPanel>
+              </Border>
+            </Grid>
           </Border>
         </Grid>
 

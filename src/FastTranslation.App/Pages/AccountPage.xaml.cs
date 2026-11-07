@@ -18,6 +18,7 @@ public partial class AccountPage : UserControl
     private readonly AccountCoordinator _account;
     private bool _registerMode;
     private bool _busy;
+    private bool _subscribed;
     private bool _verificationRequired = true;
 
     /// <summary>用户要求看价目表时触发；导航由外壳负责。</summary>
@@ -27,9 +28,32 @@ public partial class AccountPage : UserControl
     {
         InitializeComponent();
         _account = account;
-        _account.Changed += OnAccountChanged;
-        Unloaded += (_, _) => _account.Changed -= OnAccountChanged;
+        // v111：页面是缓存并反复挂载/卸载的。订阅必须跟着 Loaded/Unloaded 成对走，
+        // 否则切走一次（Unloaded）就永远收不到登录/登出事件——用户登录后仍停在未登录
+        // 面板、只能手动刷新，根因就在这里。
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        ApplyMode();
         Render();
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (!_subscribed)
+        {
+            _account.Changed += OnAccountChanged;
+            _subscribed = true;
+        }
+        // 订阅建立之前会话可能已经变了（启动恢复是异步的）：补一次重绘；
+        // 网络数据由宿主的 Reload 拉取，这里不重复发请求。
+        Render();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (!_subscribed) return;
+        _account.Changed -= OnAccountChanged;
+        _subscribed = false;
     }
 
     /// <summary>每次访问都由宿主调用：页面是缓存的，否则额度会过期不更新。</summary>
@@ -194,13 +218,23 @@ public partial class AccountPage : UserControl
     private void Switch_Click(object sender, RoutedEventArgs e)
     {
         _registerMode = !_registerMode;
+        ApplyMode();
+        SetError(null);
+    }
+
+    /// <summary>登录/注册两套文案与验证码行只在这里切换，退出登录时也必须复位。</summary>
+    private void ApplyMode()
+    {
+        FormTitle.Text = _registerMode ? "创建账号" : "登录账号";
+        ModeHint.Text = _registerMode
+            ? "注册后自动登录，免费额度立刻可用。"
+            : "登录后免费额度、生词本与复习进度都跟着账号同步。";
+        SwitchPrompt.Text = _registerMode ? "已经有账号？" : "还没有账号？";
         SwitchButton.Content = _registerMode ? "去登录" : "去注册";
         SubmitButton.Content = _registerMode ? "注册并登录" : "登录";
-        CodeRow.Visibility = _registerMode && _verificationRequired ? Visibility.Visible : Visibility.Collapsed;
-        ModeHint.Text = _registerMode
-            ? "注册后自动登录,免费额度立刻可用。"
-            : "登录后就能看到自己的免费额度用量。";
-        SetError(null);
+        CodeRow.Visibility = _registerMode && _verificationRequired
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private async void SendCode_Click(object sender, RoutedEventArgs e)
@@ -257,6 +291,9 @@ public partial class AccountPage : UserControl
                 var result = await _account.RegisterAsync(email, password, code, CancellationToken.None);
                 if (!result.Succeeded) { SetError(RegisterError(result.Error!)); return; }
                 PasswordBox.Clear();
+                // v111：Changed 事件负责重绘，但它是下一帧才到的；这里先切面板，
+                // 「注册成功」的提示才不会比页面先出现。
+                Render();
                 // 面板从表单切到已登录卡片是唯一反馈，用户看不出「成功」还是「什么都没发生」(v98)
                 ToastWindow.Show("注册成功,已自动登录,免费额度立刻可用。");
                 await LoadUsageAsync();
@@ -265,6 +302,7 @@ public partial class AccountPage : UserControl
             var signIn = await _account.SignInAsync(email, password, CancellationToken.None);
             if (!signIn.Succeeded) { SetError(signIn.Error!.Display); return; }
             PasswordBox.Clear();
+            Render();
             var profile = _account.Session?.Profile;
             ToastWindow.Show(profile is null
                 ? "登录成功。"
@@ -355,8 +393,7 @@ public partial class AccountPage : UserControl
         }
 
         _registerMode = false;
-        SwitchButton.Content = "去注册";
-        SubmitButton.Content = "登录";
+        ApplyMode();
         NameBox.Clear();
         CurrentPasswordBox.Clear();
         NewPasswordBox.Clear();

@@ -34,6 +34,9 @@ public sealed partial class ToastWindow : Window
             Interval = TimeSpan.FromMilliseconds(hasAction ? WithActionHoldMs : AutoHideMs)
         };
         _timer.Tick += (_, _) => Close();
+        // v111：这里原来只建了计时器却忘了 Start()，所以「3 秒消失」从没发生过，
+        // 提示条会一直挂在右下角。用户反馈之后补上启动，并加了手动关闭按钮。
+        _timer.Start();
     }
 
     /// <summary>弹出一条提示；上一条还没消失会被替换掉，同一时刻只留一条。</summary>
@@ -65,6 +68,8 @@ public sealed partial class ToastWindow : Window
         Close();
         action?.Invoke();
     }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     protected override void OnClosed(EventArgs e)
     {

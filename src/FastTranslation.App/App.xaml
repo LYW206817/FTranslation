@@ -426,6 +426,10 @@
               <Trigger Property="IsDropDownOpen" Value="True">
                 <Setter TargetName="PART_Popup" Property="IsOpen" Value="True"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <!-- v111：展开期间键盘焦点在弹出层的列表里，ComboBox 自己不是 IsKeyboardFocused，
+                     光靠焦点触发器要等选完才见环。按下即展开，所以这里直接点亮相外环——
+                     用户要的「点击就渲染」指的就是这一圈。 -->
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
                 <Setter TargetName="chevron" Property="RenderTransform">
                   <Setter.Value>
                     <RotateTransform Angle="180"/>
