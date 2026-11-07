@@ -317,6 +317,10 @@ public sealed class AccountApiClient
             switch (code)
             {
                 case "email_taken": return AccountErrorCode.EmailTaken;
+                case "email_invalid":
+                case "email_required":
+                case "email_too_long":
+                    return AccountErrorCode.EmailInvalid;
                 case "credentials_invalid": return AccountErrorCode.InvalidCredentials;
                 case "account_disabled": return AccountErrorCode.AccountDisabled;
                 case "code_invalid":

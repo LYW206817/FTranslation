@@ -142,6 +142,20 @@ public class AccountClientTests
     }
 
     [Theory]
+    [InlineData("email_invalid")]
+    [InlineData("email_required")]
+    [InlineData("email_too_long")]
+    public async Task Email_format_errors_surface_as_EmailInvalid(string code)
+    {
+        // 不映射的话会落到 Server,用户填错邮箱却看到「账号服务器出错了」。
+        var (client, _) = Build(HttpStatusCode.BadRequest, "{\"error\":\"" + code + "\"}");
+
+        var result = await client.RegisterAsync("a@b.test", "password123", null, "fp", "PC", CancellationToken.None);
+
+        Assert.Equal(AccountErrorCode.EmailInvalid, result.Error!.Code);
+    }
+
+    [Theory]
     [InlineData("code_invalid")]
     [InlineData("code_expired")]
     [InlineData("code_missing")]
@@ -583,6 +597,10 @@ public class AccountUsageTests
     [Fact]
     public void Error_codes_carry_a_chinese_sentence() =>
         Assert.Contains("网络", new AccountError(AccountErrorCode.Network, "raw").Display);
+
+    [Fact]
+    public void Email_format_error_reads_as_a_typo_hint() =>
+        Assert.Contains("邮箱", new AccountError(AccountErrorCode.EmailInvalid, "raw").Display);
 
 
     [Fact]

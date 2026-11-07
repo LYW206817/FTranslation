@@ -9,6 +9,11 @@ public class CredentialRulesTests
     [InlineData("a@b.com")]
     [InlineData("  user.name+tag@example.co.uk  ")]
     [InlineData("x@y.io")]
+    [InlineData("user_name@example.com")]
+    [InlineData("user-name@example.com")]
+    [InlineData("a@sub.example.com")]
+    [InlineData("o'brien@example.com")]
+    [InlineData("a!#$%&'*+/=?^_`{|}~-@example.com")]
     public void ValidateEmail_AcceptsRealisticAddresses(string email)
         => Assert.Null(CredentialRules.ValidateEmail(email));
 
@@ -23,8 +28,43 @@ public class CredentialRulesTests
     [InlineData("nodot@localhost", "email_invalid")]
     [InlineData("dot@.com", "email_invalid")]
     [InlineData("dot@com.", "email_invalid")]
+    [InlineData("a b@example.com", "email_invalid")]
+    [InlineData("a\tb@example.com", "email_invalid")]
+    [InlineData(".a@example.com", "email_invalid")]
+    [InlineData("a.@example.com", "email_invalid")]
+    [InlineData("a..b@example.com", "email_invalid")]
+    [InlineData("a@example..com", "email_invalid")]
+    [InlineData("a@-example.com", "email_invalid")]
+    [InlineData("a@example-.com", "email_invalid")]
+    [InlineData("a@b.c", "email_invalid")]
+    [InlineData("a@b.123", "email_invalid")]
+    [InlineData("a(b)@example.com", "email_invalid")]
+    [InlineData("a@exam_ple.com", "email_invalid")]
+    [InlineData("张三@example.com", "email_invalid")]
+    [InlineData("a@例子.公司", "email_invalid")]
     public void ValidateEmail_RejectsMalformedAddresses(string? email, string expected)
         => Assert.Equal(expected, CredentialRules.ValidateEmail(email));
+
+    [Fact]
+    public void ValidateEmail_RejectsOverlongLocalPart()
+    {
+        var local = new string('a', 65);
+        Assert.Equal("email_invalid", CredentialRules.ValidateEmail(local + "@example.com"));
+    }
+
+    [Fact]
+    public void ValidateEmail_RejectsOverlongDomainLabel()
+    {
+        var label = new string('a', 64);
+        Assert.Equal("email_invalid", CredentialRules.ValidateEmail("a@" + label + ".com"));
+    }
+
+    [Fact]
+    public void ValidateEmail_AcceptsLocalPartAtTheLimit()
+    {
+        var local = new string('a', 64);
+        Assert.Null(CredentialRules.ValidateEmail(local + "@example.com"));
+    }
 
     [Fact]
     public void ValidateEmail_RejectsOverlongAddress()

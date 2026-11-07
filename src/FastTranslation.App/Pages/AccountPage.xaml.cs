@@ -207,6 +207,7 @@ public partial class AccountPage : UserControl
     {
         var email = EmailBox.Text.Trim();
         if (email.Length == 0) { SetError("请先填写邮箱。"); return; }
+        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对,检查一下有没有输错。"); return; }
 
         SendCodeButton.IsEnabled = false;
         try
@@ -243,6 +244,8 @@ public partial class AccountPage : UserControl
         var email = EmailBox.Text.Trim();
         var password = PasswordBox.Password;
         if (email.Length == 0) { SetError("请填写邮箱。"); return; }
+        // 登录也先查格式:服务端登录只查不校验,填错格式只会得到含糊的「邮箱或密码不正确」。
+        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对,检查一下有没有输错。"); return; }
         if (password.Length == 0) { SetError("请填写密码。"); return; }
 
         SetBusy(true);
