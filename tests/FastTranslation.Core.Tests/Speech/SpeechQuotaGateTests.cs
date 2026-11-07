@@ -66,4 +66,14 @@ public sealed class SpeechQuotaGateTests
         Assert.Equal(5, SpeechQuotaGate.MinBilledSeconds);
         Assert.Equal(100, SpeechQuotaGate.MinBilledSeconds * SpeechQuotaGate.CharsPerSecond);
     }
+
+    [Theory]
+    [InlineData("monthly_quota_exhausted", "本月语音额度已用完,下月恢复或升级套餐")]
+    [InlineData("daily_quota_exhausted", "今日语音额度已用完,明天恢复或升级套餐")]
+    [InlineData("quota_exhausted", "语音额度已用完,请升级套餐")]
+    [InlineData(null, "语音额度已用完,请升级套餐")]
+    // 服务端将来加新原因时不能崩，也不能错误地宣称「本月」；未知值落到通用文案
+    [InlineData("something_new", "语音额度已用完,请升级套餐")]
+    public void Gateway_quota_reasons_are_turned_into_distinct_messages(string? reason, string expected) =>
+        Assert.Equal(expected, SpeechQuotaGate.DescribeQuotaReason(reason));
 }

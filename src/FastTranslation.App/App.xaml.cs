@@ -778,7 +778,8 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
               }
-        else if (uitest is "speech" or "speech-window" or "speech-window-failed" or "speech-window-paused")
+        else if (uitest is "speech" or "speech-window" or "speech-window-failed" or "speech-window-paused"
+                 or "speech-window-untranslated")
         {
             // FT_UITEST=speech* -> 语音页与字幕浮窗的对比形态。不采集、不联网、不烧额度：
             // 浮窗直接喂演示行，failed/paused 形态只换头部状态。
@@ -800,6 +801,22 @@ public partial class App : Application, IResultPresenter
                     if (uitest == "speech-window-failed")
                     {
                         _speechWindow.EndSession("无法连接语音服务,请稍后再试");
+                        return;
+                    }
+                    // v106: 终稿但没有译文要显式标「未翻译」；草稿行不标，否则每句出字前
+                    // 都会闪一下「未翻译」。这个入口只喂演示行，不联网。
+                    if (uitest == "speech-window-untranslated")
+                    {
+                        _speechWindow.ShowLine(new SpeechTranscriptLine(1,
+                            "Revenue is up twelve percent year over year.",
+                            "营收同比增长了百分之十二。", true, DateTimeOffset.Now), true, _settings.SpeechMaxSentences);
+                        _speechWindow.ShowLine(new SpeechTranscriptLine(2,
+                            "We're seeing strong demand in the enterprise segment.",
+                            "", true, DateTimeOffset.Now), true, _settings.SpeechMaxSentences);
+                        _speechWindow.ShowLine(new SpeechTranscriptLine(3,
+                            "Margins held steady through the quarter.",
+                            "", false, DateTimeOffset.Now), true, _settings.SpeechMaxSentences);
+                        _speechWindow.SetUsage(240);
                         return;
                     }
                     var show = _settings.SpeechShowSource;
@@ -1564,8 +1581,14 @@ public partial class App : Application, IResultPresenter
     {
         if (_speechCoordinator is not null)
         {
-            // 已在会话中：把浮窗带到前台，再点一次就靠浮窗上的「结束」收尾
+            // 已在会话中：把浮窗带到前台，再点一次就靠浮窗上的「结束」收尾。
+            // 连接中的会话不能写成「进行中」，否则状态行会比实际早一步。
             ShowSpeechWindow();
+            _mainWindow?.SetSpeechState(
+                _speechCoordinator.State == SpeechCoordinatorState.Streaming
+                    ? "语音翻译进行中,字幕在浮窗"
+                    : "正在连接语音服务…",
+                isError: false);
             return;
         }
         if (_speechWindow is { IsPaused: true })
@@ -1578,8 +1601,10 @@ public partial class App : Application, IResultPresenter
         if (_account is not { IsSignedIn: true })
         {
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
             return;
         }
+        _mainWindow?.SetSpeechState("正在准备语音会话…", isError: false);
         Observe(StartSpeechSessionAsync(), "语音启动失败");
     }
 
@@ -1592,12 +1617,14 @@ public partial class App : Application, IResultPresenter
         if (!usage.Succeeded || usage.Value is null)
         {
             _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息,请稍后再试");
+            _mainWindow?.SetSpeechState("读不到额度信息,请稍后再试", isError: true);
             return;
         }
         SetSpeechQuotaHint(usage.Value);
         if (SpeechQuotaGate.Refusal(usage.Value) is { } refusal)
         {
             _tray?.ShowBalloon("语音翻译", refusal);
+            _mainWindow?.SetSpeechState(refusal, isError: true);
             return;
         }
 
@@ -1645,9 +1672,11 @@ public partial class App : Application, IResultPresenter
         StartSpeechCapture();
 
         await coordinator.StartAsync(options).ConfigureAwait(true);
-        if (coordinator.State == SpeechCoordinatorState.Failed)
+        // 失败时 coordinator 已经通过 Failed 事件把具体原因（服务未开/额度用尽/连不上）
+        // 交给 EndSpeechSession，这里不要再写一条泛化错误把它盖掉。
+        if (coordinator.State == SpeechCoordinatorState.Streaming)
         {
-            EndSpeechSession("无法连接语音服务,请稍后再试");
+            _mainWindow?.SetSpeechState("语音翻译进行中,字幕在浮窗", isError: false);
         }
     }
 
@@ -1756,10 +1785,12 @@ public partial class App : Application, IResultPresenter
         if (_account is not { IsSignedIn: true })
         {
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
             return;
         }
         // 继续要走完整的预检：暂停这段时间日额度可能已经见底，那时 StartSpeechSessionAsync 会自己
         // 弹气泡并把窗口留在「已暂停」，不能假装已经接上了
+        _mainWindow?.SetSpeechState("正在恢复语音会话…", isError: false);
         Observe(StartSpeechSessionAsync(resume: true), "语音启动失败");
     }
 
@@ -1827,8 +1858,16 @@ public partial class App : Application, IResultPresenter
         _speechTransport = null;
         _speechSubtitles = null;
         // 暂停只改浮窗显示（留字幕与累计值）；「结束」才写已结束并把「继续」禁掉
-        if (paused) _speechWindow?.PauseSession();
-        else _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
+        if (paused)
+        {
+            _speechWindow?.PauseSession();
+            _mainWindow?.SetSpeechState("已暂停,点「继续」重新开始", isError: false);
+        }
+        else
+        {
+            _speechWindow?.EndSession(error, subtitles?.DroppedCount ?? 0);
+            _mainWindow?.SetSpeechState(error ?? "已结束", isError: error is not null);
+        }
     }
 
     private void ShowSpeechWindow()

@@ -3,7 +3,14 @@ using System.Collections.Concurrent;
 namespace FastTranslation.Core.Speech;
 
 /// <summary>字幕面板上的一行；IsFinal=false 时 Target 恒为空串（部分结果绝不送翻译）。</summary>
-public sealed record SpeechTranscriptLine(int SentenceId, string Source, string Target, bool IsFinal, DateTimeOffset StartedAt);
+public sealed record SpeechTranscriptLine(int SentenceId, string Source, string Target, bool IsFinal, DateTimeOffset StartedAt)
+{
+    /// <summary>
+    /// 终稿但没有译文＝翻译失败或队列丢弃。界面必须显式标「未翻译」：
+    /// 留一行空白会让用户以为字幕丢了，而不是没译成。
+    /// </summary>
+    public bool IsUntranslated => IsFinal && string.IsNullOrWhiteSpace(Target);
+}
 
 /// <summary>
 /// 语音会话参数；数值均有产品含义，见 docs/superpowers/specs 的语音方案。
@@ -160,7 +167,7 @@ public sealed class SpeechTranscriptService : IDisposable
         }
         catch (Exception)
         {
-            // 翻译失败：终稿行保持 Target 为空，UI 呈现「未翻译」并可重试，不打断会话
+            // 翻译失败：终稿行保持 Target 为空，UI 呈现「未翻译」，不打断会话
         }
         finally
         {

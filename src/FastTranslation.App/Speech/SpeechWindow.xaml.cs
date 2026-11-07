@@ -204,15 +204,22 @@ public sealed partial class SpeechWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    /// <summary>字幕行的展示形状：非终稿半透明，原文可选显示。</summary>
-    public sealed record SpeechLineRow(int SentenceId, string Source, string Target, bool ShowSource, bool IsFinal)
+    /// <summary>字幕行的展示形状：非终稿半透明，原文可选显示，终稿无译文时标「未翻译」。</summary>
+    public sealed record SpeechLineRow(
+        int SentenceId, string Source, string Target, bool ShowSource, bool IsFinal, bool IsUntranslated)
     {
         public static SpeechLineRow From(SpeechTranscriptLine line, bool showSource) =>
-            new(line.SentenceId, line.Source, line.Target, showSource, line.IsFinal);
+            new(line.SentenceId, line.Source, line.Target, showSource, line.IsFinal, line.IsUntranslated);
 
         public Visibility SourceVisibility => ShowSource && Source.Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        public Visibility TargetVisibility => string.IsNullOrWhiteSpace(Target)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        public Visibility UntranslatedVisibility => IsUntranslated ? Visibility.Visible : Visibility.Collapsed;
 
         public double FinalOpacity => IsFinal ? 1.0 : 0.55;
     }

@@ -136,8 +136,14 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            if (response.Headers.Contains("X-FT-Quota-Reason")) return "语音额度已用完,请下月再来或升级套餐";
-            if (body.Contains("budget_exhausted", StringComparison.Ordinal)) return "今日语音额度已用完,明天再试";
+            // v106: 网关在 429 上带 X-FT-Quota-Reason，区分月度/日额度；以前只判断
+            // 「有没有这个头」就统一说「下月再来」，日额度耗尽的人会白等一个月。
+            if (response.Headers.TryGetValues("X-FT-Quota-Reason", out var reasons))
+            {
+                return SpeechQuotaGate.DescribeQuotaReason(reasons.FirstOrDefault());
+            }
+            if (body.Contains("speech_busy", StringComparison.Ordinal)) return "已有语音会话在进行,请稍后再试";
+            if (body.Contains("budget_exhausted", StringComparison.Ordinal)) return "今日语音服务繁忙,明天再试";
             return "语音请求太频繁,请稍后再试";
         }
         return "无法连接语音服务(HTTP " + (int)response.StatusCode + ")";

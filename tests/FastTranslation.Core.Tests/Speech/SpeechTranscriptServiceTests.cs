@@ -195,6 +195,20 @@ public sealed class SpeechTranscriptServiceTests
         svc.Dispose();
     }
 
+    /// <summary>v106: 终稿无译文要标「未翻译」；草稿不能标，否则译文回来前每句都闪一次。</summary>
+    [Theory]
+    [InlineData(false, "", false)]
+    [InlineData(false, "译文", false)]
+    [InlineData(true, "", true)]
+    [InlineData(true, "   ", true)]
+    [InlineData(true, "译文", false)]
+    public void Untranslated_is_only_final_lines_without_a_target(bool final, string target, bool expected)
+    {
+        var line = new SpeechTranscriptLine(1, "source", target, final, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(expected, line.IsUntranslated);
+    }
+
     /// <summary>RunBatchAsync 是 fire-and-forget,断言前轮询到它跑完,不赌调度时机。</summary>
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

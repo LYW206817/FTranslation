@@ -38,9 +38,22 @@ public partial class MainWindow : Window
     private ReviewPage? _reviewPage;
     private DocumentPage? _documentPage;
     private SpeechPage? _speechPage;
+    private string? _speechState;
+    private bool _speechStateIsError;
 
     // 额度提示由 App 取数后转发，页面自己不碰账号
     public void SetSpeechQuota(string text) => _speechPage?.SetQuota(text);
+
+    /// <summary>
+    /// 语音会话状态由 App 推进来。页面是懒构造的：会话可能在用户还没打开语音页时
+    /// 就结束，所以这里必须记住最后一帧，等页面构造时补上。
+    /// </summary>
+    public void SetSpeechState(string text, bool isError)
+    {
+        _speechState = text;
+        _speechStateIsError = isError;
+        _speechPage?.SetState(text, isError);
+    }
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
@@ -241,6 +254,7 @@ public partial class MainWindow : Window
         if (_speechPage is not null) return _speechPage;
         var page = new SpeechPage(_settings, _settingsService);
         page.SpeechStartRequested += () => SpeechRequested?.Invoke();
+        if (_speechState is not null) page.SetState(_speechState, _speechStateIsError);
         _speechPage = page;
         return page;
     }

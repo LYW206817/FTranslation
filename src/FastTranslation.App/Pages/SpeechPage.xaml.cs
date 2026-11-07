@@ -34,10 +34,18 @@ public sealed partial class SpeechPage : UserControl
         _loading = false;
     }
 
-    /// <summary>App 回报页面状态（空闲/进行中/失败原因），加载完成后调用。</summary>
-    public void SetState(string text)
+    /// <summary>
+    /// App 回报页面状态（空闲/进行中/暂停/失败原因），加载完成后调用。
+    /// <paramref name="isError"/> 只影响颜色：失败原因用危险色，进行中/已结束用弱化色。
+    /// </summary>
+    public void SetState(string text, bool isError = false)
     {
-        Dispatcher.BeginInvoke(() => StateText.Text = text);
+        Dispatcher.BeginInvoke(() =>
+        {
+            StateText.Text = text;
+            StateText.Foreground = (System.Windows.Media.Brush)FindResource(
+                isError ? "DangerBrush" : "TextMutedBrush");
+        });
     }
 
     // 额度提示由 App 异步取数后推进来,页面自己不碰账号

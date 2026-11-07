@@ -19,7 +19,7 @@
             <StackPanel Orientation="Horizontal">
               <Button x:Name="StartButton" Content="开始语音翻译" Style="{StaticResource PrimaryButton}"
                       Padding="20,6" Click="Start_Click"/>
-              <TextBlock x:Name="StateText" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"
+              <TextBlock x:Name="StateText" Text="未开始" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"
                          Foreground="{DynamicResource TextMutedBrush}"/>
             </StackPanel>
             <TextBlock x:Name="QuotaText" Style="{StaticResource Hint}"/>

@@ -36,4 +36,16 @@ public static class SpeechQuotaGate
             return "语音额度不足,今天剩余不够 1 分钟,明天恢复";
         return null;
     }
+
+    /// <summary>
+    /// 把网关 429 响应头 <c>X-FT-Quota-Reason</c> 的值翻成用户能懂的一句话。
+    /// 月度和日额度必须分开说：只报「下月恢复」会让今天撞到日上限的人白等一个月。
+    /// 未知值回落到通用额度用尽。
+    /// </summary>
+    public static string DescribeQuotaReason(string? reason) => reason switch
+    {
+        "monthly_quota_exhausted" => "本月语音额度已用完,下月恢复或升级套餐",
+        "daily_quota_exhausted" => "今日语音额度已用完,明天恢复或升级套餐",
+        _ => "语音额度已用完,请升级套餐",
+    };
 }

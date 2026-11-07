@@ -1,9 +1,11 @@
+<!-- v106: 字幕要压在播放器/会议窗口上方。用户点到浏览器或播放器后，浮窗不能沉到后面去；
+     Show() 本身不保证层级，所以必须显式 Topmost。 -->
 <Window x:Class="FastTranslation.App.Speech.SpeechWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="语音翻译" Width="720" Height="320"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        ShowInTaskbar="False" ResizeMode="CanMinimize"
+        ShowInTaskbar="False" ResizeMode="CanMinimize" Topmost="True"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         FontFamily="Segoe UI, Microsoft YaHei UI">
   <Window.Resources>
@@ -62,7 +64,13 @@
                            Visibility="{Binding SourceVisibility}"/>
                 <TextBlock Text="{Binding Target}" FontSize="15" TextWrapping="Wrap" Margin="0,2,0,0"
                            Foreground="{DynamicResource TextPrimaryBrush}"
-                           Opacity="{Binding FinalOpacity}"/>
+                           Opacity="{Binding FinalOpacity}"
+                           Visibility="{Binding TargetVisibility}"/>
+                <!-- v106: 翻译失败或队列丢弃的终稿行没有 Target。留空行会让用户以为字幕丢了；
+                     显式标「未翻译」，原文仍在上面，用户知道是没译成而不是没听到。 -->
+                <TextBlock Text="未翻译" FontSize="12" Margin="0,2,0,0"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           Visibility="{Binding UntranslatedVisibility}"/>
               </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
