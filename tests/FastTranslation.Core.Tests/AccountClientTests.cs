@@ -79,6 +79,24 @@ public class AccountClientTests
     public void NormalizeBaseUrl_Falls_back_or_trims(string? input, string expected) =>
         Assert.Equal(expected, AccountApiClient.NormalizeBaseUrl(input));
 
+    /// <summary>
+    /// 默认地址由构建配置决定：Release 包必须指向备案域名，Debug 留在本机。
+    /// 这里把两个常量都钉住，改名或降级成 http 时测试先失败，避免发布包把用户连到解析不到的地址。
+    /// </summary>
+    [Fact]
+    public void DefaultBaseUrl_follows_the_build_configuration()
+    {
+        Assert.Equal("https://ftranslation.cn", AccountApiClient.ProductionBaseUrl);
+        Assert.Equal(Uri.UriSchemeHttps, new Uri(AccountApiClient.ProductionBaseUrl).Scheme);
+        Assert.Equal("127.0.0.1", new Uri(AccountApiClient.DevelopmentBaseUrl).Host);
+
+#if DEBUG
+        Assert.Equal(AccountApiClient.DevelopmentBaseUrl, AccountApiClient.DefaultBaseUrl);
+#else
+        Assert.Equal(AccountApiClient.ProductionBaseUrl, AccountApiClient.DefaultBaseUrl);
+#endif
+    }
+
     [Fact]
     public async Task Register_Posts_to_the_relative_auth_path_and_maps_the_session()
     {

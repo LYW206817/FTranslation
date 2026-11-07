@@ -14,8 +14,22 @@ namespace FastTranslation.Core.Account;
 /// </summary>
 public sealed class AccountApiClient
 {
-    /// <summary>开发默认值。服务端部署后会把生产主机名改掉。</summary>
-    public const string DefaultBaseUrl = "http://127.0.0.1:5199";
+    /// <summary>本机开发时的账号服务地址；`dotnet run` 默认监听 5199。</summary>
+    public const string DevelopmentBaseUrl = "http://127.0.0.1:5199";
+
+    /// <summary>备案域名，发布包使用的生产 API 根地址；协议必须是 https。</summary>
+    public const string ProductionBaseUrl = "https://ftranslation.cn";
+
+    /// <summary>
+    /// 构建期选择默认地址：Debug（本机开发与测试）连 localhost，Release（发出去的安装包）
+    /// 连生产。设置页的 AccountBaseUrl 非空时由 App 优先采用，可覆盖这里。
+    /// 备案与 DNS 生效前不要把 Release 包发出去——那时生产地址还解析不到。
+    /// </summary>
+#if DEBUG
+    public const string DefaultBaseUrl = DevelopmentBaseUrl;
+#else
+    public const string DefaultBaseUrl = ProductionBaseUrl;
+#endif
 
     /// <summary>网关与账号接口共用的设备指纹头。放在头里而不是查询串，避免指纹进访问日志。</summary>
     public const string DeviceHeaderName = "X-FT-Device";
