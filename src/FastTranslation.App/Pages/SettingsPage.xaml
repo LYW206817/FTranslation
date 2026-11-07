@@ -148,8 +148,9 @@
                 <TextBlock Text="模型" Style="{StaticResource SKey}"/>
                 <local:FtComboBox x:Name="ModelCombo" Grid.Column="1" Width="210"
                                   AutomationProperties.Name="模型">
-                  <ComboBoxItem Content="Flash(快速,默认)"/>
-                  <ComboBoxItem Content="Plus(更高质量,消耗 2.7 倍额度)"/>
+                  <ComboBoxItem Content="Flash(快速,默认)" Tag="qwen-mt-flash"/>
+                  <ComboBoxItem Content="Plus(更高质量,消耗 2.7 倍额度)" Tag="qwen-mt-plus"/>
+                  <ComboBoxItem Content="Lite(最省额度,消耗 0.85 倍额度)" Tag="qwen-mt-lite"/>
                 </local:FtComboBox>
               </Grid>
             </Border>

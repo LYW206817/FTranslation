@@ -51,6 +51,14 @@ public sealed class DisabledSpeechFactory : SpeechGatewayFactory
     protected override bool SpeechEnabled => false;
 }
 
+/// <summary>默认配置的契约：生产不显式覆盖时必须按 50 字符/秒记，客户端镜像同值。</summary>
+public sealed class SpeechOptionsTests
+{
+    [Fact]
+    public void Default_quota_rate_is_fifty_chars_per_second() =>
+        Assert.Equal(50, new SpeechOptions().QuotaCharsPerSecond);
+}
+
 public class SpeechEndpointTests : IClassFixture<SpeechGatewayFactory>, IClassFixture<HugeQuotaSpeechFactory>
 {
     private readonly SpeechGatewayFactory _factory;

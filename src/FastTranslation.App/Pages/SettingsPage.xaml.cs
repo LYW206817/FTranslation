@@ -64,7 +64,8 @@ public partial class SettingsPage : UserControl
     public void ReloadFromSettings()
     {
         SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
-        ModelCombo.SelectedIndex = _settings.Model.Contains("plus") ? 1 : 0;
+        // 用 Tag 而不是索引：加 Lite 后索引会变，选择与落盘必须读同一个值。
+        SelectTag(ModelCombo, string.IsNullOrWhiteSpace(_settings.Model) ? "qwen-mt-flash" : _settings.Model);
         ThemeCombo.SelectedIndex = _settings.Theme?.Trim().ToLowerInvariant() switch
         {
             ThemePalette.LightSetting => 1,
@@ -218,7 +219,8 @@ public partial class SettingsPage : UserControl
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _settings.TargetLanguage = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
-        _settings.Model = ModelCombo.SelectedIndex == 1 ? "qwen-mt-plus" : "qwen-mt-flash";
+        // Tag 是设置里的真实模型名；不能用 SelectedIndex，Lite 插进来后索引不再固定。
+        _settings.Model = (ModelCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "qwen-mt-flash";
         _settings.Theme = SelectedThemeSetting;
         _settings.Accent = ThemePalette.AccentSetting(_accent);
 

@@ -102,7 +102,8 @@ public static class GatewayEndpoints
     /// <summary>
     /// 用同一把 Key 做截图翻译。上游 API 对图像不报告用量，所以
     /// 一次请求即一张计费图片，额度侧按固定折算值扣费（见
-    /// <see cref="GatewayOptions.ImageQuotaChars"/>）。
+    /// <see cref="GatewayOptions.ImageQuotaChars"/>）。截图流程会同时调用本端点与
+    /// <c>/v1/ocr</c>，两个 1,000 合起来就是产品口径的「每张截图 2,000 字符起」。
     /// </summary>
     private static async Task<IResult> Image(
         HttpContext context,
@@ -181,6 +182,7 @@ public static class GatewayEndpoints
         }
 
         // 从额度角度看，一次 OCR 与一次图片翻译定价相同：两者都是输入一张图。
+        // 截图流程会同时调用 /v1/image，两个 1,000 合起来就是「每张截图 2,000 字符起」。
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
         if (Intent(context, principal, store, database, gateway, limiter, quotaChars) is { } refusal)
         {

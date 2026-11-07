@@ -39,7 +39,7 @@ public sealed class SpeechQuotaGateTests
     {
         var refusal = SpeechQuotaGate.Refusal(Usage(100, 100));
 
-        Assert.Equal("语音额度不足,本月剩余不够 1 分钟,下月恢复", refusal);
+        Assert.Equal("语音额度不足,本月剩余不够 30 秒,下月恢复", refusal);
     }
 
     [Fact]
@@ -50,11 +50,21 @@ public sealed class SpeechQuotaGateTests
     }
 
     [Fact]
-    public void The_floor_is_one_minute_of_speech()
+    public void The_quota_rate_is_fifty_chars_per_second()
     {
-        Assert.Equal(1_200, SpeechQuotaGate.MinStartChars);
-        Assert.Null(SpeechQuotaGate.Refusal(Usage(1_200, 1_200)));
-        Assert.NotNull(SpeechQuotaGate.Refusal(Usage(1_199, 5_000)));
+        // v109: 20→50。这个值是跨进程契约：服务端 Gateway:Speech:QuotaCharsPerSecond
+        // 必须同值，否则浮窗「已用 N 字符」和账号页的扣费会长期对不上。
+        Assert.Equal(50, SpeechQuotaGate.CharsPerSecond);
+    }
+
+    [Fact]
+    public void The_floor_is_thirty_seconds_of_speech()
+    {
+        // 50 字符/秒下一分钟要 3,000 字符，而免费档日额度只有 2,000；
+        // 门槛若仍是 1 分钟，免费用户永远开不了语音。30 秒 = 1,500，免费档还能讲约 40 秒。
+        Assert.Equal(1_500, SpeechQuotaGate.MinStartChars);
+        Assert.Null(SpeechQuotaGate.Refusal(Usage(1_500, 1_500)));
+        Assert.NotNull(SpeechQuotaGate.Refusal(Usage(1_499, 5_000)));
     }
 
     [Fact]
@@ -62,10 +72,20 @@ public sealed class SpeechQuotaGateTests
     {
         // 值本身没逻辑，但它是跨进程的契约锚点：服务端 Gateway:Speech:MinSeconds 降到 5 秒(v98)，
         // 浮窗「已用 N 字符」用这两个常量折算。服务端改了而这里没跟上，显示用量会长期少记
-        // （暂停→继续一次就少记 100 字符）。
+        // （暂停→继续一次就少记 250 字符）。
         Assert.Equal(5, SpeechQuotaGate.MinBilledSeconds);
-        Assert.Equal(100, SpeechQuotaGate.MinBilledSeconds * SpeechQuotaGate.CharsPerSecond);
+        Assert.Equal(250, SpeechQuotaGate.MinBilledSeconds * SpeechQuotaGate.CharsPerSecond);
     }
+
+    [Theory]
+    [InlineData(0, "0 秒")]
+    [InlineData(1_499, "29 秒")]
+    [InlineData(1_500, "30 秒")]
+    [InlineData(2_000, "40 秒")]
+    [InlineData(3_000, "1 分钟")]
+    [InlineData(10_000, "3 分钟")]
+    public void Remaining_chars_are_described_in_seconds_under_a_minute(int chars, string expected) =>
+        Assert.Equal(expected, SpeechQuotaGate.DescribeDuration(chars));
 
     [Theory]
     [InlineData("monthly_quota_exhausted", "本月语音额度已用完,下月恢复或升级套餐")]

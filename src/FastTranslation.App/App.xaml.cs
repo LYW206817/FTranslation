@@ -1725,10 +1725,12 @@ public partial class App : Application, IResultPresenter
     // 完全想不通（本月明明还剩六千字符），所以两个窗口都报出来。
     private void SetSpeechQuotaHint(AccountUsage usage)
     {
-        var monthly = usage.RemainingMonthlyChars / SpeechQuotaGate.OneMinuteChars;
+        // v109: 50 字符/秒下免费档一天只有 2,000 字符（40 秒），按分钟整除会显示「0 分钟」，
+        // 所以时长交给 SpeechQuotaGate.DescribeDuration，秒/分钟按实际大小选。
+        var monthly = SpeechQuotaGate.DescribeDuration(usage.RemainingMonthlyChars);
         var text = usage.RemainingDailyChars is { } daily
-            ? $"语音按 20 字符/秒计费,今天可讲约 {daily / SpeechQuotaGate.OneMinuteChars} 分钟,本月约 {monthly} 分钟"
-            : $"语音按 20 字符/秒计费,本月剩余可讲约 {monthly} 分钟";
+            ? $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费,今天可讲约 {SpeechQuotaGate.DescribeDuration(daily)},本月约 {monthly}"
+            : $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费,本月剩余可讲约 {monthly}";
         _mainWindow?.SetSpeechQuota(text);
     }
 

@@ -42,8 +42,10 @@ public sealed class GatewayOptions
     public int MaxRequestChars { get; set; } = 5_000;
 
     /// <summary>
-    /// 一次截图翻译扣除的额度字符数。图像 API 不报告用量，所以
-    /// 这个固定折算值是把它计入同一套字符额度的唯一方式。
+    /// 截图翻译中图片翻译与 OCR 各自扣除的额度字符数。图像 API 不报告用量，所以
+    /// 这个固定折算值是把它计入同一套字符额度的唯一方式；两个调用合起来就是
+    /// 产品口径的「每张截图 2,000 字符起」，再加上 OCR 文字的文本翻译费。
+    /// OCR 失败时只扣图片这一份，不会强收 OCR 的 1,000。
     /// </summary>
     public int ImageQuotaChars { get; set; } = 1_000;
 
@@ -77,12 +79,15 @@ public sealed class SpeechOptions
     /// <summary>实时 ASR 模型。POC 已实证 qwen-audio-3.1-asr-flash-streaming 可用。</summary>
     public string Model { get; set; } = "qwen-audio-3.1-asr-flash-streaming";
 
-    /// <summary>额度折算:一秒音频折成多少字符(与文本翻译同池子,只是换算口径)。</summary>
-    public int QuotaCharsPerSecond { get; set; } = 20;
+    /// <summary>额度折算:一秒音频折成多少字符(与文本翻译同池子,只是换算口径)。
+    /// v109: 20→50。20 字符/秒只覆盖 ASR 成本的 26%~73%，50 覆盖 65%~181%；
+    /// 客户端 FastTranslation.Core/Speech/SpeechQuotaGate.CharsPerSecond 是同值镜像,必须一起改。</summary>
+    public int QuotaCharsPerSecond { get; set; } = 50;
 
     /// <summary>最短按多少秒起算:讲半秒也说了一句话,不能按 0 记。
-    /// v98: 10 秒改 5 秒,是为了让语音「暂停→继续」每轮少付一半保底(200→100 字符);
-    /// 只说 1 秒仍记 100 字符 > 折算的 20 字符,保底依然是超记,没打开套利口子。
+    /// v98: 10 秒改 5 秒,是为了让语音「暂停→继续」每轮少付一半保底;
+    /// v109 费率改为 50 字符/秒后,保底从 500→250 字符。只说 1 秒仍记 250 字符
+    /// > 折算的 50 字符,保底依然是超记,没打开套利口子。
     /// 客户端 FastTranslation.Core/Speech/SpeechQuotaGate.MinBilledSeconds 是同值镜像(跨不进同一编译单元),改这里必须一起改,否则浮窗用量显示比服务端少记。</summary>
     public int MinSeconds { get; set; } = 5;
 

@@ -21,8 +21,9 @@ internal sealed record ImageCaptureResult(
 
 /// <summary>
 /// 截屏翻译的编排：拖框选区域 → 图片翻译（A）与 OCR（B）并行 → 原文再翻一遍文字（C）→ 交给展示层。
-/// 结果去向由两个回调决定（成功给载荷，失败只给消息），所以这里不碰 WPF：
-/// App 里分别是 ImageResultWindow 和托盘气泡，测试/换展示方式都不用改这个类。
+/// A、B 各扣一次 ImageQuotaChars（默认 1,000），合起来就是产品口径的「每张截图 2,000 字符起」；
+/// C 再按识别出的文字 × 模型倍率另记。结果去向由两个回调决定（成功给载荷，失败只给消息），
+/// 所以这里不碰 WPF：App 里分别是 ImageResultWindow 和托盘气泡，测试/换展示方式都不用改这个类。
 /// </summary>
 internal sealed class ImageTranslationCoordinator : IDisposable
 {
