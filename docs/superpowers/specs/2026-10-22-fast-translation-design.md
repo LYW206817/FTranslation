@@ -634,7 +634,7 @@ public interface ISecretStore
   ],
   "startWithWindows": false,
   "theme": "system",
-  "softwareRendering": true,
+  "softwareRendering": false,
   "uiLanguage": "zh-CN"
 }
 ```
@@ -646,7 +646,7 @@ public interface ISecretStore
 - `clipboardFetchTimeoutMs`：模拟 Ctrl+C 后的序列号轮询上限，默认 300ms，范围 50–5000ms；超时不采用旧剪贴板内容。
 - `writeBackMethod`：`auto` / `paste` / `type`；默认 `auto`（粘贴优先，失败或剪贴板非文本时用 Unicode 输入）。高级设置才显示。
 - `theme`: `system` / `light` / `dark`；v1.0 支持跟随系统与手动切换。
-- `softwareRendering`: 低内存模式，默认 `true`。`true` 强制 WPF 软件渲染；`false` 交回 WPF 选择（通常是 GPU 硬件加速）。设置页改动下次启动生效。软件渲染在同一台机器（1440×960、当前带主窗口与全部页面）实测空闲私有工作集约 65MB、走完全部页面约 70MB；硬件渲染对应约 220MB / 270MB。代价是首窗约 +0.5s、重绘帧时间约 1.5–2 倍。
+- `softwareRendering`: 低内存模式，默认 `false`。`true` 强制 WPF 软件渲染；`false` 交回 WPF 选择（通常是 GPU 硬件加速）。设置页改动下次启动生效。软件渲染实测空闲私有工作集约 61MB、走完全部页面约 65MB，代价是整窗重绘明显卡顿；硬件渲染对应约 150MB / 270MB，但流畅。默认走硬件渲染，需要极限省内存时由用户主动开启。
 - `uiLanguage`: v1.0 固定 `zh-CN`；保留字段供 v1.1。
 
 ### 9.2 密钥存储

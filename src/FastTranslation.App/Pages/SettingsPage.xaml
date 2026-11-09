@@ -402,7 +402,7 @@
                   </Grid.ColumnDefinitions>
                   <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                     <TextBlock Text="低内存模式" Style="{StaticResource SKey}"/>
-                    <TextBlock Text="软件渲染，显著降低常驻内存；下次启动生效。"
+                    <TextBlock Text="软件渲染，降低常驻内存，但界面重绘会变慢；默认关闭，下次启动生效。"
                                Style="{StaticResource SDesc}"/>
                   </StackPanel>
                   <CheckBox x:Name="SoftwareRenderingCheck" Grid.Column="1" VerticalAlignment="Center"

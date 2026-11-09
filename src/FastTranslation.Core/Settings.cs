@@ -25,11 +25,11 @@ public sealed class AppSettings
     public bool FirstRunCompleted { get; set; }
     public string Theme { get; set; } = "system";
 
-    // v113：低内存模式。WPF 硬件合成会为每个窗口分配 D3D 表面，实测同一台机器
-    // 完整应用空闲私有工作集 220MB、软件渲染约 65MB（空窗口 107MB / 39MB）。
-    // 托盘常驻工具优先省内存，默认开启；设置页可关掉换 GPU 加速。
-    // 缺字段的旧配置走默认值 true，无需迁移。
-    public bool SoftwareRendering { get; set; } = true;
+    // v115：低内存模式（软件渲染）默认关闭。v113 曾为了压内存默认开启，但软件渲染下
+    // 整窗重绘明显卡顿（用户反馈）。现在的折中：默认交给 WPF 走 GPU，保留这个开关给
+    // 愿意用流畅度换内存的人。本机实测硬件渲染空闲约 150MB、走完 10 页约 270MB；
+    // 软件渲染约 61MB / 65MB。缺字段的旧配置走默认值 false，无需迁移。
+    public bool SoftwareRendering { get; set; }
 
     // 强调色(electro|lake|violet)。与主题正交，和 Theme 一样只在启动时应用一次；
     // 缺字段的旧配置走默认值电光蓝，无需迁移。
