@@ -216,7 +216,8 @@ public class AccountClientTests
     [Fact]
     public async Task Authenticated_calls_carry_the_bearer_token()
     {
-        var (client, handler) = Build(HttpStatusCode.OK, UsageJson);
+        // v112: 显式传 baseUrl。默认地址按 #if DEBUG 分档(v107)，不传会让这组 URI 断言在 Release 下失败。
+        var (client, handler) = Build(HttpStatusCode.OK, UsageJson, baseUrl: AccountApiClient.DevelopmentBaseUrl);
 
         var result = await client.GetUsageAsync("access-1", CancellationToken.None);
 
@@ -231,7 +232,7 @@ public class AccountClientTests
     [Fact]
     public async Task Usage_asks_for_this_device_when_a_fingerprint_is_known()
     {
-        var (client, handler) = Build(HttpStatusCode.OK, UsageJson);
+        var (client, handler) = Build(HttpStatusCode.OK, UsageJson, baseUrl: AccountApiClient.DevelopmentBaseUrl);
 
         var result = await client.GetUsageAsync("access-1", CancellationToken.None, "fp-1");
 
@@ -254,7 +255,7 @@ public class AccountClientTests
     [Fact]
     public async Task Devices_are_listed_with_the_calling_fingerprint_in_the_header()
     {
-        var (client, handler) = Build(HttpStatusCode.OK, DevicesJson);
+        var (client, handler) = Build(HttpStatusCode.OK, DevicesJson, baseUrl: AccountApiClient.DevelopmentBaseUrl);
 
         var result = await client.GetDevicesAsync("access-1", "fp-1", CancellationToken.None);
 
@@ -276,7 +277,7 @@ public class AccountClientTests
         var (client, handler) = Build(HttpStatusCode.OK, """
             { "id": "11111111-1111-4111-8111-111111111111", "name": "QA-PC-1",
               "createdAt": 1790000000, "lastSeenAt": 1800000000, "isCurrent": false }
-            """);
+            """, baseUrl: AccountApiClient.DevelopmentBaseUrl);
 
         var result = await client.RemoveDeviceAsync("access-1", id, "fp-1", CancellationToken.None);
 

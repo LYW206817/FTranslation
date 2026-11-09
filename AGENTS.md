@@ -50,6 +50,7 @@ $tok = [Environment]::GetEnvironmentVariable('GITHUB RELEASE','User')   # ghp_ �
 # 全部在仓库根执行
 dotnet build FastTranslation.slnx -c Release   # 必须 0 警告 0 错误(TreatWarningsAsErrors=true)
 dotnet test                                    # 4 个项目必须全绿,用例数与本机输出为准
+dotnet test -c Release --no-build              # 也要跑:默认地址按 #if DEBUG 分档(v107),只跑 Debug 会漏掉 Release 才红的断言(v112 踩过)
 dotnet test tests/FastTranslation.Server.Tests # 只跑服务端
 dotnet run --project server/FastTranslation.Server   # 本地起服务;Development 下缺 SigningKey 会用随机 key
 
@@ -89,6 +90,16 @@ dotnet format style FastTranslation.slnx --diagnostics IDE1006 --severity info -
 - 安装参数由 `UpdateInstaller.BuildInstallerArguments()` 生成,含 `/DIR=<当前目录>`,保证升级不改安装位置。
 - 清单只有两个源:`UpdateChannel.ManifestUrls` = GitHub Pages(权威)与 gh-proxy 的 raw;下载候选 `UpdateInstaller.ProxyPrefixes` 只有 `gh-proxy.com`,失败后才直连。`ghfast.top` 实测连不上已移除,jsDelivr 因为会缓存 `@main` 发出过期清单已弃用——加源前先实测,别把死源加回来。
 - GitHub Pages 有 600 秒缓存,轮询清单时要留出这个窗口。
+
+## 改行为前先对规格
+
+规格是**实现的规则源**,不是参考资料。动下面这些之前必须先读对应那一份:行为与交互、对外 API、`/v1/*` 网关契约、存储与迁移、额度与定价、复习档位与间隔这类领域语义。
+
+- 可公开的规格在 `docs/superpowers/specs/`;交付级设计(含效果图与实现计划)在 `.agents/design/`,只在本机。两边按「文档输出规范」分工,别重复写同一份。
+- **代码与规格不一致时先停下来报告**,不要自己挑一边实现。规格没覆盖到你要改的地方,同样先说,再动手。
+- 改动影响规格覆盖的行为时,**规格更新与代码放进同一次提交**;改动大或有争议的,先只提规格/设计,确认后再提实现。
+- 改任何网关契约或公开 HTTP API 前,先分析 `tests/FastTranslation.Server.Tests` 的覆盖影响,并在同一改动里补齐场景;客户端 provider 与服务端两侧必须同批改,不能只改一边。
+- 规格漂移比没有规格更糟:已经实现且代码本身自明的段落删掉,留下 why、失败模式、未决问题。代码实现某条已记录的原则时,加一行注释指回那份文档(例:`// 见 .agents/design/2026-11-03-语音额度折算率实测校验-设计文档.md`)。
 
 ## 写代码的习惯
 
@@ -136,12 +147,21 @@ dotnet format style FastTranslation.slnx --diagnostics IDE1006 --severity info -
 - 测试:命名用可读英文短语(仓库现状,如 `Login_sends_the_error_code_the_server_returned`);xunit `[Fact]` / `[Theory]`,一个测试一个主题;新增行为必须带测试。
 - 禁止:`#pragma warning disable`(要抑制就用 `[SuppressMessage]` 加理由并说明)、注释掉的代码、无主的 `TODO`、跨层直接 `new` 依赖。
 
+### 修 bug 与删行为的测试纪律
+
+- **修 bug 先写一个会失败的回归测试**,而且只用公开 API 复现、断言用户或开发者可见的行为。不要靠反射改私有字段、不要直接构造内部状态来「造出」一个 bug——那种测试绿了也不代表用户路径修好了。
+- 加运行时兜底之前,先确认真实使用路径能不能到达那个失败态;**证明不可达的状态要简化处理**,不要层层加防御检查。已经被上游 schema / 校验保证过的输入,不要再建议补一层判空。
+- **删掉某个 API、设置项或行为时,把它对应的测试一起删掉**。不要新增「断言旧东西已经不存在」的测试(断言某属性没了、旧调用编译不过、旧路径抛异常都算)——`settings.json` 的 `schemaVersion` 迁移和「未知字段保留」最容易长出这类废测试。
+- WPF / UIA / 剪贴板 / 焦点这些 xunit 覆盖不到的 UI 行为,回归证据用 `tools/qa/` 的探针脚本加截图,并在实现记录里写清取样位置(见「完成的标准」第 2 条);脚本不提交,所以要写明它验证了什么、下次怎么重跑。
+
 ### 提交前整洁清单
 
 - [ ] 没有注释掉的代码、没有失效的 `#if`
 - [ ] 没有为过编译加的空实现、`!`、宽泛 `catch`
 - [ ] 没有 `tmp` / `data2` / `foo` 这类临时命名
 - [ ] 核心逻辑与本次修 bug 的位置都有「为什么」注释
+- [ ] 修 bug 有只用公开 API 的失败回归测试;删行为时旧测试已一并删除
+- [ ] 触及规格覆盖的行为时,规格已同批更新(见「改行为前先对规格」)
 - [ ] `dotnet build` 0 警告 0 错误,`dotnet test` 全绿
 
 ### 改完代码就重启应用交付
@@ -203,7 +223,7 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 一次改动算完成,需要同时满足:
 
-1. `dotnet build` 0 警告 0 错误;`dotnet test` 全绿(新增行为带新测试);命名不新增 IDE1006 命中(`dotnet build` 查不到命名违规,必须跑「常用命令」里那条 format;存量与已知误报见 `.editorconfig` 注释)。
+1. `dotnet build` 0 警告 0 错误;`dotnet test` 在 **Debug 与 Release 两个配置下都全绿**(新增行为带新测试;只跑一个配置会漏掉随 `#if DEBUG` 漂移的断言);命名不新增 IDE1006 命中(`dotnet build` 查不到命名违规,必须跑「常用命令」里那条 format;存量与已知误报见 `.editorconfig` 注释)。
 2. 桌面端界面 / 安装器改动有截图或像素证据,并说明取样位置;`site/` 改动同样给截图(改前改后各一张)。
 3. 服务端改动:`tests/FastTranslation.Server.Tests` 必绿;不提交 `data/`、`*.db` 与生产配置。
 4. `deploy/` 改动:所有 shell 脚本 `bash -n` 通过;Caddyfile 用 `caddy fmt` / `caddy adapt` 验证(装有 caddy 时)。
