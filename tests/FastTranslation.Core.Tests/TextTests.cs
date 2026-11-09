@@ -76,13 +76,29 @@ public class SettingsServiceTests : IDisposable
     public void SaveLoad_RoundTrips()
     {
         var service = new SettingsService(_dir);
-        var settings = new AppSettings { Model = "qwen-mt-plus", Hotkey = "Ctrl+Shift+D", ClipboardFallbackEnabled = false };
+        var settings = new AppSettings { Model = "qwen-mt-plus", Hotkey = "Ctrl+Shift+D", ClipboardFallbackEnabled = false, SoftwareRendering = false };
         service.Save(settings);
 
         var loaded = new SettingsService(_dir).Load();
         Assert.Equal("qwen-mt-plus", loaded.Model);
         Assert.Equal("Ctrl+Shift+D", loaded.Hotkey);
         Assert.False(loaded.ClipboardFallbackEnabled);
+        Assert.False(loaded.SoftwareRendering);
+    }
+
+    [Fact]
+    public void Software_rendering_defaults_to_on()
+    {
+        Assert.True(AppSettings.Default().SoftwareRendering);
+    }
+
+    [Fact]
+    public void Missing_software_rendering_field_falls_back_to_on()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"), """{"Model":"qwen-mt-plus"}""");
+        var loaded = new SettingsService(_dir).Load();
+        Assert.True(loaded.SoftwareRendering);
     }
 
     [Fact]

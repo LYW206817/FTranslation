@@ -113,6 +113,14 @@ public partial class App : Application, IResultPresenter
 
         _settings = _settingsService.Load();
 
+        // v113：低内存模式（软件渲染）。实测同一台机器完整应用的空闲私有工作集：
+        // 硬件合成 220MB、软件渲染约 65MB；连空 WPF 窗口都是 107MB / 39MB。
+        // 必须在任何 Window 创建之前设置，设置页里的改动下次启动生效。
+        // 默认开启；关掉时走 Default = 由 WPF 决定（通常是 GPU 加速）。
+        System.Windows.Media.RenderOptions.ProcessRenderMode = _settings.SoftwareRendering
+            ? System.Windows.Interop.RenderMode.SoftwareOnly
+            : System.Windows.Interop.RenderMode.Default;
+
         // 调色板要在任何窗口存在之前就位：XAML 画刷是可变的（po:Freeze="False"），
         // ThemeBridge 就地给它们换色，于是每个样式和模板都能拿到主题（v24）
         ApplyAppearance(_settings.Theme, _settings.Accent);

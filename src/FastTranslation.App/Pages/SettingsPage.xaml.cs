@@ -80,6 +80,8 @@ public partial class SettingsPage : UserControl
         BaseUrlBox.Text = _settings.OverrideBaseUrl;
         AccountUrlBox.Text = _settings.AccountBaseUrl;
         AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
+        // 低内存模式只决定下次启动用哪种 WPF 渲染，不影响当前进程
+        SoftwareRenderingCheck.IsChecked = _settings.SoftwareRendering;
         // Key 在磁盘上由 DPAPI 加密，且从不回显：输入框为空表示「别动它」
         KeyBox.Clear();
         HotkeyError.Visibility = Visibility.Collapsed;
@@ -241,6 +243,7 @@ public partial class SettingsPage : UserControl
 
         _settings.ClipboardFallbackEnabled = ClipboardFallbackCheck.IsChecked == true;
         _settings.WriteBackEnabled = WriteBackCheck.IsChecked == true;
+        _settings.SoftwareRendering = SoftwareRenderingCheck.IsChecked == true;
         _settings.OverrideBaseUrl = BaseUrlBox.Text.Trim();
         _settings.AccountBaseUrl = AccountUrlBox.Text.Trim();
 
