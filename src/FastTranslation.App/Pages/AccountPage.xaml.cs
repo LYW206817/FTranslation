@@ -20,7 +20,7 @@ public partial class AccountPage : UserControl
     /// 「邮箱 + 验证码 + 密码」在校验、限流和错误文案上分叉。</remarks>
     private enum AuthMode { Login, Register, Reset }
 
-    private const string SupportEmail = "support@ftranslation.cn";
+    private const string SupportEmail = AccountError.SupportEmail;
 
     private readonly AccountCoordinator _account;
     private AuthMode _mode = AuthMode.Login;
@@ -35,6 +35,7 @@ public partial class AccountPage : UserControl
     {
         InitializeComponent();
         _account = account;
+        SupportEmailText.Text = SupportEmail;
         // v111：页面是缓存并反复挂载/卸载的。订阅必须跟着 Loaded/Unloaded 成对走，
         // 否则切走一次（Unloaded）就永远收不到登录/登出事件——用户登录后仍停在未登录
         // 面板、只能手动刷新，根因就在这里。

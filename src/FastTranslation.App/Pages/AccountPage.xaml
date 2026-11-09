@@ -368,6 +368,7 @@
 
               <Button x:Name="SupportButton" Content="联系支持" HorizontalAlignment="Left"
                       Style="{StaticResource FlatLinkButton}" Margin="0,10,0,0" Click="Support_Click"/>
+              <TextBlock x:Name="SupportEmailText" Style="{StaticResource Hint}" Margin="0,2,0,0"/>
             </StackPanel>
           </Border>
 

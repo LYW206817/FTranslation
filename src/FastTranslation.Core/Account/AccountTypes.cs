@@ -39,6 +39,12 @@ public enum AccountErrorCode
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
 {
+    /// <summary>
+    /// 对外的支持邮箱。先用专用个人邮箱，域名邮箱建好之后只改这一处；
+    /// 客户端按钮、站点页脚与错误文案都从这里取，避免三处各写一遍后漂移。
+    /// </summary>
+    public const string SupportEmail = "3349325206@qq.com";
+
     /// <summary>面向用户的一句话；窗口原样显示，所以读起来要像建议。</summary>
     public string Display => Code switch
     {
@@ -65,7 +71,7 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.DeviceIsCurrent => "这是当前正在使用的设备,不能移除。",
         AccountErrorCode.DeviceMissing => "这台设备已经不在列表里了,刷新后再试。",
         AccountErrorCode.ConfirmationMismatch => "邮箱输入不一致。请完整输入当前账号的邮箱。",
-        AccountErrorCode.MailUnavailable => "邮箱服务暂不可用,请联系 support@ftranslation.cn。",
+        AccountErrorCode.MailUnavailable => $"邮箱服务暂不可用,请联系 {SupportEmail}。",
         AccountErrorCode.ResetInvalid => "重置请求已失效,请重新获取验证码。",
         _ => "账号服务器出错了,请稍后再试。",
     };
