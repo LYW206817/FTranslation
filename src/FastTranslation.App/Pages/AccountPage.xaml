@@ -63,11 +63,18 @@
                 <TextBlock Text="邮箱" Style="{StaticResource FieldLabelTight}" Margin="0,22,0,6"/>
                 <TextBox x:Name="EmailBox" AutomationProperties.Name="邮箱" TextChanged="Input_Changed"/>
 
-                <TextBlock Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
+                <TextBlock x:Name="PasswordLabelText" Text="密码" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
                 <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="密码"
                              PasswordChanged="Password_Changed"/>
                 <TextBlock x:Name="PasswordHint" Style="{StaticResource Hint}"
-                           Text="至少 8 位。忘记密码暂时需要联系我们重置。"/>
+                           Text="至少 8 位。"/>
+                <StackPanel x:Name="ConfirmPasswordRow" Visibility="Collapsed">
+                  <TextBlock Text="再输一次新密码" Style="{StaticResource FieldLabelTight}" Margin="0,12,0,6"/>
+                  <PasswordBox x:Name="ResetConfirmPasswordBox" AutomationProperties.Name="确认新密码"
+                               PasswordChanged="Password_Changed"/>
+                </StackPanel>
+                <Button x:Name="ForgotPasswordButton" Content="忘记密码？" HorizontalAlignment="Left"
+                        Style="{StaticResource FlatLinkButton}" Click="ForgotPassword_Click"/>
 
                 <StackPanel x:Name="CodeRow" Visibility="Collapsed">
                   <TextBlock Text="邮箱验证码" Style="{StaticResource FieldLabelTight}" Margin="0,14,0,6"/>
@@ -83,6 +90,9 @@
                   <TextBlock x:Name="CodeHint" Style="{StaticResource Hint}"
                              Text="验证码 10 分钟内有效，会发到上面的邮箱。"/>
                 </StackPanel>
+
+                <TextBlock x:Name="ResetHint" Style="{StaticResource Hint}" Visibility="Collapsed"
+                           Text="验证码会发到这个邮箱。如果该邮箱没有注册过，不会收到邮件。"/>
 
                 <TextBlock x:Name="ErrorText" Style="{StaticResource Hint}"
                            Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed"/>
@@ -327,9 +337,37 @@
 
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <TextBlock Text="数据" Style="{StaticResource CardTitle}"/>
+              <TextBlock Text="隐私与数据" Style="{StaticResource CardTitle}"/>
               <TextBlock Text="生词本、复习进度都存在服务端,退出登录不会删掉,换机器登录同一个账号就能拿回来。"
                          Style="{StaticResource Hint}" Margin="0"/>
+
+              <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
+                      Margin="0,12,0,10"/>
+
+              <TextBlock Text="注销账号会永久删除账号和全部学习记录,无法恢复。"
+                         Style="{StaticResource Hint}" Margin="0"/>
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button x:Name="DeleteAccountButton" Content="注销账号" Style="{StaticResource SmallButton}"
+                        Foreground="{DynamicResource DangerBrush}" Click="DeleteAccount_Click"/>
+              </StackPanel>
+
+              <StackPanel x:Name="DeletePanel" Visibility="Collapsed" Margin="0,12,0,0">
+                <TextBlock Text="当前密码" Style="{StaticResource FieldLabelTight}"/>
+                <PasswordBox x:Name="DeletePasswordBox" AutomationProperties.Name="注销账号密码"/>
+                <TextBlock Text="输入账号邮箱确认" Style="{StaticResource FieldLabelTight}" Margin="0,10,0,6"/>
+                <TextBox x:Name="DeleteConfirmBox" AutomationProperties.Name="确认邮箱"/>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                  <Button x:Name="ConfirmDeleteButton" Content="确认注销" Style="{StaticResource SmallButton}"
+                          Foreground="{DynamicResource DangerBrush}" Click="ConfirmDelete_Click"/>
+                  <Button x:Name="CancelDeleteButton" Content="取消" Style="{StaticResource SmallButton}"
+                          Margin="8,0,0,0" Click="CancelDelete_Click"/>
+                </StackPanel>
+                <TextBlock Text="删掉后只能用同一邮箱重新注册一个全新账号。"
+                           Style="{StaticResource Hint}" Margin="0,8,0,0"/>
+              </StackPanel>
+
+              <Button x:Name="SupportButton" Content="联系支持" HorizontalAlignment="Left"
+                      Style="{StaticResource FlatLinkButton}" Margin="0,10,0,0" Click="Support_Click"/>
             </StackPanel>
           </Border>
 

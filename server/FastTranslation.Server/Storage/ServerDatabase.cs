@@ -70,6 +70,10 @@ public sealed class ServerDatabase
         // 旧行为 NULL，升级前发出的令牌不受影响（只能等它自然过期）。
         EnsureColumn(connection, "refresh_tokens", "device_id", "TEXT");
 
+        // v107: 验证码现在有两个用途（注册 / 重置密码）。主键仍是 email：同一邮箱
+        // 同时只保留一个有效码，后请求的覆盖先请求的，避免两套码并存后被交叉使用。
+        EnsureColumn(connection, "email_verifications", "purpose", "TEXT NOT NULL DEFAULT 'register'");
+
         // 复习状态（设计 §4.1）。六列全是 NOT NULL DEFAULT，这样旧数据库可以
         // 原地迁移：每条已有记录都成为第 0 档的未评分卡片。
         EnsureColumn(connection, "notes", "stage", "INTEGER NOT NULL DEFAULT 0");
@@ -221,7 +225,8 @@ public sealed class ServerDatabase
             code_hash    TEXT NOT NULL,
             expires_at   INTEGER NOT NULL,
             attempts     INTEGER NOT NULL DEFAULT 0,
-            last_sent_at INTEGER NOT NULL
+            last_sent_at INTEGER NOT NULL,
+            purpose      TEXT NOT NULL DEFAULT 'register'
         );
 
         CREATE TABLE IF NOT EXISTS notes (

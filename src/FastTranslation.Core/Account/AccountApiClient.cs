@@ -97,6 +97,44 @@ public sealed class AccountApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 重置密码的发码入口。服务端无论邮箱是否存在都回 <c>code_sent</c>，
+    /// 所以这里不区分结果，界面也只显示「如果该邮箱已注册，验证码会发到邮箱」。
+    /// </summary>
+    public async Task<AccountApiResult<AccountAction>> RequestPasswordResetCodeAsync(
+        string email, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/auth/password/reset/code", null, new CodeBody(email), cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<MessageResponse, AccountAction>(
+            response, body => new AccountAction(body.Message), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>用邮箱验证码重置密码。成功后服务端会吊销所有 refresh token。</summary>
+    public async Task<AccountApiResult<AccountAction>> ResetPasswordAsync(
+        string email, string code, string newPassword, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/auth/password/reset", null,
+            new PasswordResetBody(email, code, newPassword), cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<MessageResponse, AccountAction>(
+            response, body => new AccountAction(body.Message), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 注销账号。要求当前密码与完整邮箱两个确认；成功后服务端硬删除账号与学习记录。
+    /// </summary>
+    public async Task<AccountApiResult<AccountAction>> DeleteAccountAsync(
+        string accessToken, string password, string confirmation, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/account/delete", accessToken,
+            new DeleteAccountBody(password, confirmation), cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<MessageResponse, AccountAction>(
+            response, body => new AccountAction(body.Message), cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<AccountApiResult<AccountProfile>> GetProfileAsync(
         string accessToken, CancellationToken cancellationToken)
     {
@@ -341,6 +379,9 @@ public sealed class AccountApiClient
                 case "device_limit_reached": return AccountErrorCode.DeviceLimit;
                 case "device_is_current": return AccountErrorCode.DeviceIsCurrent;
                 case "device_missing": return AccountErrorCode.DeviceMissing;
+                case "confirmation_mismatch": return AccountErrorCode.ConfirmationMismatch;
+                case "mail_unavailable": return AccountErrorCode.MailUnavailable;
+                case "reset_invalid": return AccountErrorCode.ResetInvalid;
             }
         }
         return status switch
@@ -377,6 +418,10 @@ public sealed class AccountApiClient
     // ---- 线上数据结构（服务端用 camelCase，按不区分大小写匹配） ----
 
     private sealed record CodeBody(string Email);
+
+    private sealed record PasswordResetBody(string Email, string Code, string NewPassword);
+
+    private sealed record DeleteAccountBody(string Password, string Confirmation);
 
     private sealed class MessageResponse
     {

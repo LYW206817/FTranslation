@@ -32,6 +32,9 @@ public enum AccountErrorCode
     DeviceLimit,
     DeviceIsCurrent,
     DeviceMissing,
+    ConfirmationMismatch,
+    MailUnavailable,
+    ResetInvalid,
 }
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
@@ -61,6 +64,9 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.DeviceLimit => "设备数量已达上限。请先在任意一台已登录的设备上打开账号页,移除一台不用的设备;如果旧设备都不在了,请联系我们。",
         AccountErrorCode.DeviceIsCurrent => "这是当前正在使用的设备,不能移除。",
         AccountErrorCode.DeviceMissing => "这台设备已经不在列表里了,刷新后再试。",
+        AccountErrorCode.ConfirmationMismatch => "邮箱输入不一致。请完整输入当前账号的邮箱。",
+        AccountErrorCode.MailUnavailable => "邮箱服务暂不可用,请联系 support@ftranslation.cn。",
+        AccountErrorCode.ResetInvalid => "重置请求已失效,请重新获取验证码。",
         _ => "账号服务器出错了,请稍后再试。",
     };
 }
@@ -175,6 +181,9 @@ public sealed record AccountRedeem(AccountProfile Profile, AccountUsage Usage);
 /// 注册表单此时必须隐藏验证码输入框，而不是拒绝空值。
 /// </summary>
 public sealed record CodeRequestResult(bool VerificationRequired);
+
+/// <summary>服务端只回一个稳定消息名（code_sent / password_reset / account_deleted）的操作。</summary>
+public sealed record AccountAction(string Name);
 
 public sealed record AccountApiResult<T>(T? Value, AccountError? Error)
 {

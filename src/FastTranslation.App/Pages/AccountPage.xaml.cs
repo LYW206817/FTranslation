@@ -15,8 +15,15 @@ namespace FastTranslation.App.Pages;
 /// </summary>
 public partial class AccountPage : UserControl
 {
+    /// <summary>未登录卡片的三种形态。登录 / 注册 / 重置密码共用同一套字段，</summary>
+    /// <remarks>注册与重置都靠邮箱验证码，所以不能把它们做成两张独立表单——那会让同一份
+    /// 「邮箱 + 验证码 + 密码」在校验、限流和错误文案上分叉。</remarks>
+    private enum AuthMode { Login, Register, Reset }
+
+    private const string SupportEmail = "support@ftranslation.cn";
+
     private readonly AccountCoordinator _account;
-    private bool _registerMode;
+    private AuthMode _mode = AuthMode.Login;
     private bool _busy;
     private bool _subscribed;
     private bool _verificationRequired = true;
@@ -217,24 +224,42 @@ public partial class AccountPage : UserControl
 
     private void Switch_Click(object sender, RoutedEventArgs e)
     {
-        _registerMode = !_registerMode;
+        // 重置模式的「返回登录」与注册模式的「去登录」都落到这里：只有登录能一去一回。
+        _mode = _mode == AuthMode.Login ? AuthMode.Register : AuthMode.Login;
         ApplyMode();
         SetError(null);
     }
 
-    /// <summary>登录/注册两套文案与验证码行只在这里切换，退出登录时也必须复位。</summary>
+    private void ForgotPassword_Click(object sender, RoutedEventArgs e)
+    {
+        _mode = AuthMode.Reset;
+        ApplyMode();
+        SetError(null);
+    }
+
+    /// <summary>登录/注册/重置三套文案与验证码行只在这里切换，退出登录时也必须复位。</summary>
     private void ApplyMode()
     {
-        FormTitle.Text = _registerMode ? "创建账号" : "登录账号";
-        ModeHint.Text = _registerMode
-            ? "注册后自动登录，免费额度立刻可用。"
-            : "登录后免费额度、生词本与复习进度都跟着账号同步。";
-        SwitchPrompt.Text = _registerMode ? "已经有账号？" : "还没有账号？";
-        SwitchButton.Content = _registerMode ? "去登录" : "去注册";
-        SubmitButton.Content = _registerMode ? "注册并登录" : "登录";
-        CodeRow.Visibility = _registerMode && _verificationRequired
+        var reset = _mode == AuthMode.Reset;
+        var register = _mode == AuthMode.Register;
+
+        FormTitle.Text = reset ? "重置密码" : register ? "创建账号" : "登录账号";
+        ModeHint.Text = reset
+            ? "输入注册邮箱，收到验证码后设置一个新密码。"
+            : register
+                ? "注册后自动登录，免费额度立刻可用。"
+                : "登录后免费额度、生词本与复习进度都跟着账号同步。";
+        PasswordLabelText.Text = reset ? "新密码" : "密码";
+        PasswordHint.Text = reset ? "至少 8 位。重置后其他设备需要重新登录。" : "至少 8 位。";
+        ConfirmPasswordRow.Visibility = reset ? Visibility.Visible : Visibility.Collapsed;
+        ResetHint.Visibility = reset ? Visibility.Visible : Visibility.Collapsed;
+        ForgotPasswordButton.Visibility = _mode == AuthMode.Login ? Visibility.Visible : Visibility.Collapsed;
+        CodeRow.Visibility = reset || (register && _verificationRequired)
             ? Visibility.Visible
             : Visibility.Collapsed;
+        SwitchPrompt.Text = reset ? "想起密码了？" : register ? "已经有账号？" : "还没有账号？";
+        SwitchButton.Content = reset ? "返回登录" : register ? "去登录" : "去注册";
+        SubmitButton.Content = reset ? "重置密码" : register ? "注册并登录" : "登录";
     }
 
     private async void SendCode_Click(object sender, RoutedEventArgs e)
@@ -246,6 +271,20 @@ public partial class AccountPage : UserControl
         SendCodeButton.IsEnabled = false;
         try
         {
+            if (_mode == AuthMode.Reset)
+            {
+                var reset = await _account.RequestPasswordResetCodeAsync(email, CancellationToken.None);
+                if (!reset.Succeeded)
+                {
+                    SetError(reset.Error!.Display);
+                    return;
+                }
+                // 服务端不区分邮箱是否存在，界面也必须保持同样的口径。
+                CodeHint.Text = "如果该邮箱已注册,验证码已发送,10 分钟内有效。";
+                SetError(null);
+                return;
+            }
+
             var result = await _account.RequestCodeAsync(email, CancellationToken.None);
             if (!result.Succeeded)
             {
@@ -280,12 +319,36 @@ public partial class AccountPage : UserControl
         if (email.Length == 0) { SetError("请填写邮箱。"); return; }
         // 登录也先查格式:服务端登录只查不校验,填错格式只会得到含糊的「邮箱或密码不正确」。
         if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对,检查一下有没有输错。"); return; }
-        if (password.Length == 0) { SetError("请填写密码。"); return; }
+        if (password.Length == 0) { SetError(_mode == AuthMode.Reset ? "请填写新密码。" : "请填写密码。"); return; }
 
         SetBusy(true);
         try
         {
-            if (_registerMode)
+            if (_mode == AuthMode.Reset)
+            {
+                var code = CodeBox.Text.Trim();
+                if (code.Length == 0) { SetError("请填写邮箱验证码。"); return; }
+                if (password.Length < 8) { SetError("新密码至少 8 位。"); return; }
+                if (!string.Equals(password, ResetConfirmPasswordBox.Password, StringComparison.Ordinal))
+                {
+                    SetError("两次输入的新密码不一样。");
+                    return;
+                }
+
+                var reset = await _account.ResetPasswordAsync(email, code, password, CancellationToken.None);
+                if (!reset.Succeeded) { SetError(reset.Error!.Display); return; }
+
+                PasswordBox.Clear();
+                ResetConfirmPasswordBox.Clear();
+                CodeBox.Clear();
+                _mode = AuthMode.Login;
+                ApplyMode();
+                SetError(null);
+                ToastWindow.Show("密码已重置,请用新密码登录。");
+                return;
+            }
+
+            if (_mode == AuthMode.Register)
             {
                 var code = _verificationRequired ? CodeBox.Text.Trim() : null;
                 var result = await _account.RegisterAsync(email, password, code, CancellationToken.None);
@@ -392,14 +455,99 @@ public partial class AccountPage : UserControl
             SetBusy(false);
         }
 
-        _registerMode = false;
+        _mode = AuthMode.Login;
         ApplyMode();
         NameBox.Clear();
         CurrentPasswordBox.Clear();
         NewPasswordBox.Clear();
         ConfirmPasswordBox.Clear();
+        DeletePasswordBox.Clear();
+        DeleteConfirmBox.Clear();
+        DeletePanel.Visibility = Visibility.Collapsed;
+        DeleteAccountButton.Visibility = Visibility.Visible;
         SetStatus(null, isError: false);
         SetError(null);
+    }
+
+    // ---------------- 注销与支持 ----------------
+
+    private void DeleteAccount_Click(object sender, RoutedEventArgs e)
+    {
+        if (_account.Session is null) return;
+        DeletePanel.Visibility = Visibility.Visible;
+        DeleteAccountButton.Visibility = Visibility.Collapsed;
+        DeletePasswordBox.Clear();
+        DeleteConfirmBox.Clear();
+        SetStatus(null, isError: false);
+    }
+
+    private void CancelDelete_Click(object sender, RoutedEventArgs e)
+    {
+        DeletePanel.Visibility = Visibility.Collapsed;
+        DeleteAccountButton.Visibility = Visibility.Visible;
+        DeletePasswordBox.Clear();
+        DeleteConfirmBox.Clear();
+    }
+
+    private async void ConfirmDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _account.Session is not { } session) return;
+
+        var password = DeletePasswordBox.Password;
+        var confirmation = DeleteConfirmBox.Text.Trim();
+        if (password.Length == 0) { SetStatus("先填当前密码。", isError: true); return; }
+        if (!string.Equals(confirmation, session.Profile.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            SetStatus("邮箱输入不一致。请完整输入当前账号的邮箱。", isError: true);
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            var result = await _account.DeleteAccountAsync(password, confirmation, CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                SetStatus(result.Error!.Display, isError: true);
+                return;
+            }
+
+            DeletePanel.Visibility = Visibility.Collapsed;
+            DeleteAccountButton.Visibility = Visibility.Visible;
+            DeletePasswordBox.Clear();
+            DeleteConfirmBox.Clear();
+            _mode = AuthMode.Login;
+            ApplyMode();
+            SetError(null);
+            ToastWindow.Show("账号已注销,学习记录已删除。");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("注销账号时出错,请稍后重试。", isError: true);
+            System.Diagnostics.Debug.WriteLine("delete account: " + ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void Support_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "mailto:" + SupportEmail,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            // 没装邮件客户端时 mailto 会失败；把地址显式留在界面上，用户仍能手动复制。
+            SetStatus("打不开邮件客户端,请手动发到 " + SupportEmail + "。", isError: true);
+            System.Diagnostics.Debug.WriteLine("support mail: " + ex);
+        }
     }
 
     private void SetBusy(bool busy)
@@ -412,7 +560,19 @@ public partial class AccountPage : UserControl
         RefreshButton.IsEnabled = !busy;
         SaveNameButton.IsEnabled = !busy;
         SavePasswordButton.IsEnabled = !busy;
-        SubmitButton.Content = busy ? "请稍候…" : _registerMode ? "注册并登录" : "登录";
+        ForgotPasswordButton.IsEnabled = !busy;
+        DeleteAccountButton.IsEnabled = !busy;
+        ConfirmDeleteButton.IsEnabled = !busy;
+        CancelDeleteButton.IsEnabled = !busy;
+        SupportButton.IsEnabled = !busy;
+        SubmitButton.Content = busy
+            ? "请稍候…"
+            : _mode switch
+            {
+                AuthMode.Register => "注册并登录",
+                AuthMode.Reset => "重置密码",
+                _ => "登录",
+            };
     }
 
     /// <summary>未登录错误与登录后状态在每个面板各占一个位置；只显示其中一个。</summary>

@@ -20,6 +20,8 @@ public static class AuthEndpoints
         var group = app.MapGroup("/api/v1/auth").WithTags("auth").RequireRateLimiting(RateLimiting.AuthPolicy);
 
         group.MapPost("/code", RequestCode).AllowAnonymous();
+        group.MapPost("/password/reset/code", RequestPasswordResetCode).AllowAnonymous();
+        group.MapPost("/password/reset", ResetPassword).AllowAnonymous();
         group.MapPost("/register", Register).AllowAnonymous();
         group.MapPost("/login", Login).AllowAnonymous();
         group.MapPost("/refresh", Refresh).AllowAnonymous();
@@ -44,7 +46,7 @@ public static class AuthEndpoints
         }
 
         var email = AccountStore.NormalizeEmail(request.Email);
-        var issued = codes.Issue(email);
+        var issued = codes.Issue(email, VerificationCodeService.RegisterPurpose);
         if (!issued.Sent)
         {
             return Results.Json(
@@ -54,6 +56,85 @@ public static class AuthEndpoints
 
         await mail.SendCodeAsync(email, issued.Code!, ct);
         return Results.Ok(new MessageResponse("code_sent"));
+    }
+
+    /// <summary>
+    /// 重置密码的发码入口。无论邮箱是否注册都返回同一个 <c>code_sent</c>，
+    /// 不让这个匿名接口变成「这个邮箱在不在我们库里」的探针。
+    /// </summary>
+    private static async Task<IResult> RequestPasswordResetCode(
+        [FromBody] PasswordResetCodeRequest request,
+        VerificationCodeService codes,
+        IVerificationMailSender mail,
+        AccountStore store,
+        ServerOptions options,
+        IHostEnvironment environment,
+        CancellationToken ct)
+    {
+        if (CredentialRules.ValidateEmail(request.Email) is { } emailError)
+        {
+            return Results.BadRequest(new ErrorResponse(emailError));
+        }
+
+        // 非开发环境没有 SMTP 时，验证码只会写进日志。告诉调用方「发不了」，
+        // 别让用户对着一个永远收不到的验证码等十分钟。
+        if (!options.Smtp.IsConfigured && !environment.IsDevelopment())
+        {
+            return Results.Json(new ErrorResponse("mail_unavailable"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var email = AccountStore.NormalizeEmail(request.Email);
+        if (store.FindUserByEmail(email) is { Disabled: false })
+        {
+            var issued = codes.Issue(email, VerificationCodeService.ResetPurpose);
+            if (!issued.Sent)
+            {
+                return Results.Json(
+                    new ErrorResponse(issued.Error!, $"retry_after_{issued.RetryAfterSeconds}"),
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            await mail.SendCodeAsync(email, issued.Code!, ct);
+        }
+
+        return Results.Ok(new MessageResponse("code_sent"));
+    }
+
+    private static IResult ResetPassword(
+        [FromBody] PasswordResetRequest request,
+        AccountStore store,
+        VerificationCodeService codes)
+    {
+        if (CredentialRules.ValidateEmail(request.Email) is { } emailError)
+        {
+            return Results.BadRequest(new ErrorResponse(emailError));
+        }
+
+        if (CredentialRules.ValidatePassword(request.NewPassword) is { } passwordError)
+        {
+            return Results.BadRequest(new ErrorResponse(passwordError));
+        }
+
+        var email = AccountStore.NormalizeEmail(request.Email);
+        var user = store.FindUserByEmail(email);
+
+        // 与发码接口一致：不通过不同的错误码暴露账号是否存在。
+        if (user is null || user.Disabled)
+        {
+            return Results.BadRequest(new ErrorResponse("reset_invalid"));
+        }
+
+        if (codes.Consume(email, request.Code, VerificationCodeService.ResetPurpose) is { } codeError)
+        {
+            return Results.BadRequest(new ErrorResponse(codeError));
+        }
+
+        store.SetPasswordHash(user.Id, PasswordHasher.Hash(request.NewPassword ?? string.Empty));
+        // 密码换了，所有 refresh token 作废，其他设备必须重新登录；已签发的 access token
+        // 是无状态 HS256，无法逐个吊销，最多再活 30 分钟（与改密码接口同一口径）。
+        store.RevokeAllRefreshTokens(user.Id);
+        return Results.Ok(new MessageResponse("password_reset"));
     }
 
     private static IResult Register(
@@ -76,7 +157,8 @@ public static class AuthEndpoints
 
         var email = AccountStore.NormalizeEmail(request.Email);
 
-        if (options.RequireEmailVerification && codes.Consume(email, request.Code) is { } codeError)
+        if (options.RequireEmailVerification
+            && codes.Consume(email, request.Code, VerificationCodeService.RegisterPurpose) is { } codeError)
         {
             return Results.BadRequest(new ErrorResponse(codeError));
         }

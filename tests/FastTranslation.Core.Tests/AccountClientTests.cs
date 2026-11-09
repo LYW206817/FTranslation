@@ -455,6 +455,64 @@ public class AccountClientTests
         Assert.False(result.Succeeded);
         Assert.Equal(AccountErrorCode.PasswordMismatch, result.Error!.Code);
     }
+
+    [Fact]
+    public async Task RequestPasswordResetCode_posts_to_the_reset_path()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, """{"message":"code_sent"}""",
+            baseUrl: "https://api.example.com/");
+
+        var result = await client.RequestPasswordResetCodeAsync("a@b.test", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/auth/password/reset/code", handler.LastUri!.ToString());
+        Assert.Contains("\"email\":\"a@b.test\"", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task ResetPassword_posts_the_code_and_new_password()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, """{"message":"password_reset"}""",
+            baseUrl: "https://api.example.com/");
+
+        var result = await client.ResetPasswordAsync(
+            "a@b.test", "123456", "brand-new-123", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/auth/password/reset", handler.LastUri!.ToString());
+        Assert.Contains("\"code\":\"123456\"", handler.LastBody);
+        Assert.Contains("\"newPassword\":\"brand-new-123\"", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task DeleteAccount_sends_password_and_email_confirmation()
+    {
+        var (client, handler) = Build(HttpStatusCode.OK, """{"message":"account_deleted"}""",
+            baseUrl: "https://api.example.com/");
+
+        var result = await client.DeleteAccountAsync(
+            "access-1", "pw", "a@b.test", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/account/delete", handler.LastUri!.ToString());
+        Assert.Equal("Bearer access-1", handler.LastAuthorization?.ToString());
+        Assert.Contains("\"confirmation\":\"a@b.test\"", handler.LastBody);
+    }
+
+    [Theory]
+    [InlineData("confirmation_mismatch", AccountErrorCode.ConfirmationMismatch)]
+    [InlineData("mail_unavailable", AccountErrorCode.MailUnavailable)]
+    [InlineData("reset_invalid", AccountErrorCode.ResetInvalid)]
+    public async Task Account_lifecycle_errors_map_to_their_codes(string code, AccountErrorCode expected)
+    {
+        var (client, _) = Build(HttpStatusCode.BadRequest, $$"""{"error":"{{code}}"}""");
+
+        var result = await client.ResetPasswordAsync(
+            "a@b.test", "123456", "brand-new-123", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(expected, result.Error!.Code);
+    }
 }
 
 public class AccountSessionStoreTests

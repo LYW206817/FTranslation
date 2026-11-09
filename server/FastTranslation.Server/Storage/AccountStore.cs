@@ -101,6 +101,40 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
+    /// <summary>
+    /// 彻底删除账号及其个人数据。设备、单词本、月度用量与 refresh token 靠外键
+    /// 级联；<c>usage_events</c> 刻意没有外键（它要独立于账号保留一段时间做对账），
+    /// 所以必须显式删。兑换码只把 <c>redeemed_by</c> 置空，码本身留作审计。
+    /// </summary>
+    public bool DeleteUser(Guid userId, string email)
+    {
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        foreach (var sql in new[]
+        {
+            "DELETE FROM usage_events WHERE user_id = $userId",
+            "DELETE FROM email_verifications WHERE email = $email",
+        })
+        {
+            using var cleanup = connection.CreateCommand();
+            cleanup.Transaction = transaction;
+            cleanup.CommandText = sql;
+            cleanup.Parameters.AddWithValue("$userId", userId.ToString("D"));
+            cleanup.Parameters.AddWithValue("$email", NormalizeEmail(email));
+            cleanup.ExecuteNonQuery();
+        }
+
+        using var delete = connection.CreateCommand();
+        delete.Transaction = transaction;
+        delete.CommandText = "DELETE FROM users WHERE id = $userId";
+        delete.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        var deleted = delete.ExecuteNonQuery() > 0;
+
+        transaction.Commit();
+        return deleted;
+    }
+
     /// <summary>今天所有账号的总支出，单位为微元——网关的预算熔断依据。</summary>
     public long ReadTodayCostMicros()
     {
@@ -461,23 +495,25 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery();
     }
 
-    public void SaveVerificationCode(string email, string codeHash, long expiresAt, long sentAt)
+    public void SaveVerificationCode(string email, string codeHash, long expiresAt, long sentAt, string purpose)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO email_verifications (email, code_hash, expires_at, attempts, last_sent_at)
-            VALUES ($email, $hash, $expiresAt, 0, $sentAt)
+            INSERT INTO email_verifications (email, code_hash, expires_at, attempts, last_sent_at, purpose)
+            VALUES ($email, $hash, $expiresAt, 0, $sentAt, $purpose)
             ON CONFLICT(email) DO UPDATE SET
                 code_hash = excluded.code_hash,
                 expires_at = excluded.expires_at,
                 attempts = 0,
-                last_sent_at = excluded.last_sent_at
+                last_sent_at = excluded.last_sent_at,
+                purpose = excluded.purpose
             """;
         command.Parameters.AddWithValue("$email", NormalizeEmail(email));
         command.Parameters.AddWithValue("$hash", codeHash);
         command.Parameters.AddWithValue("$expiresAt", expiresAt);
         command.Parameters.AddWithValue("$sentAt", sentAt);
+        command.Parameters.AddWithValue("$purpose", purpose);
         command.ExecuteNonQuery();
     }
 
@@ -485,7 +521,7 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT code_hash, expires_at, attempts, last_sent_at FROM email_verifications WHERE email = $email";
+        command.CommandText = "SELECT code_hash, expires_at, attempts, last_sent_at, purpose FROM email_verifications WHERE email = $email";
         command.Parameters.AddWithValue("$email", NormalizeEmail(email));
 
         using var reader = command.ExecuteReader();
@@ -494,7 +530,8 @@ public sealed class AccountStore(ServerDatabase database)
             return null;
         }
 
-        return new VerificationRecord(reader.GetString(0), reader.GetInt64(1), reader.GetInt32(2), reader.GetInt64(3));
+        return new VerificationRecord(
+            reader.GetString(0), reader.GetInt64(1), reader.GetInt32(2), reader.GetInt64(3), reader.GetString(4));
     }
 
     public void IncrementVerificationAttempts(string email)
@@ -576,4 +613,4 @@ public sealed record DeviceResult(bool Succeeded, DeviceRecord? Device, string? 
 /// <summary>一条 refresh token 属于哪个账号、哪台设备（旧令牌没有设备）。</summary>
 public sealed record RefreshTokenOwner(Guid UserId, Guid? DeviceId);
 
-public sealed record VerificationRecord(string CodeHash, long ExpiresAt, int Attempts, long LastSentAt);
+public sealed record VerificationRecord(string CodeHash, long ExpiresAt, int Attempts, long LastSentAt, string Purpose);

@@ -11,9 +11,15 @@ namespace FastTranslation.Server.Auth;
 /// </summary>
 public sealed class VerificationCodeService(AccountStore store, ServerDatabase database, ServerOptions options)
 {
+    /// <summary>注册验证码。注册流程只认这个用途的码，重置密码不能拿它来用。</summary>
+    public const string RegisterPurpose = "register";
+
+    /// <summary>重置密码验证码。与注册码共用同一行存储，后发的覆盖先发的。</summary>
+    public const string ResetPurpose = "reset";
+
     public sealed record IssueResult(bool Sent, string? Error, int RetryAfterSeconds, string? Code);
 
-    public IssueResult Issue(string email)
+    public IssueResult Issue(string email, string purpose)
     {
         var normalized = AccountStore.NormalizeEmail(email);
         var now = database.NowUnix;
@@ -28,18 +34,26 @@ public sealed class VerificationCodeService(AccountStore store, ServerDatabase d
         }
 
         var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
-        store.SaveVerificationCode(normalized, HashCode(normalized, code), now + (options.VerificationCodeMinutes * 60L), now);
+        store.SaveVerificationCode(normalized, HashCode(normalized, code), now + (options.VerificationCodeMinutes * 60L), now, purpose);
         return new IssueResult(true, null, 0, code);
     }
 
     /// <summary>验证码有效时返回 null（并焚毁它），否则返回稳定的错误标记。</summary>
-    public string? Consume(string email, string? code)
+    public string? Consume(string email, string? code, string purpose)
     {
         var normalized = AccountStore.NormalizeEmail(email);
         var record = store.FindVerificationCode(normalized);
         if (record is null)
         {
             return "code_missing";
+        }
+
+        // 同一邮箱同时只能有一个有效码。用途不匹配说明用户拿的是另一种流程的码，
+        // 不能放行——否则注册码就能重置别人的密码。
+        if (!string.Equals(record.Purpose, purpose, StringComparison.Ordinal))
+        {
+            store.IncrementVerificationAttempts(normalized);
+            return "code_invalid";
         }
 
         if (record.ExpiresAt <= database.NowUnix)

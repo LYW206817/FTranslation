@@ -14,6 +14,12 @@ public sealed record RefreshRequest(string RefreshToken);
 
 public sealed record VerificationCodeRequest(string Email);
 
+public sealed record PasswordResetCodeRequest(string Email);
+
+public sealed record PasswordResetRequest(string Email, string? Code, string? NewPassword);
+
+public sealed record DeleteAccountRequest(string? Password, string? Confirmation);
+
 public sealed record TokenPairResponse(
     string AccessToken,
     string RefreshToken,

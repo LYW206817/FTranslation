@@ -154,6 +154,48 @@ public sealed class AccountCoordinator
     public Task<AccountApiResult<CodeRequestResult>> RequestCodeAsync(string email, CancellationToken cancellationToken) =>
         _client.RequestVerificationCodeAsync(email, cancellationToken);
 
+    /// <summary>
+    /// 重置密码的发码入口。服务端不区分邮箱是否存在，所以界面统一提示
+    /// 「如果该邮箱已注册，验证码会发到邮箱」，不要暴露账号是否存在。
+    /// </summary>
+    public Task<AccountApiResult<AccountAction>> RequestPasswordResetCodeAsync(
+        string email, CancellationToken cancellationToken) =>
+        _client.RequestPasswordResetCodeAsync(email, cancellationToken);
+
+    /// <summary>
+    /// 重置成功后服务端会吊销所有 refresh token；本机若还存着旧会话，必须一起清掉，
+    /// 否则界面会短暂保留一个已经失效的登录态。
+    /// </summary>
+    public async Task<AccountApiResult<AccountAction>> ResetPasswordAsync(
+        string email, string code, string newPassword, CancellationToken cancellationToken)
+    {
+        var result = await _client.ResetPasswordAsync(email, code, newPassword, cancellationToken)
+            .ConfigureAwait(true);
+        if (result.Succeeded)
+        {
+            _store.Clear();
+            SetSession(null);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 注销账号。成功后服务端已删掉这个账号，本地令牌不可能再刷新，必须一起清掉。
+    /// </summary>
+    public async Task<AccountApiResult<AccountAction>> DeleteAccountAsync(
+        string password, string confirmation, CancellationToken cancellationToken)
+    {
+        var result = await WithSessionAsync(
+            token => _client.DeleteAccountAsync(token, password, confirmation, cancellationToken),
+            cancellationToken).ConfigureAwait(true);
+        if (result.Succeeded)
+        {
+            _store.Clear();
+            SetSession(null);
+        }
+        return result;
+    }
+
     public Task<AccountApiResult<AccountUsage>> ReadUsageAsync(CancellationToken cancellationToken) =>
         WithSessionAsync(token => _client.GetUsageAsync(token, cancellationToken, _deviceFingerprint), cancellationToken);
 

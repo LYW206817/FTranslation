@@ -20,6 +20,8 @@ public static class AccountEndpoints
         group.MapDelete("/devices/{id:guid}", RemoveDevice);
         group.MapPatch("/profile", UpdateProfile);
         group.MapPost("/password", ChangePassword);
+        // 注销是不可逆的破坏性操作，单独挂认证限流，避免拿着有效令牌反复试密码。
+        group.MapPost("/delete", DeleteAccount).RequireRateLimiting(RateLimiting.AuthPolicy);
     }
 
     private static IResult Me(ClaimsPrincipal principal, AccountStore store, ServerDatabase database)
@@ -145,6 +147,37 @@ public static class AccountEndpoints
         }
 
         return Results.Ok(AuthEndpoints.IssueTokens(store, tokens, options, database, user, registered));
+    }
+
+    /// <summary>
+    /// 注销账号。要求当前密码 + 键入完整邮箱，两道确认都是为了防止「锁屏没关」
+    /// 或误点把学习记录删掉。删除是硬删除，不可恢复。
+    /// </summary>
+    private static IResult DeleteAccount(
+        [FromBody] DeleteAccountRequest request,
+        ClaimsPrincipal principal,
+        AccountStore store)
+    {
+        var user = store.FindUserById(principal.GetUserId());
+        if (user is null)
+        {
+            return Results.NotFound(new ErrorResponse("account_missing"));
+        }
+
+        if (!PasswordHasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
+        {
+            return Results.Json(new ErrorResponse("password_mismatch"),
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (!string.Equals((request.Confirmation ?? string.Empty).Trim(), user.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new ErrorResponse("confirmation_mismatch"));
+        }
+
+        return store.DeleteUser(user.Id, user.Email)
+            ? Results.Ok(new MessageResponse("account_deleted"))
+            : Results.NotFound(new ErrorResponse("account_missing"));
     }
 
     private static IResult RegisterDevice(

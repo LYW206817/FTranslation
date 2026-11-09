@@ -1,3 +1,4 @@
+using FastTranslation.Server.Auth;
 using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
 using Xunit;
@@ -105,6 +106,29 @@ public sealed class AccountStoreTests : IDisposable
         Assert.Contains(devices, device => device.Id == first.Id);
         Assert.Contains(devices, device => device.Id == second.Id);
         Assert.DoesNotContain(devices, device => device.UserId != owner.Id);
+    }
+
+    [Fact]
+    public void DeleteUser_RemovesAccountAndPersonalRows()
+    {
+        var user = CreateUser("delete-account@example.com");
+        var device = _store.RegisterDevice(user.Id, "fp-delete", "pc").Device!;
+        _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 1, 1, 500, _database.NowUnix);
+        _store.SaveRefreshToken(user.Id, "delete-token-hash", _database.NowUnix + 600);
+        _store.SaveVerificationCode(user.Email, "hash", _database.NowUnix + 300, _database.NowUnix,
+            VerificationCodeService.ResetPurpose);
+        var notes = new NoteStore(_database);
+        notes.Create(user.Id, NoteKind.Word, "hello", "你好", "en", "zh", "qwen-mt-flash", "test");
+
+        Assert.True(_store.DeleteUser(user.Id, user.Email));
+
+        // 用户行删掉后，设备、笔记、refresh token 都靠外键级联；usage_events 与验证码
+        // 没有指向 users 的外键，DeleteUser 必须显式清掉，否则会留下可关联的个人数据。
+        Assert.Null(_store.FindUserById(user.Id));
+        Assert.Null(_store.ConsumeRefreshToken("delete-token-hash"));
+        Assert.Null(_store.FindVerificationCode(user.Email));
+        Assert.Equal(0, notes.CountLive(user.Id));
+        Assert.Equal(0L, _store.ReadTodayCostMicros());
     }
 
     [Fact]
@@ -267,12 +291,14 @@ public sealed class AccountStoreTests : IDisposable
     public void VerificationCode_RoundTripsAndCanBeDeleted()
     {
         var hash = "abc123";
-        _store.SaveVerificationCode("Code@Example.com", hash, _database.NowUnix + 300, _database.NowUnix);
+        _store.SaveVerificationCode("Code@Example.com", hash, _database.NowUnix + 300, _database.NowUnix,
+            VerificationCodeService.RegisterPurpose);
 
         var record = _store.FindVerificationCode("code@example.com");
         Assert.NotNull(record);
         Assert.Equal(hash, record!.CodeHash);
         Assert.Equal(0, record.Attempts);
+        Assert.Equal(VerificationCodeService.RegisterPurpose, record.Purpose);
 
         _store.IncrementVerificationAttempts("code@example.com");
         Assert.Equal(1, _store.FindVerificationCode("code@example.com")!.Attempts);
