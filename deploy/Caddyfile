@@ -34,6 +34,29 @@ __DOMAIN__ www.__DOMAIN__ {
 		-Server
 	}
 
+	# 运营后台与官网分开 root：admin/ 的发布节奏跟着运维走，
+	# 不能被站点整目录同步顺手覆盖。页面没有构建步骤，直接 file_server。
+	# 必须补尾斜杠：否则页面里的 ./admin.css 会解析到站点根。
+	redir /admin /admin/ 308
+	handle_path /admin/* {
+		root * /var/www/fasttranslation-admin
+		file_server
+		header {
+			Cache-Control "no-store"
+			X-Frame-Options "DENY"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "no-referrer"
+			X-Robots-Tag "noindex, nofollow"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		}
+		# 可选第二层：Basic Auth 只能挡住不知道口令的人先看到登录页，
+		# 真正的授权仍是页面里输入的 X-Admin-Token。启用前先
+		# `caddy hash-password`，再把下面三行取消注释：
+		# basic_auth {
+		# 	admin <bcrypt-hash>
+		# }
+	}
+
 	# 账号 API、开发者网关和健康探针都落在同一个 Kestrel 实例上，
 	# 该实例只监听回环地址。
 	handle /v1/* {

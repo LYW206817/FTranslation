@@ -5,7 +5,7 @@
 | 组件 | 监听 | 说明 |
 |---|---|---|
 | FastTranslation.Server | `127.0.0.1:5080` | 账号、笔记、开发者网关。只监听回环,不对外 |
-| Caddy | `0.0.0.0:80,443` | 自动申请并续期证书;静态站点 + 反代 `/api/*`、`/v1/*`、`/health` |
+| Caddy | `0.0.0.0:80,443` | 自动申请并续期证书;静态站点 + 反代 `/api/*`、`/v1/*`、`/health`;运营后台 `/admin/` 用独立 root |
 | SQLite | `/var/lib/fasttranslation/fasttranslation.db` | WAL 模式,由上面的 server 进程独占 |
 
 对外只有 80/443。应用进程以 `ftserver` 用户运行,systemd 的 `ProtectSystem=strict` 让它除 `/var/lib/fasttranslation` 之外整机只读。
@@ -16,12 +16,18 @@
 |---|---|
 | `build-server.sh` | 本机执行,产出 `publish/server-linux` |
 | `bootstrap.sh` | 服务器上执行一次(幂等):swap 与 `vm.swappiness=10`、系统账号、目录、Caddy(装完即停用)、libicu、SSH 加固、ufw |
-| `install.sh` | 服务器上执行:先校验生产配置,再停服务拷二进制(所以可以原地重复执行做升级),然后 systemd 单元、静态站点、备份任务、Caddyfile,最后启动并打印健康检查。**已填好的 `/etc/caddy/Caddyfile` 不会被覆盖** |
+| `install.sh` | 服务器上执行:先校验生产配置,再停服务拷二进制(所以可以原地重复执行做升级),然后 systemd 单元、静态站点、运营后台、备份任务、Caddyfile,最后启动并打印健康检查。**已填好的 `/etc/caddy/Caddyfile` 不会被覆盖** |
 | `fasttranslation.service` | → `/etc/systemd/system/fasttranslation.service` |
 | `Caddyfile` | → `/etc/caddy/Caddyfile`(两处占位符) |
 | `appsettings.Production.json.example` | → `/opt/fasttranslation/appsettings.Production.json` 后填空 |
 | `backup.sh` | → `/usr/local/bin/ft-backup.sh` |
 | `fasttranslation-backup.cron` | → `/etc/cron.d/fasttranslation-backup` |
+| `ft-alert.sh` | → `/usr/local/lib/ft-alert.sh`（飞书发送与告警去重，被下面两个脚本 source） |
+| `ft-probe.sh` | → `/usr/local/bin/ft-probe.sh`（合成翻译探测） |
+| `ft-monitor.sh` | → `/usr/local/bin/ft-monitor.sh`（资源检查与每日摘要） |
+| `provision-probe.sh` | → `/usr/local/bin/ft-provision-probe.sh`（一次性创建探针账号） |
+| `fasttranslation-monitor.cron` | → `/etc/cron.d/fasttranslation-monitor` |
+| `monitor.env.example` | 首次安装复制为 `/etc/fasttranslation/monitor.env`（600）；填探针密码与飞书 webhook |
 | `go-live.sh` | 备案号下来后在服务器上执行一次:替换占位符、填备案号、启用 Caddy 并断言五项 |
 
 ## 首次部署
@@ -34,10 +40,14 @@ bash deploy/build-server.sh
 rm -rf publish/ftdeploy
 mkdir -p publish/ftdeploy
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
-   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron publish/ftdeploy/
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron \
+   deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
+   deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
+   deploy/monitor.env.example publish/ftdeploy/
 cp deploy/appsettings.Production.json.example publish/ftdeploy/
 cp -r publish/server-linux publish/ftdeploy/server
 cp -r site publish/ftdeploy/site
+cp -r admin publish/ftdeploy/admin
 
 # 3) 上传(IP 换成你的)
 scp -r publish/ftdeploy root@YOUR_SERVER_IP:/root/ftdeploy
@@ -174,6 +184,60 @@ chown ftserver:ftserver /var/lib/fasttranslation/fasttranslation.db
 systemctl start fasttranslation
 ```
 
+## 监控与告警
+
+`install.sh` 安装三组任务（`/etc/cron.d/fasttranslation-monitor`）：
+
+| 任务 | 频率 | 检查 |
+|---|---|---|
+| `ft-probe.sh` | 每 15 分钟 | 专用账号登录 → 真实 `/v1/chat/completions` → 200 且译文非空；抓百炼 Key 失效、网关/记账坏掉 |
+| `ft-monitor.sh check` | 每小时 | 最新备份 >36h、`/var/lib/fasttranslation` 磁盘 >85%、今日网关花费 ≥ 预算 80% |
+| `ft-monitor.sh digest` | 每天 09:00 CST | 新增注册、30 天活跃、昨日请求/字符/成本、今日花费/预算、`usage_events` 最早月份 |
+
+告警发到飞书群机器人：进入失败态发一次，持续失败每 6 小时提醒，恢复时补一条。状态文件在 `/var/lib/fasttranslation-monitor/`。
+
+### 首次配置
+
+1. 飞书群 → 群设置 → 群机器人 → 添加「自定义机器人」；安全设置选「自定义关键词」，关键词填 `FastTranslation`。复制 webhook。
+2. 填 `/etc/fasttranslation/monitor.env`（`install.sh` 首次安装会从 `deploy/monitor.env.example` 复制，权限 600）：
+   - `FT_PROBE_PASSWORD`：用 `openssl rand -hex 16` 生成；
+   - `FT_FEISHU_WEBHOOK`：上一步复制的地址。
+3. 创建探针账号（注册 → standard 10 年 → 验证登录）：
+   ```bash
+   bash /usr/local/bin/ft-provision-probe.sh
+   ```
+4. 手工跑一次，确认飞书群收到：
+   ```bash
+   /usr/local/bin/ft-probe.sh
+   /usr/local/bin/ft-monitor.sh digest
+   ```
+   调试时可设 `FT_DRY_RUN=1`，只打印不发送。
+5. 云监控（可选，但整机挂了只有它能在服务器之外报警）：
+   - 报警联系人：手机号 + 邮箱，建联系组；
+   - 站点监控：`https://fttranslation.cn/health`，5 分钟，状态码非 200/超时告警；**域名备案与 Caddy 启用后再加**，不要用 `https://IP`（证书不匹配）；
+   - ECS 主机监控：CPU >80%、磁盘 >85%；内存/磁盘可能需要云监控插件，没有插件就靠 `ft-monitor.sh` 的 `df` 检查。
+
+### 手工操作
+
+```bash
+/usr/local/bin/ft-probe.sh
+/usr/local/bin/ft-monitor.sh check
+/usr/local/bin/ft-monitor.sh digest
+tail -f /var/log/ft-monitor.log
+```
+
+`ft-probe.sh` 和 `ft-monitor.sh` 都从 `/etc/fasttranslation/monitor.env` 读配置；真实 webhook 和探针密码只放那里，不进仓库。`ft-monitor.sh` 用 `sqlite3 -readonly` 读生产库（WAL 下不阻塞写入），并用 `jq` 读 `appsettings.Production.json` 的 `Server:Gateway:DailyBudgetMicros`；`bootstrap.sh` 会安装 `jq`。
+
+## 运营后台
+
+`admin/` 是一个没有任何构建步骤的静态页：登录后看概览、7/30 天用量、账号（改套餐 / 禁用）、激活码（生成 / 作废）和网关健康。它由 `install.sh` 复制到 `/var/www/fasttranslation-admin`，Caddy 用独立的 `/admin/*` root 提供，和官网的整目录同步互不影响。
+
+访问 `https://<域名>/admin/`，令牌是 `/opt/fasttranslation/appsettings.Production.json` 里的 `Server:AdminToken`。页面只把令牌放在当前标签页的 `sessionStorage`，关闭标签即清除；请求走同域的 `/api/v1/admin/*`，服务端按 IP 限制每分钟 20 次。令牌是共享密钥：轮换时改配置并重启服务，所有已打开的后台会立即失效。
+
+Caddy 对后台额外加了 `Cache-Control: no-store`、`Content-Security-Policy`（只允许同源脚本/样式/请求）、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer` 和 `X-Robots-Tag: noindex`；`site/robots.txt` 也写了 `Disallow: /admin`。想再加一层遮挡，可按 `deploy/Caddyfile` 里的注释启用 Basic Auth —— 它不能替代后台令牌。
+
+**已填好的 `/etc/caddy/Caddyfile` 不会被 `install.sh` 覆盖。** 第一次升级到带后台的版本时，`install.sh` 会提示 `/admin` 路由缺失；把 `deploy/Caddyfile` 里的 `redir /admin` 与 `handle_path /admin/*` 两段合并进现有配置，或者用 `FT_FORCE_CADDYFILE=1 bash install.sh` 重新铺模板（会覆盖手改）。
+
 ## 升级
 
 升级就是再跑一遍 `install.sh`:它会自己停服务、拷完再启动(不要手写 stop/cp/start —— 边跑边拷会撞上面那条 Text file busy)。上传目录的铺法与首次部署相同,产物用最新的 `publish/server-linux`:
@@ -182,9 +246,13 @@ systemctl start fasttranslation
 bash deploy/build-server.sh
 rm -rf /root/ftup && mkdir -p /root/ftup
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
-   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron /root/ftup/
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron \
+   deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
+   deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
+   deploy/monitor.env.example /root/ftup/
 cp -r publish/server-linux /root/ftup/server
 cp -r site /root/ftup/site
+cp -r admin /root/ftup/admin
 tar czf /root/ftup.tgz -C /root/ftup .
 scp /root/ftup.tgz root@YOUR_SERVER_IP:/tmp/
 ssh root@YOUR_SERVER_IP 'rm -rf /root/ftdeploy && mkdir -p /root/ftdeploy && tar xzf /root/ftup.tgz -C /root/ftdeploy && bash /root/ftdeploy/install.sh'
@@ -200,4 +268,5 @@ ssh root@YOUR_SERVER_IP 'rm -rf /root/ftdeploy && mkdir -p /root/ftdeploy && tar
 journalctl -u fasttranslation -f          # 应用
 journalctl -u caddy -f                    # Caddy(证书申请失败看这里)
 cat /var/log/ft-backup.log                # 备份
+tail -f /var/log/ft-monitor.log           # 合成探测、资源检查与每日摘要
 ```

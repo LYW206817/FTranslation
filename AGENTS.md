@@ -15,6 +15,7 @@ Windows 桌面划词翻译工具 + 一个自建后端。选中文本 → 浮动�
 - `src/FastTranslation.Providers.QwenMt` — DashScope 实现:文本 / 图片 / OCR 三类各有一套「直连」与「自建网关」provider(外加 `QuotaRefusal.cs`)
 - `server/FastTranslation.Server` — ASP.NET Core minimal API(net10.0):登录与账号、单词本、开发者网关(`/v1/chat/completions`、`/v1/image`、`/v1/ocr`)、额度与订阅闸门;SQLite(WAL);认证是手写 HS256,不引第三方 DI / 日志 / JWT 库
 - `site/` — 产品介绍静态单页(纯 HTML/CSS,没有构建步骤)
+- `admin/` — 运营后台静态单页(纯 HTML/CSS/JS,没有构建步骤;挂在 `/admin/`,由 Caddy 独立 root 提供,见 `deploy/README.md`)
 - `deploy/` — 一台 ECS 的部署文件(systemd + Caddy + SQLite),用法见 `deploy/README.md`
 - `tests/` — 四个 xunit 项目(Core / Platform.Windows / Providers.QwenMt / Server)
 - `docs/IMPL.md` — 实现记录的**索引**(分册在 `docs/impl/IMPL-vN-M.md`,每 20 个版本一册;新条目写进编号区间匹配的那一册);`docs/superpowers/specs/` — 可公开的设计规格;`docs/playbooks/` — 低频操作的 runbook

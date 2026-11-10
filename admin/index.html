@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <!-- 纯静态页，无构建；Caddy 的 CSP 只允许同源脚本、样式与请求。 -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:,">
+  <title>FastTranslation 运营后台</title>
+  <link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="login-form" class="login-card" autocomplete="off">
+      <div class="brand">FastTranslation</div>
+      <h1>运营后台</h1>
+      <p class="muted">粘贴管理令牌进入。令牌只保存在本标签页的 sessionStorage，关闭标签即清除。</p>
+      <label for="token-input">X-Admin-Token</label>
+      <input id="token-input" type="password" autocomplete="off" spellcheck="false" required>
+      <button type="submit" class="primary">进入</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="brand">FastTranslation <span class="muted">运营后台</span></div>
+      <div class="topbar-actions">
+        <span id="token-state" class="muted"></span>
+        <button id="refresh" type="button" class="ghost">刷新</button>
+        <button id="logout" type="button" class="ghost">退出</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="section-head">
+          <h2>概览</h2>
+          <span id="overview-updated" class="muted"></span>
+        </div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>用量</h2>
+          <div class="segmented" role="group" aria-label="用量窗口">
+            <button type="button" data-days="7" class="active">7 天</button>
+            <button type="button" data-days="30">30 天</button>
+          </div>
+        </div>
+        <div id="usage-summary" class="summary"></div>
+        <div id="usage-chart" class="chart"></div>
+        <div id="usage-sources" class="table-wrap"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>账号</h2>
+          <form id="account-search" class="inline-form">
+            <input id="account-query" type="search" placeholder="邮箱前缀" autocomplete="off">
+            <select id="account-plan">
+              <option value="">全部套餐</option>
+              <option value="free">免费</option>
+              <option value="light">轻享</option>
+              <option value="standard">标准</option>
+            </select>
+            <button type="submit">搜索</button>
+          </form>
+        </div>
+        <div id="accounts" class="table-wrap"></div>
+        <div class="pager">
+          <button id="accounts-prev" type="button" class="ghost">上一页</button>
+          <span id="accounts-page" class="muted"></span>
+          <button id="accounts-next" type="button" class="ghost">下一页</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>激活码</h2>
+          <form id="code-form" class="inline-form">
+            <select id="code-plan" aria-label="套餐">
+              <option value="light">轻享</option>
+              <option value="standard">标准</option>
+            </select>
+            <input id="code-days" type="number" value="30" min="1" max="3650" aria-label="天数" required>
+            <input id="code-count" type="number" value="1" min="1" max="200" aria-label="数量" required>
+            <input id="code-note" type="text" placeholder="备注（可选）" autocomplete="off">
+            <button type="submit" class="primary">生成</button>
+          </form>
+        </div>
+        <div id="code-result" class="code-result hidden"></div>
+        <div class="toolbar">
+          <select id="code-status" aria-label="激活码状态">
+            <option value="open">未兑换</option>
+            <option value="used">已兑换</option>
+            <option value="revoked">已作废</option>
+            <option value="all">全部</option>
+          </select>
+          <button id="code-refresh" type="button" class="ghost">刷新</button>
+        </div>
+        <div id="codes" class="table-wrap"></div>
+        <div class="pager">
+          <button id="codes-prev" type="button" class="ghost">上一页</button>
+          <span id="codes-page" class="muted"></span>
+          <button id="codes-next" type="button" class="ghost">下一页</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>网关健康</h2>
+          <span id="diag-updated" class="muted"></span>
+        </div>
+        <div id="diagnostics" class="cards"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <noscript><div class="login"><div class="login-card">运营后台需要启用 JavaScript。</div></div></noscript>
+  <script src="./admin.js"></script>
+</body>
+</html>

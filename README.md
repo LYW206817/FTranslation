@@ -234,6 +234,7 @@ src/
 server/
   FastTranslation.Server/            ASP.NET Core minimal API：账号、设备、单词本、额度与订阅闸门、开发者网关、语音中继（SQLite）
 site/                                产品介绍静态单页（纯 HTML/CSS，无构建步骤）
+admin/                               运营后台静态单页（纯 HTML/CSS/JS，无构建步骤）
 deploy/                              一台 ECS 的部署文件（systemd + Caddy）
 tests/
   FastTranslation.Core.Tests/              349 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）

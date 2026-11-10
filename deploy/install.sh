@@ -9,13 +9,21 @@
 #   /tmp/ftdeploy/Caddyfile             反向代理配置
 #   /tmp/ftdeploy/backup.sh             数据库备份脚本
 #   /tmp/ftdeploy/fasttranslation-backup.cron  备份定时任务
+#   /tmp/ftdeploy/ft-alert.sh           飞书告警库（被下面两个脚本 source）
+#   /tmp/ftdeploy/ft-probe.sh           合成翻译探测
+#   /tmp/ftdeploy/ft-monitor.sh         资源检查与每日摘要
+#   /tmp/ftdeploy/provision-probe.sh    一次性创建探针账号
+#   /tmp/ftdeploy/fasttranslation-monitor.cron  监控定时任务
+#   /tmp/ftdeploy/monitor.env.example   监控配置模板
 #   /tmp/ftdeploy/server/               发布产物（即 publish/server-linux）
 #   /tmp/ftdeploy/site/                 静态站点（即 site/）
+#   /tmp/ftdeploy/admin/                运营后台静态页（即 admin/）
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 APP_DIR=/opt/fasttranslation
 WEB_DIR=/var/www/fasttranslation
+ADMIN_WEB_DIR=/var/www/fasttranslation-admin
 
 echo "==> configuration"
 if [ ! -f "$APP_DIR/appsettings.Production.json" ]; then
@@ -66,9 +74,43 @@ if grep -q '__ICP_NUMBER__' "$WEB_DIR/index.html" 2>/dev/null; then
 	echo "    !! A mainland-hosted site must display it; fill it in once the管局 issues it."
 fi
 
+echo "==> admin console"
+# 独立目录：site 的整目录同步不能带走后台文件，回滚也只需删这一块。
+if [ -d "$HERE/admin" ]; then
+	install -d -m 0755 "$ADMIN_WEB_DIR"
+	rm -rf "${ADMIN_WEB_DIR:?}"/*
+	cp -r "$HERE/admin/." "$ADMIN_WEB_DIR/"
+	chown -R root:root "$ADMIN_WEB_DIR"
+else
+	echo "    (no admin/ in $HERE — skipping)"
+fi
+
 echo "==> backup job"
 install -m 0755 "$HERE/backup.sh" /usr/local/bin/ft-backup.sh
 install -m 0644 "$HERE/fasttranslation-backup.cron" /etc/cron.d/fasttranslation-backup
+
+echo "==> monitor jobs"
+if [ -f "$HERE/ft-probe.sh" ]; then
+	install -d -m 0755 /etc/fasttranslation /usr/local/lib
+	install -d -m 0700 /var/lib/fasttranslation-monitor
+	install -m 0755 "$HERE/ft-probe.sh" /usr/local/bin/ft-probe.sh
+	install -m 0755 "$HERE/ft-monitor.sh" /usr/local/bin/ft-monitor.sh
+	install -m 0755 "$HERE/provision-probe.sh" /usr/local/bin/ft-provision-probe.sh
+	install -m 0644 "$HERE/ft-alert.sh" /usr/local/lib/ft-alert.sh
+	install -m 0644 "$HERE/fasttranslation-monitor.cron" /etc/cron.d/fasttranslation-monitor
+
+	if [ ! -f /etc/fasttranslation/monitor.env ]; then
+		install -m 0600 "$HERE/monitor.env.example" /etc/fasttranslation/monitor.env
+		echo "    !! Created /etc/fasttranslation/monitor.env from the example."
+		echo "    !! Fill in FT_PROBE_PASSWORD and FT_FEISHU_WEBHOOK, then run:"
+		echo "    !!   bash /usr/local/bin/ft-provision-probe.sh"
+	elif grep -q '__PROBE_PASSWORD__\|__FEISHU_WEBHOOK__' /etc/fasttranslation/monitor.env; then
+		echo "    !! /etc/fasttranslation/monitor.env still has placeholders."
+		echo "    !! Fill it in, then: bash /usr/local/bin/ft-provision-probe.sh"
+	fi
+else
+	echo "    (monitor scripts missing from $HERE — skipping; copy them from deploy/)"
+fi
 
 echo "==> Caddy"
 # 已经配好（没有占位符）的 Caddyfile 不能被升级覆盖：拷贝过来会带回占位符，
@@ -91,6 +133,12 @@ else
 	caddy validate --config /etc/caddy/Caddyfile
 	systemctl enable caddy
 	echo "    Caddyfile looks good. Start it with: systemctl reload-or-restart caddy"
+fi
+
+if [ -d "$HERE/admin" ] && ! grep -q 'handle_path /admin/\*' /etc/caddy/Caddyfile; then
+	echo "    !! The configured Caddyfile has no /admin route; the admin console is copied"
+	echo "    !! but not reachable. Merge the block from deploy/Caddyfile, or re-lay the"
+	echo "    !! template with FT_FORCE_CADDYFILE=1 (this overwrites local edits)."
 fi
 
 echo "==> server"
