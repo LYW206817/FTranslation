@@ -1985,7 +1985,11 @@ public partial class App : Application, IResultPresenter
         _lastSelection = source;
         _lastResult = result;
         _toolbar?.Hide();
-        _card?.ShowResult(result, source);
+        // 方向只用于显示：auto 时本地检测真实源语言，低置信回落「自动检测」，不谎报接口里的猜测值。
+        string? direction = result.Succeeded
+            ? $"{SourceLanguageDetector.DisplaySource(_settings.SourceLanguage, result.RequestText)} → {LanguageCatalog.DisplayNameForApiName(result.TargetLanguage)}"
+            : null;
+        _card?.ShowResult(result, source, direction);
     }
 
     public void ShowTransientError(string message) => _card?.ShowResult(

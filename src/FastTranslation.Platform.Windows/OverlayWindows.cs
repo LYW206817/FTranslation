@@ -396,6 +396,7 @@ public sealed class ResultCardWindow : IDisposable
     private readonly TextBlock _sourceBlock;
     private readonly TextBlock _targetBlock;
     private readonly TextBlock _statusBlock;
+    private readonly TextBlock _directionBlock;
     private readonly Button _copyButton;
     private readonly Button _replaceButton;
     private readonly Button _insertButton;
@@ -445,6 +446,18 @@ public sealed class ResultCardWindow : IDisposable
             // 网关回落时会在这里多一句“这次用了你自己的 Key”，420 宽度下必须换行才不截断
             TextWrapping = TextWrapping.Wrap,
         };
+        // 方向单独放头部原文右侧（v117）：与底部 token 消耗分开，短文本一行不撑高卡片。
+        _directionBlock = new TextBlock
+        {
+            Foreground = FtTheme.TextMuted,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Right,
+            MaxWidth = 220,
+            Margin = new Thickness(0, 0, 8, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        DockPanel.SetDock(_directionBlock, Dock.Right);
         // 词典块替代译文行显示：两者同时出现时同一个词会重复一遍，卡片也过高。
         _dictionaryPanel = new StackPanel { Visibility = Visibility.Collapsed };
 
@@ -483,11 +496,12 @@ public sealed class ResultCardWindow : IDisposable
         };
         _closeButton.Click += (_, _) => { Hide(); Dismissed?.Invoke(); };
 
-        // 头部：源片段 + 关闭
+        // 头部：源片段 + 方向（右）+ 关闭
         var header = _header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(_closeButton, Dock.Right);
         _closeButton.Margin = new Thickness(10, -4, -4, 0);
         header.Children.Add(_closeButton);
+        header.Children.Add(_directionBlock);
         header.Children.Add(_sourceBlock);
 
         // 主体：spinner + 译文
@@ -499,7 +513,7 @@ public sealed class ResultCardWindow : IDisposable
         body.Children.Add(_targetBlock);
         Grid.SetColumn(_targetBlock, 1);
 
-        // 底部：状态 + 操作
+        // 底部：操作 + token 消耗；方向已单独放头部，两者分开不互相挤宽度（v117）。
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         actions.Children.Add(_saveButton);
         actions.Children.Add(_insertButton);
@@ -595,6 +609,7 @@ public sealed class ResultCardWindow : IDisposable
         _sourceBlock.Text = TrimForDisplay(previewText, 120);
         _targetBlock.Text = "正在翻译…";
         _targetBlock.Foreground = FtTheme.TextSecondary;
+        _directionBlock.Text = string.Empty;
         _statusBlock.Text = string.Empty;
         _replaceButton.Visibility = Visibility.Collapsed;
         _insertButton.Visibility = Visibility.Collapsed;
@@ -604,7 +619,7 @@ public sealed class ResultCardWindow : IDisposable
         ShowAt(selection.Anchor, selection.Rects.Count > 0 ? selection.Rects[0] : null);
     }
 
-    public void ShowResult(TranslationResult result, CapturedSelection selection)
+    public void ShowResult(TranslationResult result, CapturedSelection selection, string? direction = null)
     {
         StopSpinner();
         RestoreFullChrome();
@@ -629,6 +644,7 @@ public sealed class ResultCardWindow : IDisposable
             {
                 _targetBlock.Text = result.TranslatedText;
             }
+            _directionBlock.Text = direction ?? string.Empty;
             _statusBlock.Text = StatusLine(result);
             var writable = selection.IsWritable;
             _replaceButton.Visibility = writable ? Visibility.Visible : Visibility.Collapsed;
@@ -638,6 +654,7 @@ public sealed class ResultCardWindow : IDisposable
         {
             _targetBlock.Foreground = FtTheme.Danger;
             _targetBlock.Text = result.Error?.Message ?? "翻译失败";
+            _directionBlock.Text = string.Empty;
             _statusBlock.Text = string.Empty;
             _replaceButton.Visibility = Visibility.Collapsed;
             _insertButton.Visibility = Visibility.Collapsed;
@@ -707,6 +724,7 @@ public sealed class ResultCardWindow : IDisposable
         _targetBlock.Visibility = Visibility.Visible;
         _targetBlock.Foreground = FtTheme.Notice;
         _targetBlock.Text = message;
+        _directionBlock.Text = string.Empty;
         _statusBlock.Text = string.Empty;
         _copyButton.IsEnabled = false;
         _copyButton.Visibility = Visibility.Collapsed;

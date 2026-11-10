@@ -93,6 +93,9 @@ public static class LanguageCatalog
     private static readonly IReadOnlyDictionary<string, LanguageInfo> ByCode =
         Languages.ToDictionary(l => l.Code, StringComparer.OrdinalIgnoreCase);
 
+    private static readonly IReadOnlyDictionary<string, LanguageInfo> ByApiName =
+        Languages.ToDictionary(l => l.ApiName, StringComparer.OrdinalIgnoreCase);
+
     public static bool TryGet(string code, out LanguageInfo info)
     {
         info = code is null ? null! : ByCode.GetValueOrDefault(code)!;
@@ -101,4 +104,8 @@ public static class LanguageCatalog
 
     /// <summary>Qwen-MT 要求英文语言名；查不到时回落到语言码本身。</summary>
     public static string ToApiName(string code) => TryGet(code, out var info) ? info.ApiName : code;
+
+    /// <summary>结果卡显示用：把接口返回的英文语言名换回 zh-CN 标签；查不到时原样返回。</summary>
+    public static string DisplayNameForApiName(string apiName) =>
+        ByApiName.TryGetValue(apiName, out var info) ? info.DisplayName : apiName;
 }

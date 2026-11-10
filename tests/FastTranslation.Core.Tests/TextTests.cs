@@ -66,6 +66,19 @@ public class LanguageCatalogTests
         var codes = LanguageCatalog.Languages.Select(l => l.Code).ToArray();
         Assert.Equal(codes.Length, codes.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
+
+    [Fact]
+    public void DisplayNameForApiName_MapsBackToLabel()
+    {
+        Assert.Equal("中文(简体)", LanguageCatalog.DisplayNameForApiName("Chinese"));
+        Assert.Equal("葡萄牙语", LanguageCatalog.DisplayNameForApiName("Portuguese"));
+    }
+
+    [Fact]
+    public void DisplayNameForApiName_UnknownFallsBack()
+    {
+        Assert.Equal("Klingon", LanguageCatalog.DisplayNameForApiName("Klingon"));
+    }
 }
 
 public class SettingsServiceTests : IDisposable
