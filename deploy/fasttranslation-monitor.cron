@@ -1,0 +1,8 @@
+# 文件位置：/etc/cron.d/fasttranslation-monitor
+# 合成探测每 15 分钟；资源检查每小时；摘要每天 09:00 CST（01:00 UTC）。
+# 日志统一追加到 /var/log/ft-monitor.log。
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * root /usr/local/bin/ft-probe.sh >> /var/log/ft-monitor.log 2>&1
+17 * * * * root /usr/local/bin/ft-monitor.sh check >> /var/log/ft-monitor.log 2>&1
+1 1 * * * root /usr/local/bin/ft-monitor.sh digest >> /var/log/ft-monitor.log 2>&1

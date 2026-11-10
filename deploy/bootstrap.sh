@@ -37,8 +37,8 @@ install -d -o root -g root -m 0755 "$BACKUP_DIR"
 echo "==> packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-# 备份脚本需要 sqlite3，其余是 Caddy 的依赖。
-apt-get install -y --no-install-recommends sqlite3 ca-certificates curl debian-keyring debian-archive-keyring apt-transport-https
+# 备份脚本需要 sqlite3，监控脚本需要 jq，其余是 Caddy 的依赖。
+apt-get install -y --no-install-recommends sqlite3 jq ca-certificates curl debian-keyring debian-archive-keyring apt-transport-https
 
 if ! command -v caddy >/dev/null 2>&1; then
 	curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
