@@ -36,32 +36,34 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
+        diagnostics.RecordGatewayRequest();
         if (!gateway.IsConfigured)
         {
-            return Fail(StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
+            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
         var body = await ReadBodyAsync(context, ct);
         if (body is null)
         {
-            return Fail(StatusCodes.Status400BadRequest, "body_invalid");
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
         var (model, chars) = ReadChatShape(body);
         if (chars <= 0)
         {
-            return Fail(StatusCodes.Status400BadRequest, "text_required");
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "text_required");
         }
 
         if (chars > gateway.MaxRequestChars)
         {
-            return Fail(StatusCodes.Status413PayloadTooLarge, "text_too_long");
+            return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "text_too_long");
         }
 
-        if (Intent(context, principal, store, database, gateway, limiter, Pricing.QuotaChars(model, chars)) is { } refusal)
+        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, Pricing.QuotaChars(model, chars)) is { } refusal)
         {
             return refusal;
         }
@@ -71,6 +73,7 @@ public static class GatewayEndpoints
         {
             // 上游拒绝：透传状态码，让客户端现有的分类逻辑继续工作，
             // 并且不为这次根本没拿到的翻译向账号收费。
+            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
             return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
         }
 
@@ -112,22 +115,24 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
+        diagnostics.RecordGatewayRequest();
         if (!gateway.IsConfigured)
         {
-            return Fail(StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
+            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
         var body = await ReadBodyAsync(context, ct);
         if (body is null)
         {
-            return Fail(StatusCodes.Status400BadRequest, "body_invalid");
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        if (Intent(context, principal, store, database, gateway, limiter, quotaChars) is { } refusal)
+        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, quotaChars) is { } refusal)
         {
             return refusal;
         }
@@ -135,6 +140,7 @@ public static class GatewayEndpoints
         var response = await upstream.SendImageAsync(body, ct);
         if (!response.Succeeded)
         {
+            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
             return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
         }
 
@@ -167,24 +173,26 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
+        diagnostics.RecordGatewayRequest();
         if (!gateway.IsConfigured)
         {
-            return Fail(StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
+            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
         var body = await ReadBodyAsync(context, ct);
         if (body is null)
         {
-            return Fail(StatusCodes.Status400BadRequest, "body_invalid");
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
         // 从额度角度看，一次 OCR 与一次图片翻译定价相同：两者都是输入一张图。
         // 截图流程会同时调用 /v1/image，两个 1,000 合起来就是「每张截图 2,000 字符起」。
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        if (Intent(context, principal, store, database, gateway, limiter, quotaChars) is { } refusal)
+        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, quotaChars) is { } refusal)
         {
             return refusal;
         }
@@ -193,6 +201,7 @@ public static class GatewayEndpoints
         if (!response.Succeeded)
         {
             // 与 chat 同规则：原样透传上游状态码，绝不为拒绝计费。
+            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
             return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
         }
 
@@ -230,24 +239,25 @@ public static class GatewayEndpoints
         ServerDatabase database,
         GatewayOptions gateway,
         GatewayRateLimiter limiter,
+        GatewayDiagnostics diagnostics,
         int chars)
     {
         var userId = principal.GetUserId();
 
         if (!limiter.TryAcquire(userId, gateway.RequestsPerMinute))
         {
-            return Fail(StatusCodes.Status429TooManyRequests, "rate_limited");
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
         }
 
         if (gateway.DailyBudgetMicros > 0 && store.ReadTodayCostMicros() >= gateway.DailyBudgetMicros)
         {
-            return Fail(StatusCodes.Status429TooManyRequests, "budget_exhausted");
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "budget_exhausted");
         }
 
         var user = store.FindUserById(userId);
         if (user is null || user.Disabled)
         {
-            return Fail(StatusCodes.Status403Forbidden, "account_disabled");
+            return Fail(diagnostics, StatusCodes.Status403Forbidden, "account_disabled");
         }
 
         var (deviceId, _) = Device(context, principal, store);
@@ -259,7 +269,7 @@ public static class GatewayEndpoints
             // 故意用 429（而不是 403）：客户端会把它读作“额度用尽”并静默切换到
             // 用户自己的 Key，于是套餐耗尽只是让产品降级，而不是把它弄坏。
             context.Response.Headers["X-FT-Quota-Reason"] = decision.Reason ?? "quota_exhausted";
-            return Fail(StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
         }
 
         return null;
@@ -349,6 +359,9 @@ public static class GatewayEndpoints
         return string.IsNullOrWhiteSpace(body) ? null : body;
     }
 
-    private static IResult Fail(int status, string error)
-        => Results.Json(new ErrorResponse(error), statusCode: status);
+    private static IResult Fail(GatewayDiagnostics diagnostics, int status, string error)
+    {
+        diagnostics.RecordGatewayFailure(error);
+        return Results.Json(new ErrorResponse(error), statusCode: status);
+    }
 }

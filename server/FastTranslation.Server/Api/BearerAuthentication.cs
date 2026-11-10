@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using FastTranslation.Server.Auth;
+using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -19,7 +20,8 @@ public sealed class BearerAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    TokenService tokens)
+    TokenService tokens,
+    AccountStore store)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string UserIdClaim = "sub";
@@ -36,6 +38,14 @@ public sealed class BearerAuthenticationHandler(
         if (!tokens.TryValidateAccessToken(token, out var principal))
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid or expired access token."));
+        }
+
+        // v120: 禁用必须对已签发的 access token 立即生效，不能等它自然过期；
+        // 验签后查一次库，把 disabled 账号当作认证失败。
+        var user = store.FindUserById(principal.UserId);
+        if (user is null || user.Disabled)
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Account is disabled."));
         }
 
         var claims = new[]

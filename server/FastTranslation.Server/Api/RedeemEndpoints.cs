@@ -113,7 +113,8 @@ public static class RedeemAdminEndpoints
 {
     public static void MapRedeemAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/admin").WithTags("admin");
+        var group = app.MapGroup("/api/v1/admin").WithTags("admin")
+            .RequireRateLimiting(RateLimiting.AdminPolicy);
         group.MapGet("/codes", ListCodes).AddEndpointFilter(AdminEndpoints.RequireAdminToken);
         group.MapPost("/codes/{code}/revoke", RevokeCode).AddEndpointFilter(AdminEndpoints.RequireAdminToken);
     }
@@ -152,7 +153,8 @@ public static class RedeemAdminEndpoints
     private static IResult RevokeCode(
         [FromRoute] string code,
         RedeemStore codes,
-        ServerDatabase database)
+        ServerDatabase database,
+        ILoggerFactory loggerFactory)
     {
         var typed = RedeemCode.Normalize(code);
         if (typed.Length == 0)
@@ -163,6 +165,9 @@ public static class RedeemAdminEndpoints
         var printed = RedeemCode.Format(typed);
         if (codes.Revoke(printed, database.NowUnix))
         {
+            // 不记录码本身：它是 bearer instrument，日志会被长期保留。
+            loggerFactory.CreateLogger("Admin").LogInformation(
+                "admin action=code_revoked result=ok");
             return Results.Ok(new MessageResponse("code_revoked"));
         }
 

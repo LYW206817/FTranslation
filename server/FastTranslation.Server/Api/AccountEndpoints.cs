@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using FastTranslation.Server.Auth;
 using FastTranslation.Server.Domain;
@@ -256,9 +257,15 @@ public static class AdminEndpoints
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/admin").WithTags("admin");
+        var group = app.MapGroup("/api/v1/admin").WithTags("admin")
+            .RequireRateLimiting(RateLimiting.AdminPolicy);
         group.MapGet("/metrics", Metrics).AddEndpointFilter(RequireAdminToken);
+        group.MapGet("/usage", Usage).AddEndpointFilter(RequireAdminToken);
+        group.MapGet("/accounts", Accounts).AddEndpointFilter(RequireAdminToken);
         group.MapPost("/accounts/{email}/plan", SetPlan).AddEndpointFilter(RequireAdminToken);
+        group.MapPost("/accounts/{email}/disable", Disable).AddEndpointFilter(RequireAdminToken);
+        group.MapPost("/accounts/{email}/enable", Enable).AddEndpointFilter(RequireAdminToken);
+        group.MapGet("/diagnostics", Diagnostics).AddEndpointFilter(RequireAdminToken);
         group.MapPost("/codes", CreateCodes).AddEndpointFilter(RequireAdminToken);
     }
 
@@ -268,11 +275,150 @@ public static class AdminEndpoints
         return Results.Ok(new AdminMetricsResponse(total, free, light, standard, active));
     }
 
+    private static IResult Usage(
+        [FromQuery] int? days,
+        AccountStore store,
+        ServerDatabase database,
+        GatewayOptions gateway)
+    {
+        var window = days ?? 7;
+        if (window is < 1 or > 30)
+        {
+            return Results.BadRequest(new ErrorResponse("days_invalid"));
+        }
+
+        // 窗口按 UTC 整日对齐：days=7 返回今天加前 6 个完整日，正好 7 个日桶，
+        // 与 /usage/byDay 的 UTC 口径一致；滚动 168 小时会多出第 8 个半天桶。
+        var todayStart = database.NowUnix - (database.NowUnix % 86_400);
+        var from = todayStart - ((window - 1) * 86_400L);
+        var totals = store.ReadUsageTotals(from);
+        var bySource = store.ReadUsageBySource(from)
+            .Select(row => new AdminUsageBySource(row.Source, row.Requests, row.Chars, row.CostMicros))
+            .ToArray();
+        var dayRows = store.ReadUsageByDay(from).ToDictionary(row => row.Day, StringComparer.Ordinal);
+        var byDay = new List<AdminUsageByDay>(window);
+        for (var i = 0; i < window; i++)
+        {
+            var day = DateTimeOffset.FromUnixTimeSeconds(from + (i * 86_400L))
+                .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var requests = 0L;
+            var chars = 0L;
+            var cost = 0L;
+            if (dayRows.TryGetValue(day, out var row))
+            {
+                requests = row.Requests;
+                chars = row.Chars;
+                cost = row.CostMicros;
+            }
+            byDay.Add(new AdminUsageByDay(day, requests, chars, cost));
+        }
+
+        return Results.Ok(new AdminUsageResponse(
+            window,
+            from,
+            database.NowUnix,
+            new AdminUsageTotals(totals.Requests, totals.Chars, totals.TokensIn, totals.TokensOut, totals.CostMicros),
+            bySource,
+            byDay,
+            new AdminTodayUsage(store.ReadTodayCostMicros(), gateway.DailyBudgetMicros)));
+    }
+
+    private static IResult Accounts(
+        [FromQuery] string? query,
+        [FromQuery] string? plan,
+        [FromQuery] int? limit,
+        [FromQuery] int? offset,
+        AccountStore store,
+        ServerDatabase database)
+    {
+        PlanTier? filter = null;
+        if (!string.IsNullOrWhiteSpace(plan))
+        {
+            if (!Plans.TryParse(plan, out var parsed))
+            {
+                return Results.BadRequest(new ErrorResponse("plan_invalid"));
+            }
+            filter = parsed;
+        }
+
+        var take = limit is > 0 ? Math.Min(limit.Value, 200) : 50;
+        var skip = offset is > 0 ? offset.Value : 0;
+        var (items, total) = store.ReadAccountPage(query, filter, take, skip);
+        var now = database.NowUnix;
+        return Results.Ok(new AdminAccountPageResponse(
+            items.Select(item => new AdminAccountDto(
+                item.Email,
+                Plans.ToWire(item.Plan),
+                Plans.ToWire(Entitlement.EffectiveTier(item.Plan, item.PlanExpiresAt, now)),
+                item.PlanExpiresAt,
+                item.Disabled,
+                item.CreatedAt,
+                item.LastSeenAt,
+                item.MonthlyChars)).ToArray(),
+            total,
+            take,
+            skip));
+    }
+
+    private static IResult Disable(string email, AccountStore store, ILoggerFactory loggerFactory) =>
+        SetDisabled(email, true, store, loggerFactory);
+
+    private static IResult Enable(string email, AccountStore store, ILoggerFactory loggerFactory) =>
+        SetDisabled(email, false, store, loggerFactory);
+
+    private static IResult SetDisabled(
+        string email,
+        bool disabled,
+        AccountStore store,
+        ILoggerFactory loggerFactory)
+    {
+        var user = store.FindUserByEmail(email);
+        if (user is null)
+        {
+            return Results.NotFound(new ErrorResponse("account_missing"));
+        }
+
+        store.SetDisabled(user.Id, disabled);
+        if (disabled)
+        {
+            store.RevokeAllRefreshTokens(user.Id);
+        }
+
+        // 不记录 token / 密码；只记录动作与目标邮箱，供单操作员事后对账。
+        loggerFactory.CreateLogger("Admin").LogInformation(
+            "admin action={Action} target={Email} result=ok",
+            disabled ? "account_disabled" : "account_enabled",
+            user.Email);
+        return Results.Ok(new MessageResponse(disabled ? "account_disabled" : "account_enabled"));
+    }
+
+    private static IResult Diagnostics(GatewayDiagnostics diagnostics, ServerDatabase database)
+    {
+        var gateway = diagnostics.SnapshotGateway();
+        var speech = diagnostics.SnapshotSpeech();
+        var (size, wal) = database.ReadFileSizes();
+        return Results.Ok(new AdminDiagnosticsResponse(
+            diagnostics.StartedAtUnix,
+            Math.Max(0, database.NowUnix - diagnostics.StartedAtUnix),
+            ToCounters(gateway),
+            ToCounters(speech),
+            new AdminDatabaseSize(size, wal)));
+    }
+
+    private static AdminDiagnosticsCounters ToCounters(GatewayDiagnosticsSnapshot snapshot) =>
+        new(
+            snapshot.Requests,
+            snapshot.Failures,
+            snapshot.ByReason,
+            snapshot.LastFailureAtUnix == 0 ? null : snapshot.LastFailureAtUnix,
+            snapshot.LastFailureReason);
+
     private static IResult SetPlan(
         string email,
         [FromBody] PlanChangeRequest request,
         AccountStore store,
-        ServerDatabase database)
+        ServerDatabase database,
+        ILoggerFactory loggerFactory)
     {
         if (!Plans.TryParse(request.Plan, out var plan))
         {
@@ -295,6 +441,11 @@ public static class AdminEndpoints
         };
 
         store.SetPlan(user.Id, plan, expiresAt);
+        loggerFactory.CreateLogger("Admin").LogInformation(
+            "admin action=plan_changed target={Email} plan={Plan} days={Days}",
+            user.Email,
+            Plans.ToWire(plan),
+            request.Days);
         return Results.Ok(new MessageResponse("plan_updated"));
     }
 
@@ -306,7 +457,8 @@ public static class AdminEndpoints
     private static IResult CreateCodes(
         [FromBody] CreateCodesRequest request,
         RedeemStore codes,
-        ServerDatabase database)
+        ServerDatabase database,
+        ILoggerFactory loggerFactory)
     {
         if (!Plans.TryParse(request.Plan, out var plan) || plan == PlanTier.Free)
         {
@@ -332,6 +484,12 @@ public static class AdminEndpoints
         }
 
         codes.CreateCodes(generated, plan, days, request.Note ?? string.Empty, database.NowUnix);
+        // 只记批次元数据；码本身是 bearer instrument，不能进日志。
+        loggerFactory.CreateLogger("Admin").LogInformation(
+            "admin action=codes_created plan={Plan} days={Days} count={Count}",
+            Plans.ToWire(plan),
+            days,
+            count);
         return Results.Ok(new CreateCodesResponse(generated, Plans.ToWire(plan), days));
     }
 

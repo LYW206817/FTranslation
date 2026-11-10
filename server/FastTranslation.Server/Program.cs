@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using FastTranslation.Server;
 using FastTranslation.Server.Api;
@@ -5,6 +6,7 @@ using FastTranslation.Server.Auth;
 using FastTranslation.Server.Gateway;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +37,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Gateway);
 builder.Services.AddSingleton<GatewayRateLimiter>();
 builder.Services.AddSingleton<SpeechSessionLimiter>();
+builder.Services.AddSingleton<GatewayDiagnostics>();
 builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
 
 builder.Services.AddSingleton<AccountStore>();
@@ -46,12 +49,28 @@ builder.Services.AddSingleton<IVerificationMailSender, VerificationMailSender>()
 builder.Services.AddAuthentication(BearerScheme.Name)
     .AddScheme<AuthenticationSchemeOptions, BearerAuthenticationHandler>(BearerScheme.Name, null);
 builder.Services.AddAuthorization();
-builder.Services.AddAuthRateLimiting();
+builder.Services.AddRateLimitingPolicies();
+
+// v118: 线上只有 Caddy 能连到 127.0.0.1:5080。不配置 ForwardedHeaders 时，
+// 所有请求的 RemoteIpAddress 都是 127.0.0.1，按 IP 的认证限流会退化成
+// 全站共享 20 次/分。只信任 loopback，并且只取最后一跳：客户端自带的
+// X-Forwarded-For 会被 Caddy 追加在真实 IP 之前，ForwardLimit=1 保证
+// 伪造值不会成为限流键。
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 
 var app = builder.Build();
 
 app.Services.GetRequiredService<ServerDatabase>().Initialize();
 
+// 必须先于限流与认证：后面读 RemoteIpAddress 的代码要看到真实客户端 IP。
+app.UseForwardedHeaders();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

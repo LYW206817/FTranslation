@@ -14,6 +14,16 @@ public sealed record DeviceRecord(Guid Id, Guid UserId, string Fingerprint, stri
 
 public sealed record UsageSnapshot(int MonthlyChars, int DailyChars, string Month, string Day);
 
+/// <summary>管理端账号列表的一行。Plan 是存储值；过期折算在端点层做。</summary>
+public sealed record AdminAccountRow(
+    string Email,
+    PlanTier Plan,
+    long? PlanExpiresAt,
+    bool Disabled,
+    long CreatedAt,
+    long LastSeenAt,
+    int MonthlyChars);
+
 /// <summary>
 /// 服务里所有 SQL 语句都在这里。处理器保持薄，额度计算留在
 /// <see cref="QuotaPolicy"/>——本类型只负责与 SQLite 之间搬字节。
@@ -73,6 +83,17 @@ public sealed class AccountStore(ServerDatabase database)
         command.CommandText = "UPDATE users SET plan = $plan, plan_expires_at = $expiresAt WHERE id = $id";
         command.Parameters.AddWithValue("$plan", (int)plan);
         command.Parameters.AddWithValue("$expiresAt", (object?)expiresAtUnix ?? DBNull.Value);
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>禁用/解禁账号。禁用时由调用方同时吊销 refresh token。</summary>
+    public bool SetDisabled(Guid userId, bool disabled)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE users SET disabled = $disabled WHERE id = $id";
+        command.Parameters.AddWithValue("$disabled", disabled ? 1 : 0);
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
         return command.ExecuteNonQuery() > 0;
     }
@@ -580,6 +601,160 @@ public sealed class AccountStore(ServerDatabase database)
 
         return (total, free, light, standard, active);
     }
+
+    /// <summary>管理端的全局时间窗聚合；cost 仍以微元为单位。</summary>
+    public (long Requests, long Chars, long TokensIn, long TokensOut, long CostMicros) ReadUsageTotals(long fromUnix)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(tokens_in), 0),
+                   COALESCE(SUM(tokens_out), 0), COALESCE(SUM(cost_micros), 0)
+            FROM usage_events WHERE created_at >= $from
+            """;
+        command.Parameters.AddWithValue("$from", fromUnix);
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        return (
+            Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture),
+            Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture),
+            Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture),
+            Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture),
+            Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture));
+    }
+
+    public IReadOnlyList<(string Source, long Requests, long Chars, long CostMicros)> ReadUsageBySource(long fromUnix)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT source, COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(cost_micros), 0)
+            FROM usage_events WHERE created_at >= $from
+            GROUP BY source ORDER BY source
+            """;
+        command.Parameters.AddWithValue("$from", fromUnix);
+
+        using var reader = command.ExecuteReader();
+        var rows = new List<(string Source, long Requests, long Chars, long CostMicros)>();
+        while (reader.Read())
+        {
+            rows.Add((
+                reader.GetString(0),
+                Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture),
+                Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture),
+                Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture)));
+        }
+
+        return rows;
+    }
+
+    public IReadOnlyList<(string Day, long Requests, long Chars, long CostMicros)> ReadUsageByDay(long fromUnix)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT strftime('%Y-%m-%d', created_at, 'unixepoch') AS day,
+                   COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(cost_micros), 0)
+            FROM usage_events WHERE created_at >= $from
+            GROUP BY day ORDER BY day
+            """;
+        command.Parameters.AddWithValue("$from", fromUnix);
+
+        using var reader = command.ExecuteReader();
+        var rows = new List<(string Day, long Requests, long Chars, long CostMicros)>();
+        while (reader.Read())
+        {
+            rows.Add((
+                reader.GetString(0),
+                Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture),
+                Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture),
+                Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// 管理端账号分页。query 只做邮箱前缀匹配，<c>%</c>/<c>_</c> 会被转义，
+    /// 避免一个 <c>%</c> 变成全表扫描的「查所有」。
+    /// </summary>
+    public (IReadOnlyList<AdminAccountRow> Items, int Total) ReadAccountPage(
+        string? query,
+        PlanTier? plan,
+        int limit,
+        int offset)
+    {
+        var filters = new List<string>();
+        var prefix = string.Empty;
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filters.Add("u.email LIKE $prefix ESCAPE '\\'");
+            prefix = EscapeLike(query.Trim()) + "%";
+        }
+        if (plan is not null)
+        {
+            filters.Add("u.plan = $plan");
+        }
+        var where = filters.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", filters);
+
+        using var connection = database.Open();
+
+        int total;
+        using (var count = connection.CreateCommand())
+        {
+            count.CommandText = $"SELECT COUNT(*) FROM users u {where}";
+            AddAccountFilters(count, prefix, plan);
+            total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT u.email, u.plan, u.plan_expires_at, u.disabled, u.created_at,
+                   COALESCE((SELECT MAX(d.last_seen_at) FROM devices d WHERE d.user_id = u.id), 0),
+                   COALESCE((SELECT m.chars FROM usage_monthly m WHERE m.user_id = u.id AND m.month = $month), 0)
+            FROM users u
+            {where}
+            ORDER BY u.created_at DESC, u.email ASC
+            LIMIT $limit OFFSET $offset
+            """;
+        AddAccountFilters(command, prefix, plan);
+        command.Parameters.AddWithValue("$month", database.ThisMonthKey);
+        command.Parameters.AddWithValue("$limit", limit);
+        command.Parameters.AddWithValue("$offset", offset);
+
+        using var reader = command.ExecuteReader();
+        var items = new List<AdminAccountRow>();
+        while (reader.Read())
+        {
+            items.Add(new AdminAccountRow(
+                reader.GetString(0),
+                (PlanTier)reader.GetInt32(1),
+                reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                reader.GetInt32(3) != 0,
+                reader.GetInt64(4),
+                reader.GetInt64(5),
+                reader.GetInt32(6)));
+        }
+
+        return (items, total);
+    }
+
+    private static void AddAccountFilters(SqliteCommand command, string prefix, PlanTier? plan)
+    {
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            command.Parameters.AddWithValue("$prefix", prefix);
+        }
+        if (plan is { } tier)
+        {
+            command.Parameters.AddWithValue("$plan", (int)tier);
+        }
+    }
+
+    private static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 

@@ -9,6 +9,7 @@ namespace FastTranslation.Server.Storage;
 public sealed class ServerDatabase
 {
     private readonly string _connectionString;
+    private readonly string _databasePath;
     private readonly TimeProvider _time;
 
     public ServerDatabase(string databasePath, TimeProvider? time = null)
@@ -16,7 +17,8 @@ public sealed class ServerDatabase
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         _time = time ?? TimeProvider.System;
 
-        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
+        _databasePath = Path.GetFullPath(databasePath);
+        var directory = Path.GetDirectoryName(_databasePath);
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);
@@ -24,7 +26,7 @@ public sealed class ServerDatabase
 
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = databasePath,
+            DataSource = _databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
             Pooling = true,
@@ -42,6 +44,13 @@ public sealed class ServerDatabase
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         return connection;
+    }
+
+    /// <summary>数据库与 WAL 文件的当前字节数；文件不存在时按 0 计。</summary>
+    public (long SizeBytes, long WalBytes) ReadFileSizes()
+    {
+        static long Length(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
+        return (Length(_databasePath), Length(_databasePath + "-wal"));
     }
 
     public void Initialize()
@@ -115,6 +124,12 @@ public sealed class ServerDatabase
             ON notes(user_id, first_reviewed_at) WHERE deleted_at IS NULL AND stage >= 1
             """;
         firstReviewedIndex.ExecuteNonQuery();
+
+        // v120: 管理端的全局时间窗聚合（usage / 每日摘要）用不上
+        // (user_id, created_at) 索引；单独建 created_at，避免 30 天扫描退化。
+        using var usageTimeIndex = connection.CreateCommand();
+        usageTimeIndex.CommandText = "CREATE INDEX IF NOT EXISTS ix_usage_events_time ON usage_events(created_at)";
+        usageTimeIndex.ExecuteNonQuery();
     }
 
     /// <summary>仅当表存在且尚未包含该列时才添加。</summary>

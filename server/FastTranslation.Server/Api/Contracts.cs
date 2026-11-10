@@ -73,6 +73,52 @@ public sealed record AdminMetricsResponse(
     int StandardUsers,
     int ActiveUsersLast30Days);
 
+/// <summary>管理端用量汇总。costMicros 为微元（1e-6 元）。</summary>
+public sealed record AdminUsageResponse(
+    int Days,
+    long FromUnix,
+    long ToUnix,
+    AdminUsageTotals Total,
+    IReadOnlyList<AdminUsageBySource> BySource,
+    IReadOnlyList<AdminUsageByDay> ByDay,
+    AdminTodayUsage Today);
+
+public sealed record AdminUsageTotals(long Requests, long Chars, long TokensIn, long TokensOut, long CostMicros);
+
+public sealed record AdminUsageBySource(string Source, long Requests, long Chars, long CostMicros);
+
+public sealed record AdminUsageByDay(string Day, long Requests, long Chars, long CostMicros);
+
+public sealed record AdminTodayUsage(long CostMicros, long BudgetMicros);
+
+public sealed record AdminAccountDto(
+    string Email,
+    string Plan,
+    string EffectivePlan,
+    long? PlanExpiresAt,
+    bool Disabled,
+    long CreatedAt,
+    long LastSeenAt,
+    int MonthlyChars);
+
+public sealed record AdminAccountPageResponse(IReadOnlyList<AdminAccountDto> Items, int Total, int Limit, int Offset);
+
+public sealed record AdminDiagnosticsResponse(
+    long StartedAtUnix,
+    long UptimeSeconds,
+    AdminDiagnosticsCounters Gateway,
+    AdminDiagnosticsCounters Speech,
+    AdminDatabaseSize Database);
+
+public sealed record AdminDiagnosticsCounters(
+    long Requests,
+    long Failures,
+    IReadOnlyDictionary<string, long> ByReason,
+    long? LastFailureAtUnix,
+    string? LastFailureReason);
+
+public sealed record AdminDatabaseSize(long SizeBytes, long WalBytes);
+
 public sealed record MessageResponse(string Message);
 
 public sealed record DeviceRequest(string? Fingerprint, string? Name);

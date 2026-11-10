@@ -70,6 +70,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
             ["Server:RequireEmailVerification"] = "false",
             ["Server:AdminToken"] = ServerFactory.AdminToken,
             ["Server:AuthRequestsPerMinute"] = "1000",
+            ["Server:AdminRequestsPerMinute"] = "1000",
             ["Server:AccessTokenMinutes"] = "30",
             ["Server:Gateway:Enabled"] = "true",
             ["Server:Gateway:ApiKey"] = UpstreamKey,

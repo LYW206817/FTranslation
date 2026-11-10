@@ -7,7 +7,7 @@ namespace FastTranslation.Server.Tests;
 
 /// <summary>在进程内启动真实应用,使用隔离的 SQLite 文件与固定签名密钥,所以
 /// 端到端测试不依赖开发者本地的数据库或环境。</summary>
-public sealed class ServerFactory : WebApplicationFactory<Program>
+public class ServerFactory : WebApplicationFactory<Program>
 {
     private readonly string _databasePath = Path.Combine(
         Path.GetTempPath(),
@@ -15,6 +15,9 @@ public sealed class ServerFactory : WebApplicationFactory<Program>
         Guid.NewGuid().ToString("N") + ".db");
 
     public const string AdminToken = "test-admin-token";
+
+    /// <summary>默认放宽管理限流，避免同一测试类的 admin 调用互相挤掉；限流测试单独覆写。</summary>
+    protected virtual int AdminRequestsPerMinute => 1000;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -26,6 +29,7 @@ public sealed class ServerFactory : WebApplicationFactory<Program>
             ["Server:RequireEmailVerification"] = "false",
             ["Server:AdminToken"] = AdminToken,
             ["Server:AuthRequestsPerMinute"] = "1000",
+            ["Server:AdminRequestsPerMinute"] = AdminRequestsPerMinute.ToString(),
             ["Server:AccessTokenMinutes"] = "30",
         }));
     }

@@ -21,10 +21,13 @@ public static class SpeechEndpoints
 
     private static async Task SpeechAsync(HttpContext context, ClaimsPrincipal principal,
         AccountStore store, ServerDatabase database, GatewayOptions gateway, GatewayRateLimiter limiter,
-        SpeechSessionLimiter sessions)
+        SpeechSessionLimiter sessions, GatewayDiagnostics diagnostics)
     {
+        diagnostics.RecordSpeechRequest();
+
         if (!gateway.Speech.Enabled || string.IsNullOrWhiteSpace(gateway.ApiKey))
         {
+            diagnostics.RecordSpeechFailure("speech_disabled");
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_disabled"));
             return;
@@ -33,6 +36,7 @@ public static class SpeechEndpoints
         var userId = principal.GetUserId();
         if (!limiter.TryAcquire(userId, gateway.RequestsPerMinute))
         {
+            diagnostics.RecordSpeechFailure("rate_limited");
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("rate_limited"));
             return;
@@ -42,6 +46,7 @@ public static class SpeechEndpoints
         if (gateway.Speech.DailyBudgetMicros > 0
             && store.ReadTodayCostMicros("speech") >= gateway.Speech.DailyBudgetMicros)
         {
+            diagnostics.RecordSpeechFailure("budget_exhausted");
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("budget_exhausted"));
             return;
@@ -50,6 +55,7 @@ public static class SpeechEndpoints
         var user = store.FindUserById(userId);
         if (user is null || user.Disabled)
         {
+            diagnostics.RecordSpeechFailure("account_disabled");
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("account_disabled"));
             return;
@@ -64,9 +70,11 @@ public static class SpeechEndpoints
         if (!decision.Allowed)
         {
             // 故意 429 而不是 403:客户端把它读成额度用尽,静默引导升级或自备 Key。
-            context.Response.Headers["X-FT-Quota-Reason"] = decision.Reason ?? "quota_exhausted";
+            var reason = decision.Reason ?? "quota_exhausted";
+            diagnostics.RecordSpeechFailure(reason);
+            context.Response.Headers["X-FT-Quota-Reason"] = reason;
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            await context.Response.WriteAsJsonAsync(new ErrorResponse(decision.Reason ?? "quota_exhausted"));
+            await context.Response.WriteAsJsonAsync(new ErrorResponse(reason));
             return;
         }
 
@@ -80,6 +88,7 @@ public static class SpeechEndpoints
         // 同一账号的并发会话上限:限流器只数请求数,拦不住 40 条并发 WS 各自讲满额度(v81)。
         if (!sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser))
         {
+            diagnostics.RecordSpeechFailure("speech_busy");
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
             return;
@@ -98,6 +107,12 @@ public static class SpeechEndpoints
             var speechGateway = new DashScopeSpeechGateway(gateway.Speech, gateway.ApiKey);
             await speechGateway.RelayAsync(socket, userId, deviceId, store, database, sessionSeconds,
                 context.RequestAborted);
+        }
+        catch (Exception)
+        {
+            // 只为诊断计数，异常照原样抛出；吞掉会让会话错误从日志里消失。
+            diagnostics.RecordSpeechFailure("relay_error");
+            throw;
         }
         finally
         {

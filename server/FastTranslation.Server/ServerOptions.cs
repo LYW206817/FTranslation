@@ -30,6 +30,9 @@ public sealed class ServerOptions
     /// <summary>认证类接口的每 IP 每分钟请求预算。</summary>
     public int AuthRequestsPerMinute { get; set; } = 20;
 
+    /// <summary>管理接口的每 IP 每分钟请求预算。0 或负数时回到默认值 20。</summary>
+    public int AdminRequestsPerMinute { get; set; } = 20;
+
     public SmtpOptions Smtp { get; set; } = new();
 
     /// <summary>代理网关，用开发者自己的 DashScope Key 为免费档用户付费。</summary>
