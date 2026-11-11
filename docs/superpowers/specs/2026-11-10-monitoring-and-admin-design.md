@@ -38,7 +38,7 @@
 
 响应字段沿用现有 `AdminMetricsResponse`、`MessageResponse`、`CreateCodesResponse`、`RedeemCodePageResponse`。
 
-补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面只对生效中的 Lite 账号显示「升级 Pro」入口；套餐的传输名仍是 `light`（Lite）与 `standard`（Pro），显示名与存储值不混用。
+补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面对生效中的 Lite / Pro 账号分别显示「升级 Pro」「升级 Max」入口；套餐的传输名仍是 `light`（Lite）、`standard`（Pro）与 `max`（Max），显示名与存储值不混用。
 
 ### 3.2 新增
 

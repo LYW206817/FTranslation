@@ -247,6 +247,9 @@ function planName(plan) {
   return { free: '免费', light: 'Lite', standard: 'Pro', max: 'Max' }[plan] || plan || '—';
 }
 
+// 升级只升一档：Lite→Pro、Pro→Max；Max 已是最高档，没有升级入口。
+const UPGRADE_TARGETS = { light: 'standard', standard: 'max' };
+
 function card(label, value, hint) {
   const el = create('div', 'card');
   el.append(create('div', 'label', label), create('div', 'value', value), create('div', 'hint', hint || ''));
@@ -415,12 +418,13 @@ async function loadAccounts() {
       toggle.addEventListener('click', () => toggleAccount(item.email, !item.disabled, toggle));
       actions.append(select, days, apply);
       enhanceSelect(select);
-      // 只给生效中的 Lite 账号显示：升级不重新发额度，也不顺延天数。
-      if (!item.disabled && item.effectivePlan === 'light') {
-        const upgrade = create('button', 'primary', '升级 Pro');
+      // 生效中的 Lite / Pro 各显示一档升级：升级不重新发额度，也不顺延天数。
+      const upgradeTarget = item.disabled ? null : UPGRADE_TARGETS[item.effectivePlan];
+      if (upgradeTarget) {
+        const upgrade = create('button', 'primary', `升级 ${planName(upgradeTarget)}`);
         upgrade.type = 'button';
         upgrade.title = '补差价升级，保留到期时间和本月已用字符';
-        upgrade.addEventListener('click', () => upgradeAccount(item.email, upgrade));
+        upgrade.addEventListener('click', () => upgradeAccount(item.email, upgradeTarget, upgrade));
         actions.append(upgrade);
       }
       actions.append(toggle);
@@ -473,17 +477,17 @@ async function changePlan(email, plan, rawDays, button) {
   }
 }
 
-async function upgradeAccount(email, button) {
-  // days=null 让服务端保留原到期时间；用量表不动，所以本月已用字符继续计入 Pro 额度。
-  // 套餐的传输名仍是 standard，显示名才是 Pro；改传输名要连客户端和存量令牌一起迁移。
-  if (!confirm(`确认已收到差价，把 ${email} 升级到 Pro？到期日不变，本月已用字符继续计入，不重置额度。`)) return;
+async function upgradeAccount(email, targetPlan, button) {
+  // days=null 让服务端保留原到期时间；用量表不动，所以本月已用字符继续计入新档额度。
+  // 套餐的传输名仍是 light/standard/max，显示名才是 Lite/Pro/Max；改传输名要连客户端和存量令牌一起迁移。
+  if (!confirm(`确认已收到差价，把 ${email} 升级到 ${planName(targetPlan)}？到期日不变，本月已用字符继续计入，不重置额度。`)) return;
   button.disabled = true;
   try {
     await api(`/api/v1/admin/accounts/${encodeURIComponent(email)}/plan`, {
       method: 'POST',
-      body: JSON.stringify({ plan: 'standard', days: null }),
+      body: JSON.stringify({ plan: targetPlan, days: null }),
     });
-    toast(`${email} 已升级 Pro，到期时间不变`);
+    toast(`${email} 已升级 ${planName(targetPlan)}，到期时间不变`);
     await Promise.all([loadAccounts(), loadMetrics()]);
   } catch (error) {
     toast(error.message, true);
