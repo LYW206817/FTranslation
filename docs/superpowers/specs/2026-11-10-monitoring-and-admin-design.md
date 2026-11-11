@@ -38,6 +38,8 @@
 
 响应字段沿用现有 `AdminMetricsResponse`、`MessageResponse`、`CreateCodesResponse`、`RedeemCodePageResponse`。
 
+补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面只对生效中的轻享账号显示「升级标准」入口。
+
 ### 3.2 新增
 
 #### `GET /api/v1/admin/usage?days=`

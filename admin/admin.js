@@ -270,7 +270,16 @@ async function loadAccounts() {
       const toggle = create('button', item.disabled ? 'ghost' : 'danger', item.disabled ? '解禁' : '禁用');
       toggle.type = 'button';
       toggle.addEventListener('click', () => toggleAccount(item.email, !item.disabled, toggle));
-      actions.append(select, days, apply, toggle);
+      actions.append(select, days, apply);
+      // 只给生效中的轻享账号显示：升级不重新发额度，也不顺延天数。
+      if (!item.disabled && item.effectivePlan === 'light') {
+        const upgrade = create('button', 'primary', '升级标准');
+        upgrade.type = 'button';
+        upgrade.title = '补差价升级，保留到期时间和本月已用字符';
+        upgrade.addEventListener('click', () => upgradeAccount(item.email, upgrade));
+        actions.append(upgrade);
+      }
+      actions.append(toggle);
       const actionsCell = create('td');
       actionsCell.append(actions);
       row.append(actionsCell);
@@ -290,7 +299,7 @@ async function loadAccounts() {
 }
 
 async function changePlan(email, plan, rawDays, button) {
-  // 管理页不发送 days=null：免费账号的原到期时间是 null，留空改付费会变成永久。
+  // 普通改套餐不发送 days=null；升级按钮是例外，见 upgradeAccount。
   const text = String(rawDays ?? '').trim();
   const isFree = plan === 'free';
   if (!isFree && text === '') {
@@ -312,7 +321,25 @@ async function changePlan(email, plan, rawDays, button) {
       body: JSON.stringify({ plan, days }),
     });
     toast(`${email} 已改为 ${planName(plan)}`);
-    await loadAccounts();
+    await Promise.all([loadAccounts(), loadMetrics()]);
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function upgradeAccount(email, button) {
+  // days=null 让服务端保留原到期时间；用量表不动，所以本月已用字符继续计入标准额度。
+  if (!confirm(`确认已收到差价，把 ${email} 升级到标准版？到期日不变，本月已用字符继续计入，不重置额度。`)) return;
+  button.disabled = true;
+  try {
+    await api(`/api/v1/admin/accounts/${encodeURIComponent(email)}/plan`, {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'standard', days: null }),
+    });
+    toast(`${email} 已升级标准，到期时间不变`);
+    await Promise.all([loadAccounts(), loadMetrics()]);
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -328,7 +355,7 @@ async function toggleAccount(email, disable, button) {
       method: 'POST',
     });
     toast(`${email} 已${disable ? '禁用' : '解禁'}`);
-    await loadAccounts();
+    await Promise.all([loadAccounts(), loadMetrics()]);
   } catch (error) {
     toast(error.message, true);
   } finally {

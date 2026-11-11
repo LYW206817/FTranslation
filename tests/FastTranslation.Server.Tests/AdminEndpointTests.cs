@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FastTranslation.Server.Api;
+using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -43,6 +44,15 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         }
 
         return await client.SendAsync(request);
+    }
+
+    private static async Task<T> GetAuthorizedAsync<T>(HttpClient client, string path, string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
     [Fact]
@@ -201,6 +211,43 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         Assert.True(diagnostics.Database.SizeBytes > 0);
         Assert.True(diagnostics.Gateway.Requests >= 0);
         Assert.NotNull(diagnostics.Gateway.ByReason);
+    }
+
+    [Fact]
+    public async Task Admin_upgrade_preserves_expiry_and_monthly_usage()
+    {
+        var email = UniqueEmail();
+        var auth = await RegisterAsync(_client, email);
+        var store = _factory.Services.GetRequiredService<AccountStore>();
+        var database = _factory.Services.GetRequiredService<ServerDatabase>();
+        var device = store.ListDevices(auth.Account.Id).Single();
+
+        using (var plan = await AdminAsync(_client, HttpMethod.Post,
+                   $"/api/v1/admin/accounts/{email}/plan", new PlanChangeRequest("light", 30)))
+        {
+            plan.EnsureSuccessStatusCode();
+        }
+
+        // 升级前的当月用量必须原样保留：标准额度减去它，而不是从 0 重新发额度。
+        store.RecordUsage(auth.Account.Id, device.Id, 12_000, "qwen-mt-flash", 10, 5, 3_000, database.NowUnix);
+        var before = await GetAuthorizedAsync<AccountDto>(_client, "/api/v1/account/me", auth.AccessToken);
+        var beforeUsage = await GetAuthorizedAsync<UsageDto>(_client, "/api/v1/account/usage", auth.AccessToken);
+        Assert.Equal("light", before.Plan);
+
+        using (var upgrade = await AdminAsync(_client, HttpMethod.Post,
+                   $"/api/v1/admin/accounts/{email}/plan", new PlanChangeRequest("standard")))
+        {
+            upgrade.EnsureSuccessStatusCode();
+        }
+
+        var after = await GetAuthorizedAsync<AccountDto>(_client, "/api/v1/account/me", auth.AccessToken);
+        var afterUsage = await GetAuthorizedAsync<UsageDto>(_client, "/api/v1/account/usage", auth.AccessToken);
+
+        Assert.Equal("standard", after.Plan);
+        Assert.Equal(before.PlanExpiresAt, after.PlanExpiresAt);
+        Assert.Equal(beforeUsage.UsedMonthlyChars, afterUsage.UsedMonthlyChars);
+        Assert.Equal(Plans.StandardMonthlyChars, afterUsage.QuotaMonthlyChars);
+        Assert.Equal(Plans.StandardMonthlyChars - beforeUsage.UsedMonthlyChars, afterUsage.RemainingMonthlyChars);
     }
 
     [Fact]
