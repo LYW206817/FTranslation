@@ -108,7 +108,7 @@ public partial class AccountPage : UserControl
 
         PlanNameText.Text = profile.PlanDisplay;
         PlanValidityText.Text = profile.ExpiryLine
-            ?? "免费版长期有效。标准版解锁单词本与四档复习。";
+            ?? "免费版长期有效。Lite / Pro / Max 解锁单词本与四档复习。";
         NameBox.Text = profile.DisplayName;
 
         // 剩余数字是随用量一起到的；先在这里清空，免得用户切换账号时有一帧显示上一个账号的残留

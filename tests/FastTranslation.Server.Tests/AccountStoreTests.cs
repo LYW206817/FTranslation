@@ -313,15 +313,17 @@ public sealed class AccountStoreTests : IDisposable
         var free = CreateUser("f@example.com");
         var light = _store.CreateUser("l@example.com", "hash", PlanTier.Light);
         _store.CreateUser("s@example.com", "hash", PlanTier.Standard);
+        _store.CreateUser("m@example.com", "hash", PlanTier.Max);
         var device = _store.RegisterDevice(free.Id, "fp", "pc").Device!;
         _store.RecordUsage(free.Id, device.Id, 10, "m", 0, 0, 0, _database.NowUnix);
 
         var metrics = _store.ReadAccountMetrics();
 
-        Assert.Equal(3, metrics.Total);
+        Assert.Equal(4, metrics.Total);
         Assert.Equal(1, metrics.Free);
         Assert.Equal(1, metrics.Light);
         Assert.Equal(1, metrics.Standard);
+        Assert.Equal(1, metrics.Max);
         Assert.Equal(1, metrics.ActiveLast30Days);
     }
 }

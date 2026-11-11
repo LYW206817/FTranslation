@@ -283,7 +283,7 @@ public static class AuthEndpoints
 
     /// <summary>
     /// 过期订阅按免费上报：客户端不能在服务端已按免费限制的同时还显示付费标签，
-    /// 否则用户会看到“标准版”旁边挂着 10,000 字符上限。
+    /// 否则用户会看到“Pro”旁边挂着 10,000 字符上限。
     /// </summary>
     internal static AccountDto ToAccountDto(UserRecord user, ServerDatabase database)
     {

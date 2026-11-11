@@ -228,10 +228,11 @@ ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--
 .doc-points { margin-top: 2.4rem; column-count: 2; column-gap: 3.5rem; }
 
 /* 套餐 —— 额度做成两行条目，不用徽章 */
-.plans { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1.25rem; }
-.plan { border: 1px solid var(--rule); border-radius: 12px; padding: 1.5rem 1.4rem; background: var(--surface); }
+.plans { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1rem; }
+.plan { border: 1px solid var(--rule); border-radius: 12px; padding: 1.5rem 1.2rem; background: var(--surface); }
 .plan.feature { border-color: var(--blue-wash); box-shadow: 0 0 0 3px rgba(37,98,255,0.06); }
 .plan h3 { margin: 0; font-family: var(--serif); font-size: 1.2rem; font-weight: 500; }
+/* 四档卡片比三档窄，额度与价格在 markup 里换行显示，避免在「元 / 月」中间折断。 */
 .plan .quota { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin: 0.3rem 0 1.05rem; letter-spacing: 0.02em; }
 .plan ul { margin: 0; padding: 0; list-style: none; font-size: 0.89rem; color: var(--ink-soft); }
 .plan li { padding-block: 0.34rem; border-top: 1px dashed var(--rule-soft); }

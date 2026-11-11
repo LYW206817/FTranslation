@@ -49,6 +49,7 @@ public class QuotaPolicyTests
     [Theory]
     [InlineData(PlanTier.Light, Plans.LightMonthlyChars)]
     [InlineData(PlanTier.Standard, Plans.StandardMonthlyChars)]
+    [InlineData(PlanTier.Max, Plans.MaxMonthlyChars)]
     public void PaidTiers_HaveNoDailyCap(PlanTier tier, int expectedMonthly)
     {
         var decision = QuotaPolicy.Evaluate(tier, usedMonthlyChars: 0, usedDailyChars: 0, requestedChars: 1_000);
@@ -86,6 +87,7 @@ public class QuotaPolicyTests
     [InlineData(PlanTier.Free, "free")]
     [InlineData(PlanTier.Light, "light")]
     [InlineData(PlanTier.Standard, "standard")]
+    [InlineData(PlanTier.Max, "max")]
     public void ToWire_MatchesClientContract(PlanTier tier, string expected)
         => Assert.Equal(expected, Plans.ToWire(tier));
 
@@ -93,6 +95,7 @@ public class QuotaPolicyTests
     [InlineData("free", PlanTier.Free)]
     [InlineData("light", PlanTier.Light)]
     [InlineData("standard", PlanTier.Standard)]
+    [InlineData("max", PlanTier.Max)]
     public void TryParse_RoundTripsWireNames(string text, PlanTier expected)
     {
         Assert.True(Plans.TryParse(text, out var tier));

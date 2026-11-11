@@ -38,7 +38,7 @@
 
 响应字段沿用现有 `AdminMetricsResponse`、`MessageResponse`、`CreateCodesResponse`、`RedeemCodePageResponse`。
 
-补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面只对生效中的轻享账号显示「升级标准」入口。
+补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面只对生效中的 Lite 账号显示「升级 Pro」入口；套餐的传输名仍是 `light`（Lite）与 `standard`（Pro），显示名与存储值不混用。
 
 ### 3.2 新增
 
@@ -69,7 +69,7 @@
 #### `GET /api/v1/admin/accounts?query=&plan=&limit=&offset=`
 
 - `query` 为邮箱前缀匹配，不做通配符注入；`limit` 默认 50、上限 200；`offset` 用于翻页。
-- `plan` 可选，按存储套餐过滤（`free`/`light`/`standard`）。
+- `plan` 可选，按存储套餐过滤（`free` / `light` / `standard` / `max`；显示名分别是免费 / Lite / Pro / Max）。
 
 ```json
 {
@@ -159,7 +159,7 @@
 | 错误码 | 场景 |
 |---|---|
 | `admin_forbidden` | 未配置 `AdminToken` 或令牌错误 |
-| `plan_invalid` | 套餐字段不是 `free`/`light`/`standard` |
+| `plan_invalid` | 套餐字段不是 `free` / `light` / `standard` / `max` |
 | `days_invalid` | 天数越界 |
 | `count_invalid` | 批量生成数量越界 |
 | `status_invalid` | 激活码查询状态未知 |

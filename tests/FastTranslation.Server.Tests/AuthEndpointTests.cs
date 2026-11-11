@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FastTranslation.Server.Api;
+using FastTranslation.Server.Domain;
 using Xunit;
 
 namespace FastTranslation.Server.Tests;
@@ -233,7 +234,7 @@ public class AuthEndpointTests : IClassFixture<ServerFactory>
         var auth = (await login.Content.ReadFromJsonAsync<AuthResponse>())!;
 
         Assert.Equal("standard", auth.Account.Plan);
-        Assert.Equal(200_000, auth.Usage.QuotaMonthlyChars);
+        Assert.Equal(Plans.StandardMonthlyChars, auth.Usage.QuotaMonthlyChars);
         Assert.Null(auth.Usage.QuotaDailyChars);
     }
 

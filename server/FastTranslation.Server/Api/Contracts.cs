@@ -71,6 +71,7 @@ public sealed record AdminMetricsResponse(
     int FreeUsers,
     int LightUsers,
     int StandardUsers,
+    int MaxUsers,
     int ActiveUsersLast30Days);
 
 /// <summary>管理端用量汇总。costMicros 为微元（1e-6 元）。</summary>

@@ -193,10 +193,11 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     [Fact]
     public async Task Chat_RefusesWhenMonthlyQuotaIsSpent()
     {
-        // Light 没有每日上限,所以这能单独隔离出月度闸门。
+        // Light 没有每日上限,所以这能单独隔离出月度闸门。循环次数跟着额度常量走，
+        // 改套餐额度时不要在这里再写一个会悄悄失真的固定次数。
         var client = await SignedInClientAsync(PlanTier.Light);
 
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < Plans.LightMonthlyChars / 5_000; i++)
         {
             (await ChatAsync(client, 5_000)).EnsureSuccessStatusCode();
         }

@@ -647,8 +647,9 @@ public class AccountUsageTests
 
     [Theory]
     [InlineData("free", "免费版")]
-    [InlineData("light", "轻享版")]
-    [InlineData("standard", "标准版")]
+    [InlineData("light", "Lite")]
+    [InlineData("standard", "Pro")]
+    [InlineData("max", "Max")]
     [InlineData("weird", "免费版")]
     public void Plan_names_are_user_facing(string plan, string expected) =>
         Assert.Equal(expected, new AccountProfile(Guid.Empty, "e", plan, 0, null).PlanDisplay);

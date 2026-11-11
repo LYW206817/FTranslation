@@ -97,8 +97,9 @@ public sealed record AccountProfile(
 
     public string PlanDisplay => Plan switch
     {
-        "light" => "轻享版",
-        "standard" => "标准版",
+        "light" => "Lite",
+        "standard" => "Pro",
+        "max" => "Max",
         _ => "免费版",
     };
 

@@ -18,7 +18,7 @@ public partial class PlanPage : UserControl
 {
     private readonly AccountCoordinator _account;
     private bool _busy;
-    private bool _yearly = true;
+    private string _tier = "standard";
     private bool _subscribed;
 
     public PlanPage(AccountCoordinator account)
@@ -84,6 +84,7 @@ public partial class PlanPage : UserControl
             PlanPillText.Text = "未登录";
             PlanNameText.Text = "未登录";
             PlanTermText.Text = string.Empty;
+            SelectTier("standard");
             return;
         }
 
@@ -98,6 +99,10 @@ public partial class PlanPage : UserControl
         PlanPillText.Text = planName;
         PlanNameText.Text = planName;
         PlanTermText.Text = paid ? "已订阅" : "长期有效";
+        // 已付费时默认选中自己那一档；免费用户默认 Pro（三档里折中的一档）。
+        SelectTier(session.Profile.Plan is "light" or "standard" or "max"
+            ? session.Profile.Plan
+            : "standard");
         if (paid)
         {
             SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay
@@ -224,19 +229,28 @@ public partial class PlanPage : UserControl
         }
     }
 
-    private void Year_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(true);
-
-    private void Month_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => SelectPlan(false);
-
-    /// <summary>两张卡只选一张：移动的是边框和填充，别的一概不变。</summary>
-    private void SelectPlan(bool yearly)
+    private void Tier_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        _yearly = yearly;
-        Select(YearCard, yearly);
-        Select(MonthCard, !yearly);
+        if (sender is FrameworkElement { Tag: string tier }) SelectTier(tier);
+    }
+
+    /// <summary>三张卡只选一张：移动的是边框和填充，别的一概不变。</summary>
+    private void SelectTier(string tier)
+    {
+        _tier = tier;
+        Select(LiteCard, tier == "light");
+        Select(ProCard, tier == "standard");
+        Select(MaxCard, tier == "max");
         // 重新选卡会清掉上一个「已记录」提示的内容
         SubscribeHint.Text = "付款渠道尚未接通,当前版本点击后仅记录意向。";
     }
+
+    private static string TierName(string tier) => tier switch
+    {
+        "light" => "Lite",
+        "max" => "Max",
+        _ => "Pro",
+    };
 
     private void Select(Border card, bool selected)
     {
@@ -256,8 +270,7 @@ public partial class PlanPage : UserControl
             return;
         }
 
-        SubscribeHint.Text = "已记录你的选择(" + (_yearly ? "年付" : "月付")
-            + ")。付款渠道上线后会通知你。";
+        SubscribeHint.Text = "已记录你的选择(" + TierName(_tier) + ")。付款渠道上线后会通知你。";
     }
 
     private void SetBusy(bool busy)

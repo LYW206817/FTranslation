@@ -271,8 +271,8 @@ public static class AdminEndpoints
 
     private static IResult Metrics(AccountStore store)
     {
-        var (total, free, light, standard, active) = store.ReadAccountMetrics();
-        return Results.Ok(new AdminMetricsResponse(total, free, light, standard, active));
+        var (total, free, light, standard, max, active) = store.ReadAccountMetrics();
+        return Results.Ok(new AdminMetricsResponse(total, free, light, standard, max, active));
     }
 
     private static IResult Usage(

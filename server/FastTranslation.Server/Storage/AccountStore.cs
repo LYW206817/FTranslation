@@ -574,7 +574,7 @@ public sealed class AccountStore(ServerDatabase database)
     }
 
     /// <summary>管理指标：总量加按套餐的分布（设计 §5 运营视图）。</summary>
-    public (int Total, int Free, int Light, int Standard, int ActiveLast30Days) ReadAccountMetrics()
+    public (int Total, int Free, int Light, int Standard, int Max, int ActiveLast30Days) ReadAccountMetrics()
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
@@ -583,7 +583,8 @@ public sealed class AccountStore(ServerDatabase database)
                 COUNT(*),
                 COALESCE(SUM(plan = 0), 0),
                 COALESCE(SUM(plan = 1), 0),
-                COALESCE(SUM(plan = 2), 0)
+                COALESCE(SUM(plan = 2), 0),
+                COALESCE(SUM(plan = 3), 0)
             FROM users WHERE disabled = 0
             """;
         using var reader = command.ExecuteReader();
@@ -592,6 +593,7 @@ public sealed class AccountStore(ServerDatabase database)
         var free = reader.GetInt32(1);
         var light = reader.GetInt32(2);
         var standard = reader.GetInt32(3);
+        var max = reader.GetInt32(4);
         reader.Close();
 
         using var activeCommand = connection.CreateCommand();
@@ -599,7 +601,7 @@ public sealed class AccountStore(ServerDatabase database)
         activeCommand.Parameters.AddWithValue("$since", database.NowUnix - (30 * 86_400));
         var active = Convert.ToInt32(activeCommand.ExecuteScalar(), CultureInfo.InvariantCulture);
 
-        return (total, free, light, standard, active);
+        return (total, free, light, standard, max, active);
     }
 
     /// <summary>管理端的全局时间窗聚合；cost 仍以微元为单位。</summary>
