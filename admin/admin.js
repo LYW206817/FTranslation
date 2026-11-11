@@ -26,6 +26,7 @@ function toast(message, isError = false) {
 }
 
 function showLogin(message = '') {
+  closeSelectMenu();
   state.token = '';
   sessionStorage.removeItem(TOKEN_KEY);
   setHidden($('app'), true);
@@ -74,6 +75,143 @@ function create(tag, className, text) {
 function createSvg(tag) {
   return document.createElementNS(SVG_NS, tag);
 }
+
+let openSelect = null;
+let openTrigger = null;
+
+function selectedLabel(select) {
+  return select.selectedOptions[0]?.textContent ?? select.options[0]?.textContent ?? '';
+}
+
+function closeSelectMenu(restoreFocus = false) {
+  const menu = $('select-menu');
+  if (!menu) return;
+  const trigger = openTrigger;
+  menu.classList.add('hidden');
+  trigger?.classList.remove('open');
+  trigger?.setAttribute('aria-expanded', 'false');
+  openSelect = null;
+  openTrigger = null;
+  if (restoreFocus) trigger?.focus({ preventScroll: true });
+}
+
+function selectMenu() {
+  let menu = $('select-menu');
+  if (menu) return menu;
+  menu = create('div', 'ft-select-menu hidden');
+  menu.id = 'select-menu';
+  menu.setAttribute('role', 'listbox');
+  // 共享一个弹出层，账号表翻页重建行时不用为每个 select 留一个 body 子节点。
+  menu.addEventListener('keydown', (event) => {
+    const items = [...menu.querySelectorAll('.ft-select-option')];
+    const index = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const next = items[(index + step + items.length) % items.length];
+      next?.focus({ preventScroll: true });
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus({ preventScroll: true });
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSelectMenu(true);
+    }
+  });
+  document.body.append(menu);
+  return menu;
+}
+
+function openSelectMenu(select, trigger) {
+  const menu = selectMenu();
+  if (openSelect === select && !menu.classList.contains('hidden')) {
+    closeSelectMenu();
+    return;
+  }
+  closeSelectMenu();
+
+  openSelect = select;
+  openTrigger = trigger;
+  menu.replaceChildren();
+  [...select.options].forEach((option) => {
+    const item = create('button', 'ft-select-option', option.textContent);
+    item.type = 'button';
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', option.selected ? 'true' : 'false');
+    if (option.selected) item.classList.add('selected');
+    const check = create('span', 'ft-select-check', '✓');
+    item.append(check);
+    item.addEventListener('click', () => {
+      select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      closeSelectMenu(true);
+    });
+    menu.append(item);
+  });
+
+  const rect = trigger.getBoundingClientRect();
+  // 弹出层挂 body、fixed 定位，避免被 .table-wrap 的横向滚动裁剪；下方放不下时翻到上方。
+  const width = Math.min(Math.max(rect.width, 136), window.innerWidth - 16);
+  menu.style.width = `${width}px`;
+  menu.classList.remove('hidden');
+  const height = menu.getBoundingClientRect().height;
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+  menu.style.top = `${rect.bottom + 4 + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : rect.bottom + 4}px`;
+  trigger.classList.add('open');
+  trigger.setAttribute('aria-expanded', 'true');
+  const selected = menu.querySelector('.ft-select-option.selected') ?? menu.firstElementChild;
+  selected?.focus({ preventScroll: true });
+}
+
+function enhanceSelect(select) {
+  if (select.dataset.enhanced === 'true') return;
+  select.dataset.enhanced = 'true';
+
+  // 保留原生 select 作为状态容器，只隐藏、不移除：表单提交、.value 和现有 change 事件路径都不变。
+  const wrapper = create('div', 'ft-select');
+  const trigger = create('button', 'ft-select-trigger');
+  trigger.type = 'button';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-controls', 'select-menu');
+  const label = create('span', 'ft-select-label', selectedLabel(select));
+  trigger.append(label, create('span', 'ft-select-chevron'));
+
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.append(select, trigger);
+  select.classList.add('ft-select-native');
+  select.tabIndex = -1;
+  select.setAttribute('aria-hidden', 'true');
+  if (select.getAttribute('aria-label')) {
+    trigger.setAttribute('aria-label', select.getAttribute('aria-label'));
+  }
+
+  trigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openSelectMenu(select, trigger);
+  });
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    openSelectMenu(select, trigger);
+  });
+  select.addEventListener('change', () => {
+    label.textContent = selectedLabel(select);
+  });
+}
+
+document.addEventListener('pointerdown', (event) => {
+  if (!openSelect && !openTrigger) return;
+  const menu = $('select-menu');
+  if (menu?.contains(event.target) || openTrigger?.contains(event.target)) return;
+  closeSelectMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeSelectMenu(true);
+});
+window.addEventListener('resize', () => closeSelectMenu());
+window.addEventListener('scroll', () => closeSelectMenu(), true);
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString('zh-CN');
@@ -213,6 +351,7 @@ async function loadUsage() {
 }
 
 async function loadAccounts() {
+  closeSelectMenu();
   const params = new URLSearchParams({
     limit: String(state.accounts.limit),
     offset: String(state.accounts.offset),
@@ -239,7 +378,9 @@ async function loadAccounts() {
       const planText = item.effectivePlan && item.effectivePlan !== item.plan
         ? `${planName(item.plan)}（现 ${planName(item.effectivePlan)}）`
         : planName(item.plan);
-      row.append(create('td', '', item.email));
+      const emailCell = create('td', 'account-email', item.email);
+      emailCell.title = item.email;
+      row.append(emailCell);
       row.append(create('td', '', planText));
       row.append(create('td', '', formatTime(item.planExpiresAt)));
       row.append(create('td', '', formatTime(item.lastSeenAt)));
@@ -250,6 +391,7 @@ async function loadAccounts() {
 
       const actions = create('div', 'row-actions');
       const select = create('select');
+      select.setAttribute('aria-label', '套餐');
       ['free', 'light', 'standard'].forEach((plan) => {
         const option = create('option', '', planName(plan));
         option.value = plan;
@@ -271,6 +413,7 @@ async function loadAccounts() {
       toggle.type = 'button';
       toggle.addEventListener('click', () => toggleAccount(item.email, !item.disabled, toggle));
       actions.append(select, days, apply);
+      enhanceSelect(select);
       // 只给生效中的轻享账号显示：升级不重新发额度，也不顺延天数。
       if (!item.disabled && item.effectivePlan === 'light') {
         const upgrade = create('button', 'primary', '升级标准');
@@ -578,6 +721,7 @@ function bind() {
 }
 
 bind();
+['account-plan', 'code-plan', 'code-status'].forEach((id) => enhanceSelect($(id)));
 if (state.token) {
   showApp();
   refresh(loadAll);
