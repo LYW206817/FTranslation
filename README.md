@@ -2,7 +2,7 @@
 
 划词即翻译的 Windows 桌面工具。在任意应用里选中文字，浮出一个小工具条（复制 / 翻译 / 截图翻译），点「翻译」就在原文旁边读结果；译文可以复制、替换原文、插入到光标处，或存进单词本。除此之外还有整份文档翻译、系统声音的实时双语字幕，以及跟着账号走的单词本与四档间隔复习。
 
-翻译走阿里云百炼 DashScope 的千问模型：文本 `qwen-mt-flash`（可选 `qwen-mt-plus`），截图翻译 `qwen-mt-image-2.0`，OCR `qwen-vl-ocr`，语音识别 `qwen-audio-3.1-asr-flash-streaming`。不登录也能一直用：填自己的 API Key 直连官方接口；登录账号后走免费 / 付费额度，请求由本项目的服务端转发并按字符记账，额度用完自动回落到你自己的 Key，翻译不会中断。
+翻译走阿里云百炼 DashScope 的千问模型：文本 `qwen-mt-flash`（可选 `qwen-mt-lite` / `qwen-mt-plus`），截图翻译 `qwen-mt-image-2.0`，OCR `qwen-vl-ocr`，语音识别 `qwen-audio-3.1-asr-flash-streaming`。不登录也能一直用：填自己的 API Key 直连官方接口；登录账号后走免费 / 付费额度，请求由本项目的服务端转发并按字符记账，额度用完自动回落到你自己的 Key，翻译不会中断。
 
 <p align="center">
   <img src="assets/screenshots/main-light.png" width="46%" alt="主窗口 · 浅色">
@@ -78,7 +78,7 @@
 - **采什么**：采集系统回环声音——电脑里正在播放的会议、网课、视频、通话，不占麦克风，也不需要选窗口。
 - **字幕浮窗**：屏幕底部出现双语字幕，约一秒出稿；非终稿显示为灰色半透明，终稿落定后变实。浮窗可拖动，支持暂停 / 继续 / 清空 / 结束。
 - **显示设置**：目标语言、是否显示原文、字幕条数（100 / 200 / 500）、语音热键都可以在语音页改，即时生效；切换播放设备会自动重连。
-- **计费**：按秒计费，每秒折算 20 字符；开始前显示「今天 / 本月剩余可讲约 N 分钟」，剩余不足 1 分钟会拒绝开始。语音翻译需要登录账号。
+- **计费**：按秒计费，每秒折算 50 字符，每轮会话最少按 5 秒计费；开始前显示「今天 / 本月剩余可讲约 N 分钟」，剩余不足 30 秒会拒绝开始。语音翻译需要登录账号。
 - **隐私**：音频经本项目的服务端转发给识别接口，服务端不保存音频；出网的还有识别出的文字。
 
 <p align="center">
@@ -130,7 +130,7 @@
 
 - **十个侧栏页面**：首页、单词、短语、语句、复习、文档、语音、套餐、账号、设置。
 - **主题**：跟随系统 / 浅色 / 深色；强调色有电光蓝、湖蓝、雾光紫三支，选完立即生效，不用重启。
-- **翻译选项**：目标语言（默认「自动」，中英互译时按原文语种决定方向）、模型 Flash / Plus（Plus 按 2.7 倍消耗额度）、划词热键。
+- **翻译选项**：目标语言（默认「自动」，中英互译时按原文语种决定方向）、模型 Lite / Flash / Plus（Lite 按 0.85 倍、Plus 按 2.7 倍消耗额度）、划词热键。
 - **取词与写回**：剪贴板兜底开关、是否允许替换原文、按进程名排除应用、开机自启。
 - **服务地址**：自定义 DashScope 地址与账号服务地址，留空就用默认值；自建或测试服务器可以填在这里。
 - **只存本机**：主题、热键、Key、服务地址等设置都存在本机 `settings.json`，不随账号同步。
@@ -237,10 +237,10 @@ site/                                产品介绍静态单页（纯 HTML/CSS，�
 admin/                               运营后台静态单页（纯 HTML/CSS/JS，无构建步骤）
 deploy/                              一台 ECS 的部署文件（systemd + Caddy）
 tests/
-  FastTranslation.Core.Tests/              434 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）
+  FastTranslation.Core.Tests/              441 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）
   FastTranslation.Platform.Windows.Tests/  107 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
-  FastTranslation.Providers.QwenMt.Tests/   95 个测试（本地假 HTTP 服务）
-  FastTranslation.Server.Tests/            279 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
+  FastTranslation.Providers.QwenMt.Tests/  101 个测试（本地假 HTTP 服务）
+  FastTranslation.Server.Tests/            283 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
 tools/
   qa/        截图、内存浸泡、安装校验、E2E 联调等 PowerShell 脚本
   Probe*/    启动耗时与内存探针（历史决策依据）
@@ -250,7 +250,7 @@ docs/
   superpowers/specs/   设计规格
 ```
 
-全部 915 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
+全部 932 个测试，`dotnet test` 全绿是交付门（本仓库没有 CI，结果以本机输出为准）。
 
 架构上有一条硬约束：**Core 不引用 Win32 也不引用 WPF**，所有平台能力走 `Interfaces.cs` 里的接口，因此 Core 的测试可以在任何机器上跑。
 

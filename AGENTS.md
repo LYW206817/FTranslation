@@ -8,8 +8,8 @@
 
 Windows 桌面划词翻译工具 + 一个自建后端。选中文本 → 浮动工具条(复制 / 翻译 / 截图翻译)→ 结果卡;账号、单词本、免费额度与订阅走自己的服务端。
 
-- 客户端:WPF,.NET 10 self-contained win-x64。翻译走阿里云百炼 DashScope(`qwen-mt-flash` / `qwen-mt-plus`,图片走 `qwen-mt-image-2.0`,OCR 走 `qwen-vl-ocr`);免费额度由自建网关转发并记账,超额后客户端静默回落到用户自己的 Key。
-- `src/FastTranslation.App` — WPF 外壳:单实例、托盘、主窗口、取词浮层与结果卡、截图翻译(`ImageTranslationCoordinator`)、账号(`AccountCoordinator`)、自动更新(`UpdateCoordinator` / `UpdateWindow`);`Pages/` 下是七个页面(Main / Word / Phrase / Sentence / Review / Plan / Account / Settings),枚举 `MainPageId` 决定侧栏顺序
+- 客户端:WPF,.NET 10 self-contained win-x64。翻译走阿里云百炼 DashScope(`qwen-mt-flash` / `qwen-mt-lite` / `qwen-mt-plus`,图片走 `qwen-mt-image-2.0`,OCR 走 `qwen-vl-ocr`);免费额度由自建网关转发并记账,超额后客户端静默回落到用户自己的 Key。
+- `src/FastTranslation.App` — WPF 外壳:单实例、托盘、主窗口、取词浮层与结果卡、截图翻译(`ImageTranslationCoordinator`)、账号(`AccountCoordinator`)、自动更新(`UpdateCoordinator` / `UpdateWindow`);`Pages/` 下是十个页面(Home / Word / Phrase / Sentence / Review / Document / Speech / Plan / Account / Settings),侧栏顺序由 `MainWindow.xaml` 的 `SidebarItems` 决定(`MainPageId` 只做路由)
 - `src/FastTranslation.Core` — 与 UI 无关的逻辑:设置 `Settings.cs`、翻译抽象 `TranslationService.cs` / `TranslationTypes.cs`、语言目录 `LanguageCatalog.cs`、选区协调、图片翻译策略、网关健康 `GatewayHealth.cs`、`Account/`、`Notes/`、`ReleaseVersion` / `UpdateManifest` / `UpdateChecker`
 - `src/FastTranslation.Platform.Windows` — Win32:取词(UIA + 剪贴板)、浮层(`OverlayWindows.cs`)、托盘原生菜单、写回、`UpdateInstaller`、`InstallLayout`、`ThemePalette`
 - `src/FastTranslation.Providers.QwenMt` — DashScope 实现:文本 / 图片 / OCR 三类各有一套「直连」与「自建网关」provider(外加 `QuotaRefusal.cs`)
