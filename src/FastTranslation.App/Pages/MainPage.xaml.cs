@@ -213,11 +213,4 @@ public partial class MainPage : UserControl
         KeyStatus.Text = hasKey ? "API Key:已配置(本机加密保存)" : "API Key:未配置";
         KeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
     }
-
-    /// <summary>窗口被热键唤起时，把光标交给输入纸面。</summary>
-    public void FocusInput()
-    {
-        InputBox.Focus();
-        InputBox.CaretIndex = InputBox.Text.Length;
-    }
 }

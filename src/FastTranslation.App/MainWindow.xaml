@@ -50,7 +50,7 @@
                        Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"/>
           </StackPanel>
 
-          <!-- 八个页面。SyncSidebar 只认这里的直接 Button 子项，分隔条不是 Button，
+          <!-- 十个页面。SyncSidebar 只认这里的直接 Button 子项，分隔条不是 Button，
                所以可以放在同一个 StackPanel 里。 -->
           <StackPanel x:Name="SidebarItems">
             <Button x:Name="HomeButton" AutomationProperties.Name="首页" Style="{StaticResource SidebarItem}"

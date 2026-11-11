@@ -417,7 +417,6 @@ public sealed class ResultCardWindow : IDisposable
     public event Action? ReplaceRequested;
     public event Action? InsertRequested;
     public event Action? SaveRequested;
-    public event Action? Dismissed;
 
     public ResultCardWindow()
     {
@@ -494,7 +493,7 @@ public sealed class ResultCardWindow : IDisposable
             Height = 24,
             Padding = new Thickness(0),
         };
-        _closeButton.Click += (_, _) => { Hide(); Dismissed?.Invoke(); };
+        _closeButton.Click += (_, _) => Hide();
 
         // 头部：源片段 + 方向（右）+ 关闭
         var header = _header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
@@ -603,6 +602,10 @@ public sealed class ResultCardWindow : IDisposable
 
     public void ShowLoading(string previewText, CapturedSelection selection)
     {
+        // v127: 新卡片要取消提示卡的自动隐藏计时并恢复被提示态藏掉的复制按钮；
+        // 否则「已复制」提示之后 2.5 秒，用户正在看的翻译结果会被计时器自己藏掉。
+        _noticeTimer.Stop();
+        _copyButton.Visibility = Visibility.Visible;
         RestoreFullChrome();
         _dictionaryPanel.Visibility = Visibility.Collapsed;
         _targetBlock.Visibility = Visibility.Visible;
@@ -621,6 +624,10 @@ public sealed class ResultCardWindow : IDisposable
 
     public void ShowResult(TranslationResult result, CapturedSelection selection, string? direction = null)
     {
+        // 同上：结果卡不能被上一条提示的计时器隐藏，复制按钮也要恢复可见
+        //（失败时保持可见但禁用，绝不能给红色错误文字提供「复制」）。
+        _noticeTimer.Stop();
+        _copyButton.Visibility = Visibility.Visible;
         StopSpinner();
         RestoreFullChrome();
         // 翻译失败时，绝不能为红色错误文字提供「复制」
@@ -693,8 +700,10 @@ public sealed class ResultCardWindow : IDisposable
         _lastAnchor = anchor;
         _lastRect = selectionRect;
         _hasPosition = true;
-        _window.Left = Math.Max(0, x);
-        _window.Top = Math.Max(0, y);
+        // 虚拟屏幕原点可能是负数（副屏在主屏左侧/上方）；夹到 0 会把卡片强行拉回主屏，
+        // 这里按虚拟屏幕左上角夹。
+        _window.Left = Math.Max(vx / _dpi.DpiScaleX, x);
+        _window.Top = Math.Max(vy / _dpi.DpiScaleY, y);
         if (!_window.IsVisible) _window.Show();
         _window.Topmost = true;
     }

@@ -196,7 +196,6 @@ internal static class NativeMethodsAudio
     public const short WAVE_FORMAT_EXTENSIBLE = unchecked((short)0xFFFE);
     public const int COINIT_MULTITHREADED = 0;
 
-    public static readonly Guid IID_IMMDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
     public static readonly Guid IID_IMMDevice = new("D666063F-1587-4E43-81F1-B948E807363F");
     public static readonly Guid IID_IAudioClient = new("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2");
     public static readonly Guid IID_IAudioCaptureClient = new("C8ADBD64-E71E-48a0-A4DE-185C395CD317");

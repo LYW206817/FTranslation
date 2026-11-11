@@ -35,9 +35,6 @@ public sealed partial class SpeechWindow : Window
     /// <summary>用户点了「继续」；App 重新预检额度并开一条会话，成功后回来调 <see cref="ResumeSession"/>。</summary>
     public event Action? ResumeRequested;
 
-    /// <summary>用户点了「清空」，App 只清显示，不动字幕服务的记账。</summary>
-    public event Action? ClearRequested;
-
     /// <summary>是否停在「已暂停」态：热键/托盘在这期间按「语音翻译」要接上继续，而不是当全新会话。</summary>
     public bool IsPaused => _paused;
 
@@ -208,11 +205,8 @@ public sealed partial class SpeechWindow : Window
         else if (_running) PauseRequested?.Invoke();
     }
 
-    private void Clear_Click(object sender, RoutedEventArgs e)
-    {
-        _lines.Clear();
-        ClearRequested?.Invoke();
-    }
+    // 只清显示，不动字幕服务的记账；无需绕回 App，事件本来就是空订阅
+    private void Clear_Click(object sender, RoutedEventArgs e) => _lines.Clear();
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 

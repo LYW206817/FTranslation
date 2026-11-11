@@ -246,10 +246,6 @@ public sealed class ImageResultWindow : IDisposable
         };
     }
 
-    /// <summary>只有图片、没有识别文本时的旧入口。</summary>
-    public void ShowResult(byte[] imageBytes, string caption) =>
-        ShowResult(imageBytes, caption, null, true);
-
     /// <summary>
     /// 等待态：框选结束后立刻开窗，别让用户对着空屏猜程序是不是卡了。
     /// 结果回来时由 <see cref="ShowResult"/> 原地替换内容，窗口尺寸不变。
@@ -321,7 +317,9 @@ public sealed class ImageResultWindow : IDisposable
                 _recognized.Text = recognized;
                 _recognizedOriginal = recognized.Trim();
             }
-            _saveNote.IsEnabled = true;
+            // 译图晚到时还会再走一遍 ShowResult：已经保存过就不能把按钮重新点亮，
+            // 否则同一张截图可以重复写进单词本。
+            _saveNote.IsEnabled = !_saved;
         }
 
         if (imageBytes is { Length: > 0 } && Decode(imageBytes) is { PixelWidth: > 0, PixelHeight: > 0 } bitmap)

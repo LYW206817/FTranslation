@@ -51,6 +51,9 @@ public partial class App : Application, IResultPresenter
     private TranslationService? _translation;
     private SettingsService _settingsService = new();
     private AppSettings _settings = new();
+    // v127: 第二次启动在读盘前就 Shutdown()，但 WPF 仍会触发 OnExit。没有这个标志时
+    // OnExit 会把字段里的默认 AppSettings 写回 settings.json，用户的语言/热键/主题全丢。
+    private bool _settingsLoaded;
     private readonly DpapiSecretStore _secrets = new();
     private bool _captureEnabled = true;
     private UpdateCoordinator? _updates;
@@ -112,6 +115,7 @@ public partial class App : Application, IResultPresenter
         };
 
         _settings = _settingsService.Load();
+        _settingsLoaded = true;
 
         // v115：低内存模式默认关闭，优先 GPU 流畅度。软件渲染能把空闲私有工作集从
         // 约 150MB 降到约 61MB，但整窗重绘会明显卡顿，只留给愿意用流畅度换内存的人。
@@ -207,6 +211,7 @@ public partial class App : Application, IResultPresenter
             _toolbar?.ShowAt(captured);
         };
         _capture.RawMouseDown += OnRawMouseDown; // 点击外部时收起工具栏与结果卡
+        var hookFailed = false;
         try
         {
             _capture.Start();
@@ -214,7 +219,9 @@ public partial class App : Application, IResultPresenter
         }
         catch (InvalidOperationException)
         {
-            _tray?.ShowBalloon("Fast Translation", "全局鼠标钩子安装失败,取词不可用。");
+            // v127: 这里 _tray 还没创建，ShowBalloon 只会静默返回。先记下来，
+            // 等托盘图标 Show() 之后再提示，否则钩子装失败时用户什么也看不到。
+            hookFailed = true;
         }
 
         _hotkey = new HotkeyService();
@@ -242,6 +249,10 @@ public partial class App : Application, IResultPresenter
         _tray.NotesRequested += ShowNotes;
         _tray.ExitRequested += ExitApp;
         _tray.Show("Fast Translation — 取词已开启");
+        if (hookFailed)
+        {
+            _tray.ShowBalloon("Fast Translation", "全局鼠标钩子安装失败,取词不可用。");
+        }
 
         // 截屏翻译走独立的图片通道：端点、模型、返回（译图）都和文本翻译不同，
         // 所以不复用 _translation；key 仍然读同一个 secret，和文本 provider 完全一致。
@@ -1470,6 +1481,13 @@ public partial class App : Application, IResultPresenter
     /// </summary>
     private void OnAccountChanged()
     {
+        // v127: 文档链路会在后台线程刷新令牌并触发 Changed；直接改侧边栏文本会抛
+        // InvalidOperationException，异常又被调用方吞掉，表现为额度/账号状态不刷新。
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(new Action(OnAccountChanged));
+            return;
+        }
         var profile = _account?.Session?.Profile;
         _mainWindow?.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
         _ = _mainWindow?.RefreshReviewBadgeAsync();
@@ -1605,13 +1623,23 @@ public partial class App : Application, IResultPresenter
 
     // ----- 语音翻译（Task 19）：组装采集→重采样→协调器→浮窗 -----
 
+    // v127: 预检要等一次网络往返，这期间 _speechCoordinator 还是 null。没有这个标志时
+    // 连按热键/连点开始会再走一遍启动，后一次覆盖前一次的 coordinator 与采集线程，
+    // 前一条 WS 会话继续按秒计费却再也停不下来。
+    private bool _speechStarting;
+
     private void RunSpeechTranslation()
     {
         // v110: 截图选框期间不能开语音、也不能把已收起的语音浮窗叫回来——它是 Topmost，
         // 亮出来就会落进随后 BitBlt 截取的那块画面。这里不弹提示：任何新窗口都会被同样截进去。
         if (_imageCoordinator is { IsPicking: true }) return;
-        if (_speechCoordinator is not null)
+        if (_speechCoordinator is not null || _speechStarting)
         {
+            if (_speechCoordinator is null)
+            {
+                _mainWindow?.SetSpeechState("正在准备语音会话…", isError: false);
+                return;
+            }
             // 已在会话中：把浮窗带到前台，再点一次就靠浮窗上的「结束」收尾。
             // 连接中的会话不能写成「进行中」，否则状态行会比实际早一步。
             ShowSpeechWindow();
@@ -1641,6 +1669,20 @@ public partial class App : Application, IResultPresenter
 
     private async Task StartSpeechSessionAsync(bool resume = false)
     {
+        if (_speechStarting) return;
+        _speechStarting = true;
+        try
+        {
+            await StartSpeechSessionCoreAsync(resume).ConfigureAwait(true);
+        }
+        finally
+        {
+            _speechStarting = false;
+        }
+    }
+
+    private async Task StartSpeechSessionCoreAsync(bool resume)
+    {
         var account = _account!;
         // 额度预检必须查服务端会查的每一个桶（月度 + 免费档的日额度），
         // 判定收在 SpeechQuotaGate 里，免得窗口开了、会话建了才开始 429
@@ -1666,9 +1708,10 @@ public partial class App : Application, IResultPresenter
             _speechWindow.StopRequested += OnSpeechStopRequested;
             _speechWindow.PauseRequested += OnSpeechPauseRequested;
             _speechWindow.ResumeRequested += OnSpeechResumeRequested;
-            _speechWindow.ClearRequested += () => { };
-            // 浮窗被点 X 就收尾整个会话，不能让会话在看不见的窗口里继续烧额度
-            _speechWindow.Closed += (_, _) => { _speechWindow = null; EndSpeechSession(null); };
+            // 浮窗被点 X 就收尾整个会话，不能让会话在看不见的窗口里继续烧额度。
+            // v127: 先收尾再把引用置空——反过来写时 EndSpeechSession 只能拿到 null，
+            // 窗口的 DispatcherTimer 会一直跑到进程退出（每开一次会话多一个）。
+            _speechWindow.Closed += (_, _) => { EndSpeechSession(null); _speechWindow = null; };
         }
         if (resume) _speechWindow.ResumeSession();
         else _speechWindow.BeginSession();
@@ -1838,6 +1881,33 @@ public partial class App : Application, IResultPresenter
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
 
+    /// <summary>收尾阶段的观察：失败只报告，不拆掉可能已经开始的新会话。</summary>
+    private void ObserveSessionEnd(Task task) =>
+        _ = task.ContinueWith(
+            t => Dispatcher.BeginInvoke(() =>
+            {
+                // 旧会话的停传最多等 2s，用户可能已经点了「继续」；没有这道判断时旧会话的
+                // 异常会走 EndSpeechSession 把新会话的协调器与采集直接清掉。
+                if (_speechCoordinator is not null || _speechStarting) return;
+                EndSpeechSession("语音结束失败:" + t.Exception!.GetBaseException().Message);
+            }),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+
+    /// <summary>先停传再释放。两步串行执行，原因见 <see cref="EndSpeechSession"/> 的调用处。</summary>
+    private static async Task StopThenDisposeAsync(SpeechTranslationCoordinator coordinator)
+    {
+        try
+        {
+            await coordinator.StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await coordinator.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private void EndSpeechSession(string? error, bool paused = false)
     {
         var coordinator = _speechCoordinator;
@@ -1883,13 +1953,17 @@ public partial class App : Application, IResultPresenter
 
         if (coordinator is not null)
         {
-            Observe(coordinator.StopAsync(), "语音结束失败");
-            // 不等 DisposeAsync：协调器内部对停传已有 2s 超时；这里是 UI 线程，同步等待会死锁
-            Observe(coordinator.DisposeAsync().AsTask(), "语音资源释放失败");
+            // v127: StopAsync 与 DisposeAsync 不能并发。Dispose 会释放传输层的 CTS 与
+            // WebSocket，而 Stop 还在等 CloseAsync 并在 finally 里碰同一个 CTS，结果抛
+            // ObjectDisposedException，Observe 把它当成会话失败，用户刚点「结束」就看见
+            // 一条红字。串成「停完再释放」，两者都不阻塞 UI 线程。
+            ObserveSessionEnd(StopThenDisposeAsync(coordinator));
         }
 
         _speechTransport = null;
         _speechSubtitles = null;
+        // 排队的字幕翻译按用户额度计费，会话结束后不能再继续跑（见 SpeechTranscriptService.Dispose）
+        subtitles?.Dispose();
         // 暂停只改浮窗显示（留字幕与累计值）；「结束」才写已结束并把「继续」禁掉
         if (paused)
         {
@@ -1969,7 +2043,8 @@ public partial class App : Application, IResultPresenter
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _settingsService.Save(_settings);
+        // 第二实例没有加载过设置，不能拿默认值覆盖用户在用的 settings.json。
+        if (_settingsLoaded) _settingsService.Save(_settings);
         base.OnExit(e);
     }
 

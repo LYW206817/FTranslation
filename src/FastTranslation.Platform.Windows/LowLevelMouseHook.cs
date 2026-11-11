@@ -25,7 +25,6 @@ public sealed class RawMouseSnapshot
 public sealed class LowLevelMouseMonitor : IDisposable
 {
     private readonly object _gate = new();
-    private readonly string _ownProcessName = Process.GetCurrentProcess().ProcessName;
     private Thread? _hookThread;
     private IntPtr _hook;
     private NativeMethods.LowLevelMouseProc? _proc;

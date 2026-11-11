@@ -41,7 +41,6 @@ public sealed class AccountCoordinator
     public bool IsSignedIn => _session is not null;
 
     public string BaseUrl => _client.BaseUrl;
-    public string NotesBaseUrl => _notes?.BaseUrl ?? _client.BaseUrl;
 
     /// <summary>网关按设备记日额度，所以它必须看到和登录时相同的指纹——否则每次翻译
     /// 都会落到一个新的匿名设备行上。</summary>

@@ -8,48 +8,8 @@ namespace FastTranslation.Platform.Windows;
 /// 序列号；之后恢复原来的纯文本内容。
 /// 拒绝终端类宿主是调用方的责任(Ctrl+C = SIGINT)。
 /// </summary>
-public sealed class ClipboardService
+public static class ClipboardService
 {
-    private readonly int _pollMs;
-    private readonly int _timeoutMs;
-
-    public ClipboardService(int pollMs = 300, int timeoutMs = 1500)
-    {
-        _pollMs = Math.Clamp(pollMs, 50, 5000);
-        _timeoutMs = timeoutMs;
-    }
-
-    public string? CaptureViaCopy(long sourceWindowHandle)
-    {
-        var before = NativeMethods.GetClipboardSequenceNumber();
-        string? backup = null;
-        try { backup = TryGetText(); } catch { }
-
-        if (!SendCopyToSource(sourceWindowHandle)) return null;
-
-        var deadline = Environment.TickCount64 + _timeoutMs;
-        while (Environment.TickCount64 < deadline)
-        {
-            Thread.Sleep(_pollMs);
-            if (NativeMethods.GetClipboardSequenceNumber() == before) continue;
-            var text = TryGetText();
-            if (!string.IsNullOrEmpty(text))
-            {
-                // 成功：恢复备份，让用户的剪贴板保持原样
-                WindowsSelectionCapture.Diag($"clipboard fallback: captured {text.Length}ch");
-                if (backup is not null) { try { SetText(backup); } catch { } }
-                return text;
-            }
-        }
-        // 什么也没等到：恢复可能已被改动的内容，返回 null
-        if (backup is not null)
-        {
-            try { if (TryGetText() != backup) SetText(backup); } catch { }
-        }
-        WindowsSelectionCapture.Diag($"clipboard fallback: no clipboard change within timeout (page may block Ctrl+C)");
-        return null;
-    }
-
     private static bool SendCopyToSource(long sourceWindowHandle)
     {
         try

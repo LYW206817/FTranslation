@@ -13,7 +13,6 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
 {
     private readonly LowLevelMouseMonitor _monitor;
     private readonly UiaSelectionReader _reader;
-    private readonly ClipboardService _clipboard;
 
     private readonly Func<bool> _fallbackEnabled;
     private readonly Func<string, bool> _isExcluded;
@@ -44,7 +43,6 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         _log = log;
         _monitor = new LowLevelMouseMonitor();
         _reader = new UiaSelectionReader();
-        _clipboard = new ClipboardService();
         _monitor.MouseGesture += OnGesture;
         _monitor.MouseButtonDown += pt => _dispatcher.BeginInvoke(() =>
         {
