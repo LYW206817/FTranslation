@@ -25,8 +25,6 @@ public sealed class TranslationService
         _lexicon = lexicon;
     }
 
-    public event Action<TranslationResult>? RequestCompleted;
-
     public Task<TranslationResult> TranslateAsync(string text, AppSettings settings, CancellationToken external = default)
     {
         var normalized = TextNormalization.Normalize(text);
@@ -81,7 +79,6 @@ public sealed class TranslationService
                 try { superseded?.Cancel(); } catch { }
                 _cache[cacheKey] = local;
                 EvictIfNeeded(cacheKey);
-                RequestCompleted?.Invoke(local);
                 return Task.FromResult(local);
             }
         }
@@ -108,7 +105,6 @@ public sealed class TranslationService
             if (token.IsCancellationRequested)
             {
                 // 已被更新的请求取代：绝不要把过期结果抛给上层
-                RequestCompleted?.Invoke(result);
                 return result with { Error = TranslationError.Cancelled() };
             }
             if (result.Succeeded)
@@ -116,7 +112,6 @@ public sealed class TranslationService
                 _cache[cacheKey] = result;
                 EvictIfNeeded(cacheKey);
             }
-            RequestCompleted?.Invoke(result);
             return result;
         }
         finally

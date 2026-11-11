@@ -148,6 +148,28 @@ public sealed class SpeechCoordinatorTests
         Assert.Equal(SpeechCoordinatorState.Idle, coordinator.State);
     }
 
+    [Fact]
+    public async Task Usage_after_reconnect_continues_from_the_previous_session()
+    {
+        var transport = new FakeTransport();
+        using var subtitles = MakeSubtitles(new List<string>());
+        await using var coordinator = new SpeechTranslationCoordinator(transport, subtitles, SilentTime);
+        await coordinator.StartAsync(Options());
+        var reported = new List<double>();
+        coordinator.UsageObserved += reported.Add;
+
+        transport.Emit(new SpeechTransportEvent(SpeechTransportKind.Usage, Seconds: 3));
+        transport.FailNextSend = true;
+        coordinator.PushAudio(new byte[] { 1 });
+        await coordinator.DrainAudioForTestAsync();
+        await WaitUntilAsync(() => transport.ConnectCount == 2);
+        await WaitUntilAsync(() => coordinator.State == SpeechCoordinatorState.Streaming);
+
+        // 新连接的服务端 usage 从 0 重新计；显示值必须是 3 + 1，而不是停在 3。
+        transport.Emit(new SpeechTransportEvent(SpeechTransportKind.Usage, Seconds: 1));
+        Assert.Equal(4d, reported[^1]);
+    }
+
     private static SpeechTranscriptService MakeSubtitles(List<string> calls)
         => new((text, _) =>
         {

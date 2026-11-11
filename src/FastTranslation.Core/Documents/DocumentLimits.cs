@@ -36,4 +36,21 @@ public static class DocumentLimits
         if (chars > MaxChars) return $"可译字符太多（{chars} > {MaxChars}），请拆分后再试";
         return null;
     }
+
+    /// <summary>
+    /// v127: 单段长度也要在开跑前校验。网关与上游都拒绝超过 5000 字符的请求，而
+    /// <see cref="MaxSegmentChars"/> 原来只有声明、没有任何引用：超长段会预检通过，
+    /// 然后在重试里白等三轮、整段写回「未翻译」——整份文档只有一个长段时等于全没译。
+    /// </summary>
+    public static string? CheckSegments(IReadOnlyList<DocumentSegment> segments)
+    {
+        foreach (var segment in segments)
+        {
+            if (segment.NeedsTranslation && segment.Source.Length > MaxSegmentChars)
+            {
+                return $"第 {segment.Index + 1} 段有 {segment.Source.Length:N0} 字符，超过单段 {MaxSegmentChars:N0} 字符上限，请先在原文里拆成多段";
+            }
+        }
+        return null;
+    }
 }

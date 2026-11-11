@@ -48,6 +48,21 @@ public class LanguagePolicyTests
         var (source, target) = LanguagePolicy.Resolve("auto", "auto", "你好");
         Assert.Equal(("zh", "en"), (source, target));
     }
+
+    /// <summary>v127: 用户指定目标语言时源语言无从推断，必须留给模型检测。</summary>
+    [Fact]
+    public void Resolve_WithAnExplicitTarget_LetsTheModelDetectTheSource()
+    {
+        var (source, target) = LanguagePolicy.Resolve("auto", "ja", "hello world");
+        Assert.Equal(("auto", "ja"), (source, target));
+    }
+
+    [Fact]
+    public void Resolve_KeepsAnExplicitSource()
+    {
+        var (source, target) = LanguagePolicy.Resolve("en", "zh", "hello");
+        Assert.Equal(("en", "zh"), (source, target));
+    }
 }
 
 public class LanguageCatalogTests

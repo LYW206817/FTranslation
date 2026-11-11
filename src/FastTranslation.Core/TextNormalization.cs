@@ -66,11 +66,14 @@ public static class LanguagePolicy
     public static (string Source, string Target) Resolve(string sourcePreference, string targetPreference, string normalized)
     {
         var target = DetectTarget(normalized, targetPreference);
-        var source = sourcePreference == "auto"
-            ? (target == LanguageCatalog.ChineseCode ? LanguageCatalog.EnglishCode : LanguageCatalog.ChineseCode)
-            : sourcePreference;
-        // 用户强制单一目标语言时，源语言 auto 再取「另一种」就不对了；Qwen 接受显式值或
-        // "auto"——能确定时就发显式值，否则发 auto。
+        // 用户指定了目标语言时，源语言无从推断：英文文本 + 目标日语若硬发 Chinese，
+        // 请求方向与原文相反，qwen-mt 会按中文处理英文输入。只有「自动目标」的中英互译
+        // 才能由目标语言反推源语言。
+        var source = sourcePreference != "auto"
+            ? sourcePreference
+            : targetPreference == "auto"
+                ? (target == LanguageCatalog.ChineseCode ? LanguageCatalog.EnglishCode : LanguageCatalog.ChineseCode)
+                : "auto";
         return (source, target);
     }
 }

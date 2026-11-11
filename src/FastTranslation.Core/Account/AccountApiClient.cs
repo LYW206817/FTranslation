@@ -361,6 +361,9 @@ public sealed class AccountApiClient
                     return AccountErrorCode.EmailInvalid;
                 case "credentials_invalid": return AccountErrorCode.InvalidCredentials;
                 case "account_disabled": return AccountErrorCode.AccountDisabled;
+                // 服务端已经找不到这个用户（注销/清库）；映射成 Unauthorized 才会让
+                // AccountCoordinator 清掉本地死会话并提示重新登录，而不是一直「服务器出错了」。
+                case "account_missing": return AccountErrorCode.Unauthorized;
                 case "code_invalid":
                 case "code_expired":
                 case "code_missing":

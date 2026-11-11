@@ -1,13 +1,5 @@
 namespace FastTranslation.Core;
 
-public enum CoordinatorState
-{
-    Idle,
-    Capturing,
-    Translating,
-    Showing,
-}
-
 /// <summary>
 /// 流程核心：触发 → 取词（UIA，失败走剪贴板兜底）→ 翻译 → 展示。
 /// 平台相关的部分靠注入；本类从不直接碰 Win32/WPF。
@@ -45,8 +37,6 @@ public sealed class SelectionCoordinator : IDisposable
     {
         _ = HandleTriggerAsync(trigger);
     }
-
-    public CoordinatorState State => CoordinatorState.Idle; // 现在改为按请求维护；为兼容保留
 
     /// <summary>
     /// 翻译一段已取到的选区文本（工具条入口）。新调用会取消任何在途会话——

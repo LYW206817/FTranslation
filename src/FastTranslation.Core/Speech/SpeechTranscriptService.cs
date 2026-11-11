@@ -39,6 +39,9 @@ public sealed class SpeechTranscriptService : IDisposable
     private readonly SpeechSessionOptions _options;
     private readonly TimeProvider _time;
     private readonly ITimer? _timer;
+    // v127: 会话结束必须能停掉还在排队/在途的字幕翻译。它们按用户额度计费，而译文已经没有
+    // 人看；只停定时器时，队列里最多 8 批与 2 个在途请求仍会继续发出去并扣额度。
+    private readonly CancellationTokenSource _lifetime = new();
     private int _inFlight;
     private int _dropped;
 
@@ -136,10 +139,17 @@ public sealed class SpeechTranscriptService : IDisposable
         TryStartNext();
     }
 
-    public void Dispose() => _timer?.Dispose();
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _timer?.Dispose();
+        // 不 Dispose CTS：在途的翻译可能正拿着它的 token 注册回调，释放会抛 ObjectDisposedException；
+        // 每次会话一个无计时器的 CTS，随对象一起回收即可。
+    }
 
     private void TryStartNext()
     {
+        if (_lifetime.IsCancellationRequested) return;
         lock (_gate)
         {
             if (_inFlight >= _options.MaxConcurrency || !_queue.TryDequeue(out var dequeued))
@@ -162,7 +172,7 @@ public sealed class SpeechTranscriptService : IDisposable
                 merged = string.Join("\n", batch.Select(id => _lines[id].Source));
             }
 
-            string translated = await _translate(merged, CancellationToken.None).ConfigureAwait(false);
+            string translated = await _translate(merged, _lifetime.Token).ConfigureAwait(false);
             Backfill(batch, translated);
         }
         catch (Exception)

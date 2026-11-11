@@ -80,7 +80,8 @@ public static class SegmentTranslator
         IReadOnlyList<DocumentSegment> segments,
         Func<string, CancellationToken, Task<string>> translate,
         IProgress<int>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<IReadOnlyList<DocumentSegment>, Task>? onUnitCompleted = null)
     {
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(translate);
@@ -104,7 +105,7 @@ public static class SegmentTranslator
             IReadOnlyList<DocumentSegment> done;
             try
             {
-                done = await TranslateUnitAsync(unit, translate, progress, pacer, stop.Token).ConfigureAwait(false);
+                done = await TranslateUnitAsync(unit, translate, pacer, stop.Token).ConfigureAwait(false);
             }
             catch (QuotaExhaustedException ex)
             {
@@ -120,6 +121,12 @@ public static class SegmentTranslator
             // 进度按「已完成的段数」累计而不是按单元：一个合并单元译完可能一次带来 20 段，
             // 按单元计的话进度条最多只能走到 段数/单元数（短段合并时可能永远到不了 100%）。
             progress?.Report(Interlocked.Add(ref completed, done.Count));
+            if (onUnitCompleted is not null)
+            {
+                // 断点回调：让调用方在取消/额度中断之前把已译好的单元落盘。
+                // 回调自己负责吞掉写盘失败，这里不把它升级成整份作业的失败。
+                await onUnitCompleted(done).ConfigureAwait(false);
+            }
             return done;
         }).ToList();
 
@@ -143,12 +150,11 @@ public static class SegmentTranslator
     private static async Task<IReadOnlyList<DocumentSegment>> TranslateUnitAsync(
         IReadOnlyList<DocumentSegment> unit,
         Func<string, CancellationToken, Task<string>> translate,
-        IProgress<int>? progress,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
         if (unit.Count == 1) return [await TranslateSingleAsync(unit[0], translate, pacer, cancellationToken).ConfigureAwait(false)];
-        return await TranslateMergedAsync(unit, translate, progress, pacer, cancellationToken).ConfigureAwait(false);
+        return await TranslateMergedAsync(unit, translate, pacer, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<DocumentSegment> TranslateSingleAsync(
@@ -170,7 +176,6 @@ public static class SegmentTranslator
     private static async Task<IReadOnlyList<DocumentSegment>> TranslateMergedAsync(
         IReadOnlyList<DocumentSegment> unit,
         Func<string, CancellationToken, Task<string>> translate,
-        IProgress<int>? progress,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
@@ -184,9 +189,10 @@ public static class SegmentTranslator
         if (unit.Count == 1) return [await TranslateSingleAsync(unit[0], translate, pacer, cancellationToken).ConfigureAwait(false)];
 
         var half = unit.Count / 2;
-        var left = await TranslateMergedAsync([.. unit.Take(half)], translate, progress, pacer, cancellationToken).ConfigureAwait(false);
-        var right = await TranslateMergedAsync([.. unit.Skip(half)], translate, progress, pacer, cancellationToken).ConfigureAwait(false);
-        // 进度按段数累计：二分出来的两半各自译完时分别报，加起来仍是这个单元的总段数。
+        var left = await TranslateMergedAsync([.. unit.Take(half)], translate, pacer, cancellationToken).ConfigureAwait(false);
+        var right = await TranslateMergedAsync([.. unit.Skip(half)], translate, pacer, cancellationToken).ConfigureAwait(false);
+        // 进度与断点都按整个单元报一次（调用方拿到的是合并后的 done），
+        // 二分的两半不再各自上报。
         return [.. left, .. right];
     }
 

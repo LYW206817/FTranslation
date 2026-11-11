@@ -195,6 +195,36 @@ public sealed class SpeechTranscriptServiceTests
         svc.Dispose();
     }
 
+    /// <summary>v127: 会话结束后排队/在途的字幕翻译必须取消，不能再按用户额度发请求。</summary>
+    [Fact]
+    public async Task Dispose_cancels_a_translation_that_is_already_in_flight()
+    {
+        var started = new TaskCompletionSource();
+        var canceled = new TaskCompletionSource();
+        var svc = new SpeechTranscriptService(async (_, ct) =>
+        {
+            started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                canceled.TrySetResult();
+                throw;
+            }
+            return "";
+        }, Options());
+
+        svc.SubmitSentence(1, "第一句", final: true);
+        svc.DrainDebounce();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        svc.Dispose();
+
+        await canceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
     /// <summary>v106: 终稿无译文要标「未翻译」；草稿不能标，否则译文回来前每句都闪一次。</summary>
     [Theory]
     [InlineData(false, "", false)]

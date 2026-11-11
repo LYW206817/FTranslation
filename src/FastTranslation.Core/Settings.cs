@@ -12,9 +12,7 @@ public sealed class AppSettings
     // 截图翻译单独一个热键：取词热键保持不变，两个入口互不影响
     public string ImageHotkey { get; set; } = "Ctrl+Alt+S";
     public bool ClipboardFallbackEnabled { get; set; } = true;
-    public int ClipboardPollMs { get; set; } = 300;
     public bool WriteBackEnabled { get; set; } = true;
-    public bool CaptureOnClickOnly { get; set; }
     public List<string> ExcludedProcesses { get; set; } = new();
 
     public string OverrideBaseUrl { get; set; } = "";
@@ -86,7 +84,11 @@ public sealed class SettingsService
     {
         Directory.CreateDirectory(_directory);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(_filePath, json);
+        // v127: 先写临时文件再原子替换。直接覆写时进程被杀或断电会留下半截 JSON，
+        // Load 把解析失败静默当默认值，下一次保存就把热键、排除应用等全部配置永久覆盖。
+        var temp = _filePath + ".tmp";
+        File.WriteAllText(temp, json);
+        File.Move(temp, _filePath, overwrite: true);
     }
 }
 

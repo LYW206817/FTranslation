@@ -103,44 +103,101 @@ public sealed class DocumentTranslationCoordinator
         if (loaded is null) return;
 
         var (_, translator, segments, chars) = loaded.Value;
-
-        // 预检必须在开始翻译之前：译到 80% 才发现额度不够，用户既拿不到完整文档，
-        // 已经花掉的额度也退不回来（预扣是按作业总字符做的，服务端那条路径能回冲，
-        // 但本地跑的时候没有预扣，只能靠这一道拦）。
-        if (remainingChars is { } remaining && chars > remaining)
-        {
-            _reportError(string.Format(
-                CultureInfo.InvariantCulture,
-                "本月剩余额度只够 {0:N0} 字符，本文件约 {1:N0} 字符",
-                remaining,
-                chars));
-            return;
-        }
-
         var outputPath = BuildOutputPath(sourcePath, targetLanguage);
         var job = new DocumentJob(sourcePath, outputPath, targetLanguage, segments, _checkpointDirectory);
         await job.TryRestoreCheckpointAsync(cancellationToken).ConfigureAwait(false);
 
+        // v127: 预检按「回填断点后真正还要译的段」算。原来先按整份文件预检、再读断点，
+        // 续译时会把已经译好（且已经付过额度）的段再算一遍，剩余额度不够就整份拒绝。
+        // 预检仍必须在开始翻译之前：译到 80% 才发现额度不够，用户既拿不到完整文档，
+        // 已经花掉的额度也退不回来。
+        var pendingChars = CountChars(job.Segments);
+        if (remainingChars is { } remaining && pendingChars > remaining)
+        {
+            _reportError(string.Format(
+                CultureInfo.InvariantCulture,
+                "本月剩余额度只够 {0:N0} 字符，本次还需译 {1:N0} 字符",
+                remaining,
+                pendingChars));
+            return;
+        }
+
         var total = job.TotalSegments;
+        var translatable = job.Segments.Count(segment => segment.Status != SegmentStatus.Skipped);
+        var pending = job.Segments.Count(segment => segment.NeedsTranslation);
+        var alreadyDone = translatable - pending;
         var translate = BuildTranslate(targetLanguage);
         // 进度直接回调，不走 Progress<T>：Progress 会投递到捕获的同步上下文，
         // 在 WPF 里就等于「每译完一段切一次 UI 线程」，而回调方自己会切。
+        // 分母用「可译段」而不是总段：Skipped 段永远不会完成，否则进度到不了 100%；
+        // 分子加上断点里已译好的段，续译才不会从 0 开始。
         var progress = new InlineProgress(done =>
-            _progress(total == 0 ? 1 : Math.Clamp((double)done / total, 0, 1), done, total));
-        _progress(0, 0, total);
+            _progress(
+                translatable == 0 ? 1 : Math.Clamp((double)(alreadyDone + done) / translatable, 0, 1),
+                alreadyDone + done,
+                translatable));
+        _progress(0, alreadyDone, translatable);
 
-        var translated = await SegmentTranslator.TranslateAsync(job.Segments, translate, progress, cancellationToken)
+        var partial = new Dictionary<int, DocumentSegment>();
+        var partialGate = new object();
+        using var saveGate = new SemaphoreSlim(1, 1);
+        long lastSavedAt = 0;
+        const int PartialSaveIntervalMs = 10_000;
+
+        var translated = await SegmentTranslator.TranslateAsync(
+                job.Segments, translate, progress, cancellationToken, SavePartialAsync)
             .ConfigureAwait(false);
         var finished = new DocumentJob(sourcePath, outputPath, targetLanguage, translated, _checkpointDirectory);
-        await finished.SaveCheckpointAsync(cancellationToken).ConfigureAwait(false);
 
         await translator.WriteBackAsync(sourcePath, outputPath, translated, cancellationToken).ConfigureAwait(false);
-        finished.DeleteCheckpoint();
+        // 还有失败段时保留断点：点「重试」要只补译失败段，不能把已经扣过额度的段全部重译。
+        // 全部成功才删，别在用户机器上留着译文副本。
+        var failed = translated.Where(segment => segment.Status == SegmentStatus.Failed).ToList();
+        if (failed.Count == 0)
+        {
+            finished.DeleteCheckpoint();
+        }
+        else
+        {
+            await finished.SaveCheckpointAsync(CancellationToken.None).ConfigureAwait(false);
+        }
 
         // 未译段的明细随结果一起交出去：回写之后界面才知道该给用户列哪几段去重试。
         // 译文本身不回传——它已经落在 outputPath 里了，再拷一遍只是白占内存。
-        var failed = translated.Where(segment => segment.Status == SegmentStatus.Failed).ToList();
         _present(new DocumentJobResult(outputPath, total, failed.Count, chars) { Failed = failed });
+
+        // 翻译途中取消或额度中断时把已完成的单元落盘。逐批写整个断点会让一份大文档产生
+        // 几十倍 IO，所以最多 10 秒落一次；这个窗口内丢的进度最多重译十几秒。
+        async Task SavePartialAsync(IReadOnlyList<DocumentSegment> done)
+        {
+            lock (partialGate)
+            {
+                foreach (var segment in done) partial[segment.Index] = segment;
+            }
+            if (Environment.TickCount64 - Volatile.Read(ref lastSavedAt) < PartialSaveIntervalMs) return;
+            if (!await saveGate.WaitAsync(0).ConfigureAwait(false)) return;
+            try
+            {
+                if (Environment.TickCount64 - Volatile.Read(ref lastSavedAt) < PartialSaveIntervalMs) return;
+                DocumentSegment[] snapshot;
+                lock (partialGate)
+                {
+                    snapshot = [.. job.Segments.Select(segment =>
+                        partial.TryGetValue(segment.Index, out var translatedSegment) ? translatedSegment : segment)];
+                }
+                var partialJob = new DocumentJob(sourcePath, outputPath, targetLanguage, snapshot, _checkpointDirectory);
+                await partialJob.SaveCheckpointAsync(CancellationToken.None).ConfigureAwait(false);
+                Volatile.Write(ref lastSavedAt, Environment.TickCount64);
+            }
+            catch (Exception)
+            {
+                // 断点写盘失败只影响续译能力，不能把正在进行的翻译打断
+            }
+            finally
+            {
+                saveGate.Release();
+            }
+        }
     }
 
     /// <summary>
@@ -192,7 +249,8 @@ public sealed class DocumentTranslationCoordinator
         var translator = _translatorFactory(format);
         var segments = await translator.LoadAsync(sourcePath, cancellationToken).ConfigureAwait(false);
         var chars = CountChars(segments);
-        var contentError = DocumentLimits.CheckContent(segments.Count, chars);
+        var contentError = DocumentLimits.CheckContent(segments.Count, chars)
+            ?? DocumentLimits.CheckSegments(segments);
         if (contentError is not null)
         {
             _reportError(contentError);

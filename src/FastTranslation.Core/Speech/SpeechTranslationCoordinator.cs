@@ -32,6 +32,12 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
     private int _maxSentenceId;
     private int _sentenceIdOffset;
     private bool _reconnected;
+    // 两拍泵之间重入标记。弱网时单块发送可能超过一拍，没有它时两个循环会同时发送，
+    // ClientWebSocket 只允许一个发送在途，后到的那块抛 InvalidOperationException 后丢失。
+    private int _pumpBusy;
+    // 断线前的累计用量。服务端每个 WebSocket 会话各自从 0 计费，重连后新会话的 usage
+    // 必须叠加这个基数，否则「已用 N 字符」会停在断线前的值。
+    private double _usageBase;
 
     public SpeechTranslationCoordinator(ISpeechTransport transport, SpeechTranscriptService subtitles, TimeProvider? time = null)
     {
@@ -148,10 +154,11 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
                 _subtitles.SubmitSentence(e.SentenceId + _sentenceIdOffset, e.Text, e.IsFinal);
                 break;
             case SpeechTransportKind.Usage:
-                // 服务端 usage 是会话累计值;取 max 防乱序回退。
-                if (e.Seconds > SessionSeconds)
+                // 服务端 usage 是单条连接的累计值;断线重连后从 0 重新计，所以要加基数。
+                // 仍然取 max，防同一连接内的乱序帧把显示值拉回去。
+                if (_usageBase + e.Seconds > SessionSeconds)
                 {
-                    SessionSeconds = e.Seconds;
+                    SessionSeconds = _usageBase + e.Seconds;
                     UsageObserved?.Invoke(SessionSeconds);
                 }
                 break;
@@ -187,6 +194,20 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
     }
 
     private async Task DrainAudioCycle()
+    {
+        if (Interlocked.Exchange(ref _pumpBusy, 1) == 1)
+            return;
+        try
+        {
+            await DrainAudioCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _pumpBusy, 0);
+        }
+    }
+
+    private async Task DrainAudioCoreAsync()
     {
         if (_state != SpeechCoordinatorState.Streaming)
             return;
@@ -230,6 +251,7 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
             return;
         }
         _reconnected = true;
+        _usageBase = SessionSeconds;
         // 服务端重连后句号从头计数;偏移量保证字幕行主键单调,不与旧会话撞行。
         _sentenceIdOffset += _maxSentenceId;
         _maxSentenceId = 0;
