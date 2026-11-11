@@ -115,13 +115,12 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             _waiting();
 
             var settings = _settings();
-            var (source, target) = ImageTranslationPolicy.Resolve(settings.SourceLanguage, settings.TargetLanguage);
-            // Model 留空：设置页里的 Model 是文本模型，图片翻译要用适配器自己的默认模型
-            var request = new ImageTranslationRequest(captured.PngBytes, source, target, string.Empty);
-
             var started = Environment.TickCount64;
-            var imageTask = _provider.TranslateImageAsync(request, _lifetime.Token);
             var ocrTask = _ocr.RecognizeAsync(new ImageOcrRequest(captured.PngBytes), _lifetime.Token);
+            // v126: 「自动(中英互译)」的目标语言要等 OCR 给出原文才能判（中文截图译成英文、外文译成中文）。
+            // 原来目标固定 Chinese，中文截图被要求「中→中」，图片模型原样返回，用户看到截图没变化。
+            // 显式目标语言不受影响，仍是译图与 OCR 同时起跑。
+            var imageTask = TranslateImageAsync(captured, settings, ocrTask);
 
             // C（把 OCR 出来的原文再翻一遍文字）只依赖 B，所以 B 一回来就启动，不等 A。
             // 实测同一张图：A≈3.3s、B≈0.9s、C≈0.6s；旧顺序先 WhenAll(A,B) 再跑 C 要 5.2s。
@@ -218,6 +217,29 @@ internal sealed class ImageTranslationCoordinator : IDisposable
             translated?.Model ?? string.Empty,
             PicturePending: true));
         return (false, true);
+    }
+
+    /// <summary>
+    /// 发起图片翻译。目标为「自动(中英互译)」时先等 OCR：只有原文才能判出该译成英文还是中文，
+    /// 判错方向会让图片模型原样返回（中文→中文），看起来就是「截图翻译没反应」。
+    /// 显式目标语言不等，保持译图与 OCR 并行。
+    /// </summary>
+    private async Task<ImageTranslationResult> TranslateImageAsync(
+        CapturedImage captured,
+        AppSettings settings,
+        Task<ImageOcrResult> ocrTask)
+    {
+        string? sampleText = null;
+        if (ImageTranslationPolicy.IsAuto(settings.TargetLanguage))
+        {
+            var ocr = await ocrTask.ConfigureAwait(false);
+            if (ocr.Succeeded) sampleText = ocr.Text;
+        }
+
+        var (source, target) = ImageTranslationPolicy.Resolve(settings.SourceLanguage, settings.TargetLanguage, sampleText);
+        // Model 留空：设置页里的 Model 是文本模型，图片翻译要用适配器自己的默认模型
+        var request = new ImageTranslationRequest(captured.PngBytes, source, target, string.Empty);
+        return await _provider.TranslateImageAsync(request, _lifetime.Token).ConfigureAwait(false);
     }
 
     /// <summary>

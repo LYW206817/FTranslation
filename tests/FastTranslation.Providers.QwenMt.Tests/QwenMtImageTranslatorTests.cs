@@ -119,6 +119,29 @@ public class QwenMtImageTranslatorTests
         Assert.Equal(expectedTarget, target);
     }
 
+    // v126: 「自动(中英互译)」的截图方向必须按 OCR 原文判——中文译英文、外文译中文。
+    // 方向错了发给图片模型的是「中→中」，它会原样返回，用户看到截图没变化。
+    [Theory]
+    [InlineData("你的测试计划非常严谨，特别是将整百年作为独立的等价类进行验证。", "auto", "English")]
+    [InlineData("The quick brown fox jumps over the lazy dog.", "auto", "Chinese")]
+    [InlineData("中英 mixed text", "auto", "Chinese")] // 英文占比过半，和文字链路同为「非中文→中文」
+    [InlineData("2026-11-11", "auto", "Chinese")]       // 没有字母：判不出方向时回落 Chinese
+    [InlineData("", "auto", "Chinese")]                 // OCR 拿到空串
+    public void Resolve_AutoTarget_UsesOcrText(string sampleText, string settingsTarget, string expectedTarget)
+    {
+        var (source, target) = ImageTranslationPolicy.Resolve("auto", settingsTarget, sampleText);
+        Assert.Equal("auto", source);
+        Assert.Equal(expectedTarget, target);
+    }
+
+    // 显式目标语言是用户决定，不能被 OCR 文本推翻。
+    [Fact]
+    public void Resolve_ExplicitTarget_IgnoresOcrText()
+    {
+        var (source, target) = ImageTranslationPolicy.Resolve("auto", "zh", "The quick brown fox jumps over the lazy dog.");
+        Assert.Equal(("auto", "Chinese"), (source, target));
+    }
+
     [Fact]
     public async Task Success_DownloadsJpegFromRemoteUrl()
     {
