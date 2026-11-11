@@ -171,4 +171,36 @@ public class AccountProfileTests : IClassFixture<ServerFactory>
             new RefreshRequest(otherAuth.RefreshToken!));
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
     }
+
+    /// <summary>v127: 设备已满时改密码必须整笔失败，不能密码已改、会话已吊销却只回 400。</summary>
+    [Fact]
+    public async Task Password_change_is_rejected_before_the_old_password_stops_working()
+    {
+        var email = UniqueEmail();
+        var client = _factory.CreateClient();
+        var registered = await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email, "password123", null, "fp-first", "pc"));
+        registered.EnsureSuccessStatusCode();
+        var auth = (await registered.Content.ReadFromJsonAsync<AuthResponse>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+        // 账号已占满 3 台设备，改密码时带第 4 个指纹。
+        for (var i = 0; i < 2; i++)
+        {
+            (await _client.PostAsJsonAsync("/api/v1/auth/login",
+                new LoginRequest(email, "password123", $"fp-extra-{i}", "pc")))
+                .EnsureSuccessStatusCode();
+        }
+
+        var change = await client.PostAsJsonAsync("/api/v1/account/password",
+            new ChangePasswordRequest("password123", "brand-new-123", "fp-over", "pc"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, change.StatusCode);
+        Assert.Equal("device_limit_reached",
+            (await change.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
+
+        var login = await _client.PostAsJsonAsync("/api/v1/auth/login",
+            new LoginRequest(email, "password123", "fp-first", "pc"));
+        login.EnsureSuccessStatusCode();
+    }
 }

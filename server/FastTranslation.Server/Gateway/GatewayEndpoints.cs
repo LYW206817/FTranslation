@@ -295,9 +295,17 @@ public static class GatewayEndpoints
         // RegisterDevice 会遵守每账号设备上限；这里被拒绝也不能中断
         // 翻译，所以超限的客户端直接记到匿名设备行上。
         var registered = store.RegisterDevice(userId, fingerprint, string.Empty);
-        return registered.Device is { } device
-            ? (device.Id, userId)
-            : (store.FindDeviceByFingerprint(userId, AnonymousFingerprint)?.Id ?? Guid.Empty, userId);
+        if (registered.Device is { } device)
+        {
+            return (device.Id, userId);
+        }
+
+        // v127: 匿名行不一定存在（桌面端每次请求都带指纹）。这时必须退回到账号已有
+        // 的一台设备，绝不能返回 Guid.Empty：usage_daily 对 devices 有外键，记账会
+        // 抛异常返回 500，而上游翻译已经调用、成本已经发生。
+        var fallback = store.FindDeviceByFingerprint(userId, AnonymousFingerprint)
+            ?? store.ListDevices(userId).FirstOrDefault();
+        return (fallback?.Id ?? Guid.Empty, userId);
     }
 
     private static (string Model, int Chars) ReadChatShape(string body)

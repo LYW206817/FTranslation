@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using FastTranslation.Server.Domain;
 using Microsoft.Data.Sqlite;
 
@@ -34,6 +34,13 @@ public sealed class NoteStore(ServerDatabase database)
 {
     /// <summary>每账号硬上限，避免某个失控的客户端把磁盘写满。</summary>
     public const int MaxNotesPerAccount = 20_000;
+
+    /// <summary>所有查询共用的列清单。列顺序必须与 <see cref="ReadNote"/> 的序号一致，
+    /// 抄成五份时漏改一处就会让字段静默错位。</summary>
+    private const string SelectColumns =
+        "id, user_id, kind, source_text, target_text, source_lang, target_lang, " +
+        "model, origin_app, note, created_at, updated_at, " +
+        "stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json";
 
     public NoteRecord Create(
         Guid userId, NoteKind kind, string sourceText, string targetText,
@@ -80,10 +87,8 @@ public sealed class NoteStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
+        command.CommandText = $"""
+            SELECT {SelectColumns}
             FROM notes
             WHERE user_id = $userId AND kind = $kind AND source_text = $source AND deleted_at IS NULL
             ORDER BY created_at DESC LIMIT 1
@@ -130,10 +135,8 @@ public sealed class NoteStore(ServerDatabase database)
         using var connection = database.Open();
         using var command = connection.CreateCommand();
 
-        var sql = new System.Text.StringBuilder("""
-            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
+        var sql = new System.Text.StringBuilder($"""
+            SELECT {SelectColumns}
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL
             """);
@@ -163,10 +166,8 @@ public sealed class NoteStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
+        command.CommandText = $"""
+            SELECT {SelectColumns}
             FROM notes
             WHERE id = $id AND user_id = $userId AND deleted_at IS NULL
             """;
@@ -240,10 +241,8 @@ public sealed class NoteStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
+        command.CommandText = $"""
+            SELECT {SelectColumns}
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL AND stage >= 1 AND due_at <= $now
             ORDER BY due_at ASC
@@ -271,10 +270,8 @@ public sealed class NoteStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, user_id, kind, source_text, target_text, source_lang, target_lang,
-                   model, origin_app, note, created_at, updated_at,
-                   stage, due_at, last_grade, review_count, lapses, reviewed_at, dictionary_json
+        command.CommandText = $"""
+            SELECT {SelectColumns}
             FROM notes
             WHERE user_id = $userId AND deleted_at IS NULL AND stage = 0
             ORDER BY created_at ASC

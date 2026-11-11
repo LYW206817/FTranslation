@@ -135,9 +135,9 @@ public static class AccountEndpoints
             return Results.BadRequest(new ErrorResponse("password_unchanged"));
         }
 
-        store.SetPasswordHash(user.Id, PasswordHasher.Hash(next));
-        store.RevokeAllRefreshTokens(user.Id);
-
+        // v127: 先注册设备再改密码。反过来写时设备数已满的账号会收到 400，
+        // 但密码已经改掉、所有 refresh token 也已吊销——用户拿旧密码重试只会得到
+        // password_mismatch，等于被锁在外面。
         var device = store.RegisterDevice(
             user.Id,
             string.IsNullOrWhiteSpace(request.DeviceFingerprint) ? "password-change" : request.DeviceFingerprint.Trim(),
@@ -146,6 +146,9 @@ public static class AccountEndpoints
         {
             return Results.BadRequest(new ErrorResponse(device.Error!));
         }
+
+        store.SetPasswordHash(user.Id, PasswordHasher.Hash(next));
+        store.RevokeAllRefreshTokens(user.Id);
 
         return Results.Ok(AuthEndpoints.IssueTokens(store, tokens, options, database, user, registered));
     }
@@ -429,6 +432,13 @@ public static class AdminEndpoints
         if (user is null)
         {
             return Results.NotFound(new ErrorResponse("account_missing"));
+        }
+
+        // 负天数没有语义，落到下面的 switch 会当成永久授权（plan_expires_at = NULL），
+        // 手误传 -30 反而把账号送成永久，必须显式拒绝。
+        if (request.Days is < 0)
+        {
+            return Results.BadRequest(new ErrorResponse("days_invalid"));
         }
 
         // Days 是相对天数，运维不必手算 Unix 时间戳。

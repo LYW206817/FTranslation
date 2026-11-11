@@ -250,6 +250,22 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         Assert.Equal(Plans.StandardMonthlyChars - beforeUsage.UsedMonthlyChars, afterUsage.RemainingMonthlyChars);
     }
 
+    /// <summary>v127: 负天数曾落进 switch 的兜底分支，把账号改成永久有效。</summary>
+    [Fact]
+    public async Task Admin_rejects_a_negative_duration()
+    {
+        var email = UniqueEmail();
+        var auth = await RegisterAsync(_client, email);
+
+        using var response = await AdminAsync(_client, HttpMethod.Post,
+            $"/api/v1/admin/accounts/{email}/plan", new PlanChangeRequest("light", -30));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var account = await GetAuthorizedAsync<AccountDto>(_client, "/api/v1/account/me", auth.AccessToken);
+        Assert.Equal("free", account.Plan);
+        Assert.Null(account.PlanExpiresAt);
+    }
+
     [Fact]
     public async Task Admin_rate_limit_blocks_after_the_configured_limit()
     {

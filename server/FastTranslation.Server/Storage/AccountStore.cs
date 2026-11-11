@@ -87,6 +87,31 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
+    /// <summary>
+    /// 把一段时长接到当前订阅之后。读改写放在同一条 UPDATE 里完成：并发兑换两张码时，
+    /// 各自基于「请求开始时读到的到期时间」计算绝对时间会让后写覆盖先写，凭空丢一张码的天数。
+    /// </summary>
+    public bool ExtendPlan(Guid userId, PlanTier plan, int days, long nowUnix)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE users
+            SET plan = $plan,
+                plan_expires_at = CASE
+                    WHEN plan_expires_at IS NOT NULL AND plan_expires_at > $now
+                        THEN plan_expires_at + $seconds
+                    ELSE $now + $seconds
+                END
+            WHERE id = $id
+            """;
+        command.Parameters.AddWithValue("$plan", (int)plan);
+        command.Parameters.AddWithValue("$seconds", days * 86_400L);
+        command.Parameters.AddWithValue("$now", nowUnix);
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        return command.ExecuteNonQuery() > 0;
+    }
+
     /// <summary>禁用/解禁账号。禁用时由调用方同时吊销 refresh token。</summary>
     public bool SetDisabled(Guid userId, bool disabled)
     {

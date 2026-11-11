@@ -64,30 +64,37 @@ public sealed class DashScopeSpeechGateway
         var startedAtUtc = DateTimeOffset.UtcNow;
         int billedSeconds = 0;
         long billedIn = 0, billedOut = 0, billedChars = 0, billedCost = 0;
+        // v127: Bill 既在上游泵的 onUsage 里跑，也在 RelayAsync 的 finally 里补最短计费。
+        // 泵超过 2s 仍未收尾时两处并发，会基于同一旧值各记一笔（重复扣）或丢增量。
+        // 计费状态用一把锁串起来；锁内只有一次 SQLite 写，持有时间很短。
+        var billGate = new object();
 
         // 上游用量是「会话累计」值,每来一帧就按增量落一行 usage_events:
         // 这样日预算/额度闸门看到的是实时花费,客户端半路跑掉也不会丢账(v81)。
         void Bill(int durationSeconds, long tokensIn, long tokensOut)
         {
-            var seconds = Math.Max(durationSeconds, billedSeconds);
-            var deltaSeconds = seconds - billedSeconds;
-            var deltaIn = Math.Max(0L, tokensIn - billedIn);
-            var deltaOut = Math.Max(0L, tokensOut - billedOut);
-            if (deltaSeconds == 0 && deltaIn == 0 && deltaOut == 0)
+            lock (billGate)
             {
-                return;
-            }
+                var seconds = Math.Max(durationSeconds, billedSeconds);
+                var deltaSeconds = seconds - billedSeconds;
+                var deltaIn = Math.Max(0L, tokensIn - billedIn);
+                var deltaOut = Math.Max(0L, tokensOut - billedOut);
+                if (deltaSeconds == 0 && deltaIn == 0 && deltaOut == 0)
+                {
+                    return;
+                }
 
-            var chars = (long)deltaSeconds * options.QuotaCharsPerSecond;
-            var cost = Pricing.TextCostMicros(options.Model, deltaIn, deltaOut);
-            store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), options.Model,
-                (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
-                cost, database.NowUnix, source: "speech");
-            billedSeconds = seconds;
-            billedIn = tokensIn;
-            billedOut = tokensOut;
-            billedChars += chars;
-            billedCost += cost;
+                var chars = (long)deltaSeconds * options.QuotaCharsPerSecond;
+                var cost = Pricing.TextCostMicros(options.Model, deltaIn, deltaOut);
+                store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), options.Model,
+                    (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
+                    cost, database.NowUnix, source: "speech");
+                billedSeconds = seconds;
+                billedIn = tokensIn;
+                billedOut = tokensOut;
+                billedChars += chars;
+                billedCost += cost;
+            }
         }
 
         try
@@ -108,8 +115,11 @@ public sealed class DashScopeSpeechGateway
                         await SendRunTaskAsync(upstream, sampleRate, language, timeout.Token);
                         upstreamPump = PumpUpstreamAsync(client, upstream, timeout.Token, usage =>
                         {
-                            latestUsage = usage;
-                            Bill(usage.DurationSeconds, usage.InputTokens, usage.OutputTokens);
+                            lock (billGate)
+                            {
+                                latestUsage = usage;
+                                Bill(usage.DurationSeconds, usage.InputTokens, usage.OutputTokens);
+                            }
                         });
                     }
                     else if (IsStop(text) && upstream is not null)
@@ -168,21 +178,24 @@ public sealed class DashScopeSpeechGateway
                 upstream.Dispose();
             }
 
-            if (latestUsage is { } usage)
+            lock (billGate)
             {
-                // 补足最短计费秒数(讲半秒也按 MinSeconds 记);增量部分已在每帧记过,不会重复。
-                // 额度是产品语言(按秒折字符),成本是财务语言(按 token 算钱),分开记(设计 §5.5)。
-                Bill(Math.Max(usage.DurationSeconds, options.MinSeconds), usage.InputTokens, usage.OutputTokens);
-                result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, usage.DurationSeconds);
-            }
-            else
-            {
-                // 一条 usage 都没收到(连上就断、全程静音、上游早死):按会话墙钟计费。
-                // 不这么做的话「连上就砍」可以白嫖上游 ASR 算力——预检已经放行,不能不计账(v81)。
-                var wall = Math.Min(Math.Max(0, (int)(DateTimeOffset.UtcNow - startedAtUtc).TotalSeconds),
-                    sessionSeconds);
-                Bill(Math.Max(wall, options.MinSeconds), 0, 0);
-                result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, wall);
+                if (latestUsage is { } usage)
+                {
+                    // 补足最短计费秒数(讲半秒也按 MinSeconds 记);增量部分已在每帧记过,不会重复。
+                    // 额度是产品语言(按秒折字符),成本是财务语言(按 token 算钱),分开记(设计 §5.5)。
+                    Bill(Math.Max(usage.DurationSeconds, options.MinSeconds), usage.InputTokens, usage.OutputTokens);
+                    result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, usage.DurationSeconds);
+                }
+                else
+                {
+                    // 一条 usage 都没收到(连上就断、全程静音、上游早死):按会话墙钟计费。
+                    // 不这么做的话「连上就砍」可以白嫖上游 ASR 算力——预检已经放行,不能不计账(v81)。
+                    var wall = Math.Min(Math.Max(0, (int)(DateTimeOffset.UtcNow - startedAtUtc).TotalSeconds),
+                        sessionSeconds);
+                    Bill(Math.Max(wall, options.MinSeconds), 0, 0);
+                    result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, wall);
+                }
             }
 
             // 关流只在这里做:上游泵不再自己关客户端,否则「硬顶到期的错误帧」会和关闭抢时序,
@@ -306,9 +319,11 @@ public sealed class DashScopeSpeechGateway
         runTaskId = Guid.NewGuid().ToString("D");
         // language=auto 时不带 language_hints(DashScope 会自己判断);POC 只实证过显式语种,
         // auto 的行为留到真实联调确认(残留风险已记 IMPL)。
+        // 拼接进上游 JSON 的值必须转义：language 来自客户端 start 帧，否则能破坏
+        // 上游参数结构（"language" 里带引号即可注入）。
         var hints = string.Equals(language, "auto", StringComparison.Ordinal)
             ? string.Empty
-            : ",\"language_hints\":[\"" + language + "\"]";
+            : ",\"language_hints\":[" + JsonSerializer.Serialize(language) + "]";
         var frame = "{\"header\":{\"action\":\"run-task\",\"task_id\":\"" + runTaskId
             + "\",\"streaming\":\"duplex\"},\"payload\":{\"task_group\":\"audio\",\"task\":\"asr\","
             + "\"function\":\"recognition\",\"model\":\"" + options.Model
@@ -357,8 +372,11 @@ public sealed class DashScopeSpeechGateway
             }
             return true;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
         {
+            // 客户端可以发任意 JSON:1.5 或超出 int 的 sampleRate 会让 GetInt32 抛
+            // FormatException,type 不是字符串会让 GetString 抛 InvalidOperationException。
+            // 一个坏 start 帧只判为无效，不能让整个中继 500。
             return false;
         }
     }

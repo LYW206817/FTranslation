@@ -593,4 +593,59 @@ public class DashScopeSpeechRelayTests
         }
     }
 
+    /// <summary>v127: 坏 start 帧（这里 sampleRate 是小数）只判无效，不能让中继抛 500。</summary>
+    [Fact]
+    public async Task Malformed_start_frame_does_not_crash_the_relay()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), "ft-speech-tests", Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        try
+        {
+            var database = new ServerDatabase(databasePath);
+            database.Initialize();
+            var store = new AccountStore(database);
+            var user = store.CreateUser($"relay-badstart-{Guid.NewGuid():N}@example.com", "hash", PlanTier.Free);
+            var device = store.RegisterDevice(user.Id, "fp-badstart", "test-pc").Device!.Id;
+
+            var (clientTest, clientRelay) = FakeWebSocket.CreatePair();
+            var options = new SpeechOptions
+            {
+                Enabled = true,
+                WsUrl = "ws://speech.test/asr",
+                Model = AsrModel,
+                QuotaCharsPerSecond = 20,
+                MinSeconds = 10,
+            };
+            var connected = false;
+            var gateway = new DashScopeSpeechGateway(options, "test-key", _ =>
+            {
+                connected = true;
+                return Task.FromResult<WebSocket>(FakeWebSocket.CreatePair().RelaySide);
+            });
+
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":1.5}");
+            clientTest.Abort();
+
+            var result = await relay;
+            Assert.False(connected);
+            // 一条 usage 都没收到也按墙钟记最低计费，证明坏帧之后收尾路径仍然正常。
+            Assert.True(result.Recorded);
+        }
+        finally
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try
+                {
+                    File.Delete(databasePath + suffix);
+                }
+                catch (IOException)
+                {
+                    // 尽力而为地清理。
+                }
+            }
+        }
+    }
+
 }

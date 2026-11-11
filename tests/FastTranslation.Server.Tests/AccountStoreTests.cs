@@ -120,11 +120,16 @@ public sealed class AccountStoreTests : IDisposable
         var notes = new NoteStore(_database);
         notes.Create(user.Id, NoteKind.Word, "hello", "你好", "en", "zh", "qwen-mt-flash", "test");
 
+        // v127: 强制 DeleteUser 走一条全新连接。外键开关是连接级的，这个用例要证明
+        // CASCADE 不依赖连接池里 Initialize 那条连接留下的 PRAGMA 状态。
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
         Assert.True(_store.DeleteUser(user.Id, user.Email));
 
         // 用户行删掉后，设备、笔记、refresh token 都靠外键级联；usage_events 与验证码
         // 没有指向 users 的外键，DeleteUser 必须显式清掉，否则会留下可关联的个人数据。
         Assert.Null(_store.FindUserById(user.Id));
+        Assert.Null(_store.FindDevice(user.Id, device.Id));
         Assert.Null(_store.ConsumeRefreshToken("delete-token-hash"));
         Assert.Null(_store.FindVerificationCode(user.Email));
         Assert.Equal(0, notes.CountLive(user.Id));

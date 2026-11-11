@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace FastTranslation.Server.Storage;
 
@@ -30,6 +30,10 @@ public sealed class ServerDatabase
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
             Pooling = true,
+            // v127: 显式打开外键。SQLite 的 foreign_keys 是连接级开关，而账号注销依赖
+            // ON DELETE CASCADE 清理设备、笔记与月度用量。当前 Microsoft.Data.Sqlite
+            // 默认会发 PRAGMA foreign_keys=1，但数据完整性不该押在库的默认值上。
+            ForeignKeys = true,
         }.ToString();
     }
 

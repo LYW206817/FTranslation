@@ -296,6 +296,27 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         Assert.Equal(1_200, usage.UsedDailyChars);
     }
 
+    // v127: 第 4 台设备（或本机设备记录被清掉）会撞上每账号 3 台上限。网关不能把这次
+    // 计费写到 Guid.Empty 上——usage_daily 对 devices 有外键，插入会 500，而上游已经
+    // 调用并产生成本。应当退回到该账号已有的一台设备记账。
+    [Fact]
+    public async Task Chat_WithDeviceOverTheLimit_ChargesAnExistingDevice()
+    {
+        var client = await SignedInClientAsync(PlanTier.Light);
+        var email = await EmailAsync(client);
+        for (var i = 0; i < 2; i++)
+        {
+            var login = await client.PostAsJsonAsync("/api/v1/auth/login",
+                new LoginRequest(email, "password123", $"fp-extra-{i}-{Guid.NewGuid():N}", "extra-pc"));
+            login.EnsureSuccessStatusCode();
+        }
+
+        var response = await ChatAsync(client, 20, "fp-over-limit-" + Guid.NewGuid().ToString("N"));
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(20, (await ReadUsageAsync(client)).UsedMonthlyChars);
+    }
+
     private static async Task<string> EmailAsync(HttpClient client)
     {
         var response = await client.GetAsync("/api/v1/account/me");

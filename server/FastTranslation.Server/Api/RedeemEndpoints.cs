@@ -12,7 +12,6 @@ namespace FastTranslation.Server.Api;
 /// </summary>
 public static class RedeemEndpoints
 {
-    private const long SecondsPerDay = 86_400L;
 
     public static void MapRedeemEndpoints(this IEndpointRouteBuilder app)
     {
@@ -87,17 +86,14 @@ public static class RedeemEndpoints
 
         // 从客户当前所在的位置往后接。降级在上面已被拒绝，所以能走到这里的
         // 兑换都是同档或升级——而升级时重置到“今天”会让买家
-        // 为已经拥有的天数重复付费。
-        long from = now;
-        if (user.PlanExpiresAt is { } current && current > now)
+        // 为已经拥有的天数重复付费。加时在 SQL 里原子完成，并发兑换不会互相覆盖。
+        accounts.ExtendPlan(user.Id, record.Plan, record.Days, now);
+
+        var updated = accounts.FindUserById(user.Id);
+        if (updated is null)
         {
-            from = current;
+            return Results.NotFound(new ErrorResponse("account_missing"));
         }
-
-        var expiresAt = from + (record.Days * SecondsPerDay);
-        accounts.SetPlan(user.Id, record.Plan, expiresAt);
-
-        var updated = accounts.FindUserById(user.Id)!;
         var usage = accounts.ReadUsage(user.Id, null);
         return Results.Ok(new RedeemResponse(
             AuthEndpoints.ToAccountDto(updated, database),
