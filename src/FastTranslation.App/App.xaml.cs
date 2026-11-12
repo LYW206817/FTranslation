@@ -767,6 +767,31 @@ public partial class App : Application, IResultPresenter
             };
             uiTimer.Start();
         }
+        else if (uitest is "notice-then-result")
+        {
+            // 回归探针：先弹「已复制」提示（ShowNotice 会启动 2.5 秒自动隐藏计时），
+            // 300ms 后再显示正常结果。新卡片没停掉计时器时，3 秒后卡片会被自己隐藏。
+            var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+            uiTimer.Tick += (_, _) =>
+            {
+                uiTimer.Stop();
+                try
+                {
+                    var origin = CapturedSelection.Empty(WindowsSelectionCapture.CurrentCursorPoint());
+                    _card!.ShowNotice("已复制");
+                    var second = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                    second.Tick += (_, _) =>
+                    {
+                        second.Stop();
+                        ShowCard(new TranslationResult(
+                            "notice-probe", "result-card-still-visible", "en", "zh", "qwen-mt-flash", 0, true), origin);
+                    };
+                    second.Start();
+                }
+                catch (Exception ex) { Trace($"notice-then-result: {ex}"); }
+            };
+            uiTimer.Start();
+        }
         else if (uitest is "document" or "document-progress" or "document-done" or "document-failed")
         {
             // FT_UITEST=document* -> 文档页的四种形态，只为了拍对比截图。空态走真实页面，
