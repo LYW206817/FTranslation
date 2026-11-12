@@ -42,6 +42,18 @@ public sealed class GatewayOptions
     public int MaxRequestChars { get; set; } = 5_000;
 
     /// <summary>
+    /// v129: 客户端可以指定 model 并把网关当通用 LLM 用；输出长度不设上限时，
+    /// 输入只按字符计费、输出 token 完全不进额度，成本会与账本脱节。
+    /// </summary>
+    public int MaxOutputTokens { get; set; } = 4_096;
+
+    /// <summary>chat 请求体上限：5000 字符正文加 JSON 结构与翻译参数，256 KB 足够。</summary>
+    public int MaxChatBodyBytes { get; set; } = 256 * 1024;
+
+    /// <summary>图片/OCR 请求体上限：截图以 base64 直传，16 MB 覆盖大图且低于 Kestrel 的 30 MB。</summary>
+    public int MaxImageBodyBytes { get; set; } = 16 * 1024 * 1024;
+
+    /// <summary>
     /// 截图翻译中图片翻译与 OCR 各自扣除的额度字符数。图像 API 不报告用量，所以
     /// 这个固定折算值是把它计入同一套字符额度的唯一方式；两个调用合起来就是
     /// 产品口径的「每张截图 2,000 字符起」，再加上 OCR 文字的文本翻译费。

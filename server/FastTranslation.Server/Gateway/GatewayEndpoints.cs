@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using FastTranslation.Server.Api;
 using FastTranslation.Server.Domain;
@@ -20,6 +21,8 @@ public static class GatewayEndpoints
 
     private const string AnonymousFingerprint = "gateway-anonymous";
 
+    private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros);
+
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/v1").WithTags("gateway").RequireAuthorization();
@@ -36,6 +39,7 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
@@ -46,7 +50,11 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
-        var body = await ReadBodyAsync(context, ct);
+        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxChatBodyBytes, ct);
+        if (tooLarge)
+        {
+            return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
         if (body is null)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
@@ -63,43 +71,71 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "text_too_long");
         }
 
-        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, Pricing.QuotaChars(model, chars)) is { } refusal)
+        if (!Pricing.IsChatModel(model))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
+        }
+
+        var maxTokens = ReadMaxTokens(body);
+        if (maxTokens is { } requestedTokens && requestedTokens > gateway.MaxOutputTokens)
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "max_tokens_too_large");
+        }
+
+        var outputTokens = maxTokens is { } requestedOutput && requestedOutput > 0 ? requestedOutput : 0;
+        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
+            Pricing.QuotaChars(model, chars), Pricing.EstimateTextCostMicros(model, chars, outputTokens), out var reservation);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        var response = await upstream.SendChatAsync(body, ct);
-        if (!response.Succeeded)
+        var settled = false;
+        try
         {
-            // 上游拒绝：透传状态码，让客户端现有的分类逻辑继续工作，
-            // 并且不为这次根本没拿到的翻译向账号收费。
-            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
-            return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
-        }
+            var response = await upstream.SendChatAsync(body, ct);
+            if (!response.Succeeded)
+            {
+                // 上游拒绝：透传状态码，让客户端现有的分类逻辑继续工作，
+                // 并且不为这次根本没拿到的翻译向账号收费。
+                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
+            }
 
-        var (deviceId, userId) = Device(context, principal, store);
-        var tokensIn = EstimateInputTokens(chars);
-        var tokensOut = 0L;
-        if (DashScopeGateway.TryReadUsage(response.Body, out var reportedIn, out var reportedOut))
+            var tokensIn = EstimateInputTokens(chars);
+            var tokensOut = 0L;
+            if (DashScopeGateway.TryReadUsage(response.Body, out var reportedIn, out var reportedOut))
+            {
+                tokensIn = reportedIn;
+                tokensOut = reportedOut;
+            }
+
+            // v97: 额度记「flash 等价字符」而不是原始字符——plus 的真实成本是 flash 的 2.68 倍，
+            // 按 1:1 记会让用户用低价档买走高价成本。预检与记账必须用同一个折算值，
+            // 否则闸门按 100 放行、账上记 270，剩余额度能被 plus 直接透支掉。
+            store.RecordUsage(
+                reservation!.Value.UserId,
+                reservation.Value.DeviceId,
+                Pricing.QuotaChars(model, chars),
+                model,
+                (int)Math.Min(tokensIn, int.MaxValue),
+                (int)Math.Min(tokensOut, int.MaxValue),
+                Pricing.TextCostMicros(model, tokensIn, tokensOut),
+                database.NowUnix,
+                reservedChars: reservation.Value.Chars);
+            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            settled = true;
+
+            return Results.Content(response.Body, "application/json");
+        }
+        finally
         {
-            tokensIn = reportedIn;
-            tokensOut = reportedOut;
+            if (!settled && reservation is { } held)
+            {
+                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
+                budget.Release("gateway", held.EstimatedCostMicros);
+            }
         }
-
-        // v97: 额度记「flash 等价字符」而不是原始字符——plus 的真实成本是 flash 的 2.68 倍，
-        // 按 1:1 记会让用户用低价档买走高价成本。预检与记账必须用同一个折算值，
-        // 否则闸门按 100 放行、账上记 270，剩余额度能被 plus 直接透支掉。
-        store.RecordUsage(
-            userId,
-            deviceId,
-            Pricing.QuotaChars(model, chars),
-            model,
-            (int)Math.Min(tokensIn, int.MaxValue),
-            (int)Math.Min(tokensOut, int.MaxValue),
-            Pricing.TextCostMicros(model, tokensIn, tokensOut),
-            database.NowUnix);
-
-        return Results.Content(response.Body, "application/json");
     }
 
     /// <summary>
@@ -115,6 +151,7 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
@@ -125,38 +162,65 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
-        var body = await ReadBodyAsync(context, ct);
+        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
+        if (tooLarge)
+        {
+            return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
         if (body is null)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
+        // 图片请求必须落到价目表里的图像模型；客户端省略时用图像默认，
+        // 不能回落到 gateway.Model（那是文本模型）。
+        var model = ReadImageModel(body) ?? Pricing.DefaultImageModel;
+        if (!Pricing.IsImageModel(model))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
+        }
+
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, quotaChars) is { } refusal)
+        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
+            quotaChars, Pricing.ImageCostMicros(model), out var reservation);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        var response = await upstream.SendImageAsync(body, ct);
-        if (!response.Succeeded)
+        var settled = false;
+        try
         {
-            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
-            return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
+            var response = await upstream.SendImageAsync(body, ct);
+            if (!response.Succeeded)
+            {
+                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
+            }
+
+            store.RecordUsage(
+                reservation!.Value.UserId,
+                reservation.Value.DeviceId,
+                quotaChars,
+                model,
+                0,
+                0,
+                Pricing.ImageCostMicros(model),
+                database.NowUnix,
+                reservedChars: reservation.Value.Chars);
+            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            settled = true;
+
+            return Results.Content(response.Body, "application/json");
         }
-
-        var (deviceId, userId) = Device(context, principal, store);
-        var model = ReadImageModel(body) ?? gateway.Model;
-        store.RecordUsage(
-            userId,
-            deviceId,
-            quotaChars,
-            model,
-            0,
-            0,
-            Pricing.ImageCostMicros(model),
-            database.NowUnix);
-
-        return Results.Content(response.Body, "application/json");
+        finally
+        {
+            if (!settled && reservation is { } held)
+            {
+                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
+                budget.Release("gateway", held.EstimatedCostMicros);
+            }
+        }
     }
 
     /// <summary>
@@ -173,6 +237,7 @@ public static class GatewayEndpoints
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
         [FromServices] GatewayRateLimiter limiter,
+        [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
@@ -183,49 +248,81 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
         }
 
-        var body = await ReadBodyAsync(context, ct);
+        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
+        if (tooLarge)
+        {
+            return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
         if (body is null)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
+        var configuredModel = string.IsNullOrWhiteSpace(gateway.OcrModel) ? "qwen-vl-ocr" : gateway.OcrModel.Trim();
+        // OCR 请求体原样转发；客户端若在 body 里塞了别的 model，上游会照它跑，
+        // 而账本按服务端的 OcrModel 记，成本与额度会脱节。只接受 OCR 模型或
+        // 服务端配置的模型，并按其实际名字记账。
+        var requestedModel = ReadImageModel(body);
+        var model = requestedModel ?? configuredModel;
+        if (requestedModel is { } requested
+            && !Pricing.IsOcrModel(requested)
+            && !string.Equals(requested, configuredModel, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
+        }
+
         // 从额度角度看，一次 OCR 与一次图片翻译定价相同：两者都是输入一张图。
         // 截图流程会同时调用 /v1/image，两个 1,000 合起来就是「每张截图 2,000 字符起」。
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        if (Intent(context, principal, store, database, gateway, limiter, diagnostics, quotaChars) is { } refusal)
+        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
+            quotaChars, Pricing.EstimateVisionCostMicros(model, quotaChars), out var reservation);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        var response = await upstream.SendOcrAsync(body, ct);
-        if (!response.Succeeded)
+        var settled = false;
+        try
         {
-            // 与 chat 同规则：原样透传上游状态码，绝不为拒绝计费。
-            diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
-            return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
-        }
+            var response = await upstream.SendOcrAsync(body, ct);
+            if (!response.Succeeded)
+            {
+                // 与 chat 同规则：原样透传上游状态码，绝不为拒绝计费。
+                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
+            }
 
-        var (deviceId, userId) = Device(context, principal, store);
-        var model = string.IsNullOrWhiteSpace(gateway.OcrModel) ? "qwen-vl-ocr" : gateway.OcrModel.Trim();
-        var tokensIn = (long)quotaChars;
-        var tokensOut = 0L;
-        if (DashScopeGateway.TryReadVisionUsage(response.Body, out var reportedIn, out var reportedOut) && reportedIn > 0)
+            var tokensIn = (long)quotaChars;
+            var tokensOut = 0L;
+            if (DashScopeGateway.TryReadVisionUsage(response.Body, out var reportedIn, out var reportedOut) && reportedIn > 0)
+            {
+                tokensIn = reportedIn;
+                tokensOut = reportedOut;
+            }
+
+            store.RecordUsage(
+                reservation!.Value.UserId,
+                reservation.Value.DeviceId,
+                quotaChars,
+                model,
+                (int)Math.Min(tokensIn, int.MaxValue),
+                (int)Math.Min(tokensOut, int.MaxValue),
+                Pricing.TextCostMicros(model, tokensIn, tokensOut),
+                database.NowUnix,
+                reservedChars: reservation.Value.Chars);
+            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            settled = true;
+
+            return Results.Content(response.Body, "application/json");
+        }
+        finally
         {
-            tokensIn = reportedIn;
-            tokensOut = reportedOut;
+            if (!settled && reservation is { } held)
+            {
+                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
+                budget.Release("gateway", held.EstimatedCostMicros);
+            }
         }
-
-        store.RecordUsage(
-            userId,
-            deviceId,
-            quotaChars,
-            model,
-            (int)Math.Min(tokensIn, int.MaxValue),
-            (int)Math.Min(tokensOut, int.MaxValue),
-            Pricing.TextCostMicros(model, tokensIn, tokensOut),
-            database.NowUnix);
-
-        return Results.Content(response.Body, "application/json");
     }
 
     /// <summary>
@@ -239,9 +336,13 @@ public static class GatewayEndpoints
         ServerDatabase database,
         GatewayOptions gateway,
         GatewayRateLimiter limiter,
+        GatewayBudgetGuard budget,
         GatewayDiagnostics diagnostics,
-        int chars)
+        int chars,
+        long estimatedCostMicros,
+        out Reservation? reservation)
     {
+        reservation = null;
         var userId = principal.GetUserId();
 
         if (!limiter.TryAcquire(userId, gateway.RequestsPerMinute))
@@ -249,7 +350,7 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
         }
 
-        if (gateway.DailyBudgetMicros > 0 && store.ReadTodayCostMicros() >= gateway.DailyBudgetMicros)
+        if (!budget.TryReserve("gateway", gateway.DailyBudgetMicros, estimatedCostMicros))
         {
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "budget_exhausted");
         }
@@ -257,21 +358,34 @@ public static class GatewayEndpoints
         var user = store.FindUserById(userId);
         if (user is null || user.Disabled)
         {
+            budget.Release("gateway", estimatedCostMicros);
             return Fail(diagnostics, StatusCodes.Status403Forbidden, "account_disabled");
         }
 
         var (deviceId, _) = Device(context, principal, store);
         var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
-        var usage = store.ReadUsage(userId, deviceId);
-        var decision = QuotaPolicy.Evaluate(tier, usage.MonthlyChars, usage.DailyChars, chars);
+        QuotaPolicy.Decision decision;
+        try
+        {
+            decision = store.TryReserveQuota(userId, deviceId, chars, tier);
+        }
+        catch (Exception)
+        {
+            // 预留失败也要退回预算占用，否则一次数据库异常会让预算闸门永久少一截。
+            budget.Release("gateway", estimatedCostMicros);
+            throw;
+        }
+
         if (!decision.Allowed)
         {
+            budget.Release("gateway", estimatedCostMicros);
             // 故意用 429（而不是 403）：客户端会把它读作“额度用尽”并静默切换到
             // 用户自己的 Key，于是套餐耗尽只是让产品降级，而不是把它弄坏。
             context.Response.Headers["X-FT-Quota-Reason"] = decision.Reason ?? "quota_exhausted";
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
         }
 
+        reservation = new Reservation(userId, deviceId, chars, estimatedCostMicros);
         return null;
     }
 
@@ -360,11 +474,59 @@ public static class GatewayEndpoints
     /// </summary>
     private static long EstimateInputTokens(int chars) => chars + 45L;
 
-    private static async Task<string?> ReadBodyAsync(HttpContext context, CancellationToken ct)
+    private static int? ReadMaxTokens(string body)
     {
-        using var reader = new StreamReader(context.Request.Body);
-        var body = await reader.ReadToEndAsync(ct);
-        return string.IsNullOrWhiteSpace(body) ? null : body;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            foreach (var name in new[] { "max_tokens", "max_completion_tokens" })
+            {
+                if (document.RootElement.TryGetProperty(name, out var value)
+                    && value.ValueKind == JsonValueKind.Number
+                    && value.TryGetInt32(out var tokens))
+                {
+                    return tokens;
+                }
+            }
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<(string? Body, bool TooLarge)> ReadBodyAsync(
+        HttpContext context,
+        int maxBytes,
+        CancellationToken ct)
+    {
+        if (context.Request.ContentLength is { } declared && declared > maxBytes)
+        {
+            return (null, true);
+        }
+
+        // 不用 ReadToEnd：Content-Length 可以缺失（chunked），必须在读的过程中就截断，
+        // 否则一个声明不了长度的大请求仍会把整份 body 读进内存。
+        await using var buffer = new MemoryStream();
+        var chunk = new byte[8 * 1024];
+        int read;
+        while ((read = await context.Request.Body.ReadAsync(chunk, ct).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                return (null, true);
+            }
+            buffer.Write(chunk, 0, read);
+        }
+
+        if (buffer.Length == 0)
+        {
+            return (null, false);
+        }
+
+        var body = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        return string.IsNullOrWhiteSpace(body) ? (null, false) : (body, false);
     }
 
     private static IResult Fail(GatewayDiagnostics diagnostics, int status, string error)

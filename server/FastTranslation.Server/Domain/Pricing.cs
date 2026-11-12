@@ -12,6 +12,8 @@ public static class Pricing
 {
     public const string DefaultModel = "qwen-mt-flash";
 
+    public const string DefaultImageModel = "qwen-mt-image-2.0";
+
     private static readonly Dictionary<string, ModelPrice> Table = new(StringComparer.OrdinalIgnoreCase)
     {
         ["qwen-mt-flash"] = new("qwen-mt-flash", 0.7m, 1.95m, 0m),
@@ -34,6 +36,46 @@ public static class Pricing
         !string.IsNullOrWhiteSpace(model) && Table.TryGetValue(model, out var price)
             ? price
             : Table[DefaultModel];
+
+    private static readonly HashSet<string> ChatModelNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "qwen-mt-flash", "qwen-mt-lite", "qwen-mt-plus",
+    };
+
+    private static readonly HashSet<string> ImageModelNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "qwen-mt-image-2.0", "qwen-mt-image",
+    };
+
+    /// <summary>
+    /// 网关只允许转发价目表里的翻译模型。客户端可以指定 model，但未知名字会落到
+    /// <see cref="For"/> 的 flash 兜底（图片则为 0 成本），等于用项目 Key 跑任意模型。
+    /// 不做 Trim：首尾带空格的名字虽然上游可能接受，却会绕过这里的价目表与额度倍率。
+    /// </summary>
+    public static bool IsChatModel(string? model) =>
+        !string.IsNullOrWhiteSpace(model) && ChatModelNames.Contains(model);
+
+    public static bool IsImageModel(string? model) =>
+        !string.IsNullOrWhiteSpace(model) && ImageModelNames.Contains(model);
+
+    public static bool IsOcrModel(string? model) =>
+        model is not null && string.Equals(model, "qwen-vl-ocr", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 预算预留用的保守估算：输入按「字符即 token」加 45 前导开销；输出默认也按字符当 token，
+    /// 请求里显式给了 max_tokens 时按它估算（短输入也能把输出上限开得很大）。
+    /// 实际成本在上游返回后用 <see cref="TextCostMicros"/> 结算，估算只影响并发期间的闸门。
+    /// </summary>
+    public static long EstimateTextCostMicros(string model, int chars, int outputTokens = 0) =>
+        TextCostMicros(model, chars + 45L, outputTokens > 0 ? outputTokens : chars);
+
+    /// <summary>视觉/OCR 的预算估算：按额度字符折算输入与输出 token，只用于并发闸门。</summary>
+    public static long EstimateVisionCostMicros(string model, int quotaChars) =>
+        TextCostMicros(model, quotaChars, quotaChars / 2);
+
+    /// <summary>语音预算估算：POC 实测约 40 输入 token/音频秒、按 10 输出 token/秒留余量。</summary>
+    public static long EstimateSpeechCostMicros(string model, int seconds) =>
+        TextCostMicros(model, seconds * 40L, seconds * 10L);
 
     /// <summary>
     /// 文本成本，单位为微元（1e-6 元），以便账本保持整数运算。用微元是可行的，

@@ -70,6 +70,16 @@ public sealed class ServerDatabase
         EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
         EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
 
+        // v129: 额度闸门「先读后写」在多请求并发时会各自读到同一个旧用量，全部放行。
+        // reserved 是已放行但尚未记账的在途请求占用；检查与占用在一条条件 UPDATE 里
+        // 原子完成，请求结束再把 reserved 换成实际用量。
+        EnsureColumn(connection, "usage_monthly", "reserved", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "usage_daily", "reserved", "INTEGER NOT NULL DEFAULT 0");
+
+        // v129: 删设备改为软删除。硬删会把 usage_daily 一起级联掉，用户用同一指纹
+        // 重新登录就拿到一台「今天没用过」的新设备，免费档日限可无限重置。
+        EnsureColumn(connection, "devices", "deleted_at", "INTEGER");
+
         // 显示名是用户唯一可编辑的资料字段（账号页）。为空表示“使用邮箱
         // 本地部分”，这样旧行与新行行为一致，无需回填。
         EnsureColumn(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''");

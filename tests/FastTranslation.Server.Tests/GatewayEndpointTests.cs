@@ -317,6 +317,81 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         Assert.Equal(20, (await ReadUsageAsync(client)).UsedMonthlyChars);
     }
 
+    [Fact]
+    public async Task Chat_RejectsAnUnknownModelBeforeCallingUpstream()
+    {
+        var client = await SignedInClientAsync(PlanTier.Free);
+        var before = await CallCountAsync();
+
+        var response = await ChatAsync(client, 20, model: "gpt-4o");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("model_not_allowed", await response.Content.ReadAsStringAsync());
+        Assert.Equal(before, await CallCountAsync());
+        Assert.Equal(0, (await ReadUsageAsync(client)).UsedMonthlyChars);
+    }
+
+    [Fact]
+    public async Task Chat_RejectsAModelPaddedWithWhitespace()
+    {
+        // 首尾空格能通过 IsChatModel 的话，价目表与额度倍率仍按未命中的名字回落 flash，
+        // plus 就能按 1:1 记额度、按 flash 记成本。
+        var client = await SignedInClientAsync(PlanTier.Free);
+        var before = await CallCountAsync();
+
+        var response = await ChatAsync(client, 20, model: " qwen-mt-plus ");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("model_not_allowed", await response.Content.ReadAsStringAsync());
+        Assert.Equal(before, await CallCountAsync());
+    }
+
+    [Fact]
+    public async Task Chat_RejectsMaxTokensAboveTheCap()
+    {
+        var client = await SignedInClientAsync(PlanTier.Free);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = "qwen-mt-flash",
+                messages = new[] { new { role = "user", content = "hello" } },
+                max_tokens = 100_000,
+            }),
+        };
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("max_tokens_too_large", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Chat_RejectsAnOversizedBody()
+    {
+        var client = await SignedInClientAsync(PlanTier.Free);
+        var before = await CallCountAsync();
+
+        // 超过默认 256 KB 上限；服务端应在转发前就 413，而不是把整份 body 读完再判断。
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new
+                {
+                    model = "qwen-mt-flash",
+                    messages = new[] { new { role = "user", content = new string('a', 300_000) } },
+                }),
+                Encoding.UTF8,
+                "application/json"),
+        };
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Contains("body_too_large", await response.Content.ReadAsStringAsync());
+        Assert.Equal(before, await CallCountAsync());
+    }
+
     private static async Task<string> EmailAsync(HttpClient client)
     {
         var response = await client.GetAsync("/api/v1/account/me");

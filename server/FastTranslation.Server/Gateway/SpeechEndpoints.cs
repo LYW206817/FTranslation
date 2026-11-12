@@ -21,7 +21,7 @@ public static class SpeechEndpoints
 
     private static async Task SpeechAsync(HttpContext context, ClaimsPrincipal principal,
         AccountStore store, ServerDatabase database, GatewayOptions gateway, GatewayRateLimiter limiter,
-        SpeechSessionLimiter sessions, GatewayDiagnostics diagnostics)
+        SpeechSessionLimiter sessions, GatewayBudgetGuard budget, GatewayDiagnostics diagnostics)
     {
         diagnostics.RecordSpeechRequest();
 
@@ -43,15 +43,7 @@ public static class SpeechEndpoints
         }
 
         // 语音的独立日预算:按 speech 来源单独记一个桶,免得语音烧完把文本翻译一起 429。
-        if (gateway.Speech.DailyBudgetMicros > 0
-            && store.ReadTodayCostMicros("speech") >= gateway.Speech.DailyBudgetMicros)
-        {
-            diagnostics.RecordSpeechFailure("budget_exhausted");
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            await context.Response.WriteAsJsonAsync(new ErrorResponse("budget_exhausted"));
-            return;
-        }
-
+        // 预留放在算出本场会话的硬顶之后（见下），否则不知道要占多少成本。
         var user = store.FindUserById(userId);
         if (user is null || user.Disabled)
         {
@@ -85,9 +77,36 @@ public static class SpeechEndpoints
         var sessionSeconds = SpeechQuota.SessionSeconds(remaining, gateway.Speech.QuotaCharsPerSecond,
             gateway.Speech.MinSeconds, gateway.Speech.MaxSecondsPerSession);
 
+        // 整场会话的最大额度一次占用：只预检最小会话的话，并发的文本请求可以在这条
+        // 会话讲完之前把剩余额度花掉，语音结束时记账就会超发。实耗由中继按秒记账，
+        // 结束时把剩余预留退回。
+        var reservedChars = checked(sessionSeconds * gateway.Speech.QuotaCharsPerSecond);
+        var reservation = store.TryReserveQuota(userId, deviceId, reservedChars, tier);
+        if (!reservation.Allowed)
+        {
+            var reason = reservation.Reason ?? "quota_exhausted";
+            diagnostics.RecordSpeechFailure(reason);
+            context.Response.Headers["X-FT-Quota-Reason"] = reason;
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            await context.Response.WriteAsJsonAsync(new ErrorResponse(reason));
+            return;
+        }
+
+        var estimatedCostMicros = Pricing.EstimateSpeechCostMicros(gateway.Speech.Model, sessionSeconds);
+        if (!budget.TryReserve("speech", gateway.Speech.DailyBudgetMicros, estimatedCostMicros))
+        {
+            store.ReleaseQuota(userId, deviceId, reservedChars);
+            diagnostics.RecordSpeechFailure("budget_exhausted");
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            await context.Response.WriteAsJsonAsync(new ErrorResponse("budget_exhausted"));
+            return;
+        }
+
         // 同一账号的并发会话上限:限流器只数请求数,拦不住 40 条并发 WS 各自讲满额度(v81)。
         if (!sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser))
         {
+            store.ReleaseQuota(userId, deviceId, reservedChars);
+            budget.Release("speech", estimatedCostMicros);
             diagnostics.RecordSpeechFailure("speech_busy");
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
@@ -117,6 +136,8 @@ public static class SpeechEndpoints
         finally
         {
             sessions.Exit(userId);
+            store.ReleaseQuota(userId, deviceId, reservedChars);
+            budget.Release("speech", estimatedCostMicros);
         }
     }
 }

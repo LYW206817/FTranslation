@@ -227,7 +227,7 @@ public sealed class AccountStore(ServerDatabase database)
 
                 using var touch = connection.CreateCommand();
                 touch.Transaction = transaction;
-                touch.CommandText = "UPDATE devices SET last_seen_at = $now, name = $name WHERE id = $id";
+                touch.CommandText = "UPDATE devices SET last_seen_at = $now, name = $name, deleted_at = NULL WHERE id = $id";
                 touch.Parameters.AddWithValue("$now", updated.LastSeenAt);
                 touch.Parameters.AddWithValue("$name", updated.Name);
                 touch.Parameters.AddWithValue("$id", existing.Id.ToString("D"));
@@ -242,7 +242,7 @@ public sealed class AccountStore(ServerDatabase database)
         using (var count_ = connection.CreateCommand())
         {
             count_.Transaction = transaction;
-            count_.CommandText = "SELECT COUNT(*) FROM devices WHERE user_id = $userId";
+            count_.CommandText = "SELECT COUNT(*) FROM devices WHERE user_id = $userId AND deleted_at IS NULL";
             count_.Parameters.AddWithValue("$userId", userId.ToString("D"));
             count = Convert.ToInt32(count_.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
@@ -280,7 +280,7 @@ public sealed class AccountStore(ServerDatabase database)
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, user_id, fingerprint, name, created_at, last_seen_at
-            FROM devices WHERE user_id = $userId AND fingerprint = $fingerprint
+            FROM devices WHERE user_id = $userId AND fingerprint = $fingerprint AND deleted_at IS NULL
             """;
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
         command.Parameters.AddWithValue("$fingerprint", fingerprint.Trim());
@@ -293,7 +293,7 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, user_id, fingerprint, name, created_at, last_seen_at FROM devices WHERE id = $id AND user_id = $userId";
+        command.CommandText = "SELECT id, user_id, fingerprint, name, created_at, last_seen_at FROM devices WHERE id = $id AND user_id = $userId AND deleted_at IS NULL";
         command.Parameters.AddWithValue("$id", deviceId.ToString("D"));
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
 
@@ -308,7 +308,7 @@ public sealed class AccountStore(ServerDatabase database)
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, user_id, fingerprint, name, created_at, last_seen_at
-            FROM devices WHERE user_id = $userId
+            FROM devices WHERE user_id = $userId AND deleted_at IS NULL
             ORDER BY last_seen_at DESC, created_at DESC
             """;
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
@@ -321,11 +321,11 @@ public sealed class AccountStore(ServerDatabase database)
 
     /// <summary>
     /// 移除一台设备。同一设备上的 refresh token 必须一起吊销：否则它只是从列表里
-    /// 消失，旧设备仍能续期，下一次翻译又会把名额占回来。设备级日用量也一并清掉。
-    ///
+    /// 消失，旧设备仍能续期，下一次翻译又会把名额占回来。
     /// <para>
-    /// SQLite 的 <c>foreign_keys</c> 是连接级 pragma，而这里每次操作都用新连接，
-    /// schema 里的 <c>ON DELETE CASCADE</c> 不会生效——子行必须显式删。
+    /// v129: 设备行改软删除，usage_daily 保留。硬删会级联清掉设备级日用量，用户用同一
+    /// 指纹重新登录就得到一台「今天没用过」的新设备，免费档单设备日限可无限重置。
+    /// 重新注册同一指纹时 <see cref="RegisterDevice"/> 会复活这一行。
     /// </para>
     /// </summary>
     public bool DeleteDevice(Guid userId, Guid deviceId)
@@ -336,8 +336,7 @@ public sealed class AccountStore(ServerDatabase database)
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
 
-        // 先确认设备属于这个账号：不先查就直接删 usage_daily，会允许用别人的
-        // deviceId 抹掉对方的日用量，即使随后的 devices 删除返回 0。
+        // 先确认设备属于这个账号：不先查就允许用别人的 deviceId 删掉对方的设备。
         using (var owned = connection.CreateCommand())
         {
             owned.Transaction = transaction;
@@ -364,18 +363,11 @@ public sealed class AccountStore(ServerDatabase database)
             revoke.ExecuteNonQuery();
         }
 
-        using (var daily = connection.CreateCommand())
-        {
-            daily.Transaction = transaction;
-            daily.CommandText = "DELETE FROM usage_daily WHERE device_id = $deviceId";
-            daily.Parameters.AddWithValue("$deviceId", device);
-            daily.ExecuteNonQuery();
-        }
-
         using (var delete = connection.CreateCommand())
         {
             delete.Transaction = transaction;
-            delete.CommandText = "DELETE FROM devices WHERE id = $deviceId AND user_id = $userId";
+            delete.CommandText = "UPDATE devices SET deleted_at = $now WHERE id = $deviceId AND user_id = $userId AND deleted_at IS NULL";
+            delete.Parameters.AddWithValue("$now", database.NowUnix);
             delete.Parameters.AddWithValue("$deviceId", device);
             delete.Parameters.AddWithValue("$userId", user);
             if (delete.ExecuteNonQuery() == 0)
@@ -415,7 +407,164 @@ public sealed class AccountStore(ServerDatabase database)
         return new UsageSnapshot(monthly, daily, database.ThisMonthKey, database.TodayKey);
     }
 
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source = "gateway")
+    /// <summary>
+    /// 在放行上游请求之前原子占用额度，防止并发请求各自读到同一旧用量后全部放行。
+    /// 检查与占用在同一条条件 UPDATE 里完成，事务的第一条写语句先拿到 SQLite 写锁，
+    /// 后面的「读-算-占」因此对同库的其它请求串行化。
+    /// </summary>
+    public QuotaPolicy.Decision TryReserveQuota(Guid userId, Guid deviceId, int chars, PlanTier tier)
+    {
+        if (chars < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chars), "chars must not be negative");
+        }
+
+        var quotaMonthly = Plans.MonthlyQuota(tier);
+        var quotaDaily = Plans.DailyQuota(tier);
+
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        // 先插入零行：deferred 事务只有遇到写操作才加锁，先写才能锁住后面的检查。
+        using (var seed = connection.CreateCommand())
+        {
+            seed.Transaction = transaction;
+            seed.CommandText = """
+                INSERT INTO usage_monthly (user_id, month, chars, reserved) VALUES ($userId, $month, 0, 0)
+                ON CONFLICT(user_id, month) DO NOTHING;
+                INSERT INTO usage_daily (device_id, day, chars, reserved) VALUES ($deviceId, $day, 0, 0)
+                ON CONFLICT(device_id, day) DO NOTHING;
+                """;
+            seed.Parameters.AddWithValue("$userId", userId.ToString("D"));
+            seed.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            seed.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+            seed.Parameters.AddWithValue("$day", database.TodayKey);
+            seed.ExecuteNonQuery();
+        }
+
+        using (var monthly = connection.CreateCommand())
+        {
+            monthly.Transaction = transaction;
+            monthly.CommandText = """
+                UPDATE usage_monthly SET reserved = reserved + $chars
+                WHERE user_id = $userId AND month = $month
+                  AND chars + reserved + $chars <= $quota
+                """;
+            monthly.Parameters.AddWithValue("$chars", chars);
+            monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
+            monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly.Parameters.AddWithValue("$quota", quotaMonthly);
+            if (monthly.ExecuteNonQuery() == 0)
+            {
+                transaction.Rollback();
+                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId);
+                return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
+            }
+        }
+
+        if (quotaDaily is { } dailyQuota)
+        {
+            using var daily = connection.CreateCommand();
+            daily.Transaction = transaction;
+            daily.CommandText = """
+                UPDATE usage_daily SET reserved = reserved + $chars
+                WHERE device_id = $deviceId AND day = $day
+                  AND chars + reserved + $chars <= $quota
+                """;
+            daily.Parameters.AddWithValue("$chars", chars);
+            daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+            daily.Parameters.AddWithValue("$day", database.TodayKey);
+            daily.Parameters.AddWithValue("$quota", dailyQuota);
+            if (daily.ExecuteNonQuery() == 0)
+            {
+                transaction.Rollback();
+                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId);
+                return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
+            }
+        }
+
+        var (monthlyUsed, dailyUsed) = ReadUsageIncludingReserved(connection, transaction, userId, deviceId);
+        transaction.Commit();
+        // requested=0：占用已经发生，这里只需要「还剩多少」的决策对象。
+        return QuotaPolicy.Evaluate(tier, monthlyUsed, dailyUsed, 0);
+    }
+
+    /// <summary>请求未记账就失败（上游拒绝/异常）时退回预留额度。</summary>
+    /// <remarks>
+    /// 只按当前月/日键退回。请求跨过午夜或月末时旧桶的预留会留在那一行，但旧桶
+    /// 已不再被读取（新请求只查当前键），不会影响后续额度判断。
+    /// </remarks>
+    public void ReleaseQuota(Guid userId, Guid deviceId, int chars)
+    {
+        if (chars <= 0) return;
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        using (var monthly = connection.CreateCommand())
+        {
+            monthly.Transaction = transaction;
+            monthly.CommandText = """
+                UPDATE usage_monthly SET reserved = MAX(0, reserved - $chars)
+                WHERE user_id = $userId AND month = $month
+                """;
+            monthly.Parameters.AddWithValue("$chars", chars);
+            monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
+            monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly.ExecuteNonQuery();
+        }
+
+        using (var daily = connection.CreateCommand())
+        {
+            daily.Transaction = transaction;
+            daily.CommandText = """
+                UPDATE usage_daily SET reserved = MAX(0, reserved - $chars)
+                WHERE device_id = $deviceId AND day = $day
+                """;
+            daily.Parameters.AddWithValue("$chars", chars);
+            daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+            daily.Parameters.AddWithValue("$day", database.TodayKey);
+            daily.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    private (int MonthlyChars, int DailyChars) ReadUsageIncludingReserved(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        Guid userId,
+        Guid deviceId)
+    {
+        int monthly = 0;
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                SELECT chars + reserved FROM usage_monthly
+                WHERE user_id = $userId AND month = $month
+                """;
+            command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+            command.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
+        }
+
+        int daily = 0;
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                SELECT chars + reserved FROM usage_daily
+                WHERE device_id = $deviceId AND day = $day
+                """;
+            command.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+            command.Parameters.AddWithValue("$day", database.TodayKey);
+            daily = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
+        }
+
+        return (monthly, daily);
+    }
+
+    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source = "gateway", int reservedChars = 0)
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
@@ -425,11 +574,14 @@ public sealed class AccountStore(ServerDatabase database)
             monthly.Transaction = transaction;
             monthly.CommandText = """
                 INSERT INTO usage_monthly (user_id, month, chars) VALUES ($userId, $month, $chars)
-                ON CONFLICT(user_id, month) DO UPDATE SET chars = chars + excluded.chars
+                ON CONFLICT(user_id, month) DO UPDATE SET
+                    chars = chars + excluded.chars,
+                    reserved = MAX(0, reserved - $reserved)
                 """;
             monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
             monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
             monthly.Parameters.AddWithValue("$chars", chars);
+            monthly.Parameters.AddWithValue("$reserved", reservedChars);
             monthly.ExecuteNonQuery();
         }
 
@@ -438,11 +590,14 @@ public sealed class AccountStore(ServerDatabase database)
             daily.Transaction = transaction;
             daily.CommandText = """
                 INSERT INTO usage_daily (device_id, day, chars) VALUES ($deviceId, $day, $chars)
-                ON CONFLICT(device_id, day) DO UPDATE SET chars = chars + excluded.chars
+                ON CONFLICT(device_id, day) DO UPDATE SET
+                    chars = chars + excluded.chars,
+                    reserved = MAX(0, reserved - $reserved)
                 """;
             daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
             daily.Parameters.AddWithValue("$day", database.TodayKey);
             daily.Parameters.AddWithValue("$chars", chars);
+            daily.Parameters.AddWithValue("$reserved", reservedChars);
             daily.ExecuteNonQuery();
         }
 

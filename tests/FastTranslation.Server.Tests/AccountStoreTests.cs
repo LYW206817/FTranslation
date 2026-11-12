@@ -137,7 +137,7 @@ public sealed class AccountStoreTests : IDisposable
     }
 
     [Fact]
-    public void DeleteDevice_RemovesTheRowAndItsDailyUsage()
+    public void DeleteDevice_KeepsDailyUsageSoAFreshLoginCannotResetIt()
     {
         var user = CreateUser("delete-device@example.com");
         var removed = _store.RegisterDevice(user.Id, "fp-remove", "pc").Device!;
@@ -148,8 +148,67 @@ public sealed class AccountStoreTests : IDisposable
 
         Assert.Null(_store.FindDevice(user.Id, removed.Id));
         Assert.NotNull(_store.FindDevice(user.Id, kept.Id));
-        // 子行必须显式删除：SQLite 的 foreign_keys 是连接级开关，CASCADE 不会生效
-        Assert.Equal(0, _store.ReadUsage(user.Id, removed.Id).DailyChars);
+        // v129: 设备行软删除，日用量保留；同指纹重新登录复活的是同一行，
+        // 免费档日限不会因为「删设备再登录」被重置。
+        var revived = _store.RegisterDevice(user.Id, "fp-remove", "pc").Device!;
+        Assert.Equal(removed.Id, revived.Id);
+        Assert.Equal(120, _store.ReadUsage(user.Id, revived.Id).DailyChars);
+    }
+
+    /// <summary>v129: 并发请求不能各自读到同一旧用量后全部放行。</summary>
+    [Fact]
+    public async Task ConcurrentQuotaReservations_CannotOverspendTheFreeDailyQuota()
+    {
+        var user = CreateUser("reserve-race@example.com");
+        var device = _store.RegisterDevice(user.Id, "fp-reserve", "pc").Device!;
+        using var barrier = new Barrier(2);
+
+        var decisions = new QuotaPolicy.Decision[2];
+        var tasks = Enumerable.Range(0, 2).Select(index => Task.Run(() =>
+        {
+            barrier.SignalAndWait();
+            decisions[index] = _store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free);
+        })).ToArray();
+        await Task.WhenAll(tasks);
+
+        // 免费档日限 2,000：两笔 1,500 只能过一笔，另一笔必须带额度原因被拒。
+        Assert.Single(decisions, decision => decision.Allowed);
+        Assert.All(decisions.Where(decision => !decision.Allowed),
+            decision => Assert.False(string.IsNullOrEmpty(decision.Reason)));
+
+        _store.ReleaseQuota(user.Id, device.Id, 1_500);
+    }
+
+    [Fact]
+    public void ReservationBecomesUsageWhenTheRequestSettles()
+    {
+        var user = CreateUser("reserve-settle@example.com");
+        var device = _store.RegisterDevice(user.Id, "fp-settle", "pc").Device!;
+
+        var reserved = _store.TryReserveQuota(user.Id, device.Id, 120, PlanTier.Free);
+        Assert.True(reserved.Allowed);
+        _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix,
+            reservedChars: 120);
+
+        Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
+        Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).DailyChars);
+        // 预留已转成实际用量，第二笔仍能继续用剩余额度。
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_000, PlanTier.Free).Allowed);
+        _store.ReleaseQuota(user.Id, device.Id, 1_000);
+    }
+
+    [Fact]
+    public void ReleasedReservationDoesNotConsumeQuota()
+    {
+        var user = CreateUser("reserve-release@example.com");
+        var device = _store.RegisterDevice(user.Id, "fp-release", "pc").Device!;
+
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free).Allowed);
+        _store.ReleaseQuota(user.Id, device.Id, 1_500);
+
+        Assert.Equal(0, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free).Allowed);
+        _store.ReleaseQuota(user.Id, device.Id, 1_500);
     }
 
     [Fact]
