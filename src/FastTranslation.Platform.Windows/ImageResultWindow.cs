@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -401,28 +402,64 @@ public sealed class ImageResultWindow : IDisposable
     {
         if (!_window.IsVisible)
         {
-            KeepInsideWorkArea();
+            var (x, y) = KeepInsideWorkArea();
             _window.Show();
+            // Show 之前窗口没有句柄，且跨屏时 DIP 会按旧 DPI 换算；句柄建好后按物理坐标落位。
+            MonitorWorkArea.SetPhysicalPosition(_window, x, y);
         }
         _window.Topmost = true;
         _window.Activate(); // Esc 和另存为对话框都要焦点
     }
 
-    /// <summary>窗口被拖到副屏或分辨率变化后，重新开窗时别落到看不见的地方。</summary>
-    private void KeepInsideWorkArea()
+    /// <summary>
+    /// 窗口被拖到副屏或分辨率变化后，重新开窗时别落到看不见的地方。
+    /// v129: 按窗口所在显示器的工作区（物理像素）夹取，返回落位坐标；原来取
+    /// SystemParameters.WorkArea 只会把副屏上的窗口拉回主屏。
+    /// </summary>
+    private (int X, int Y) KeepInsideWorkArea()
     {
-        var work = SystemParameters.WorkArea;
-        _window.Left = Math.Max(work.Left, Math.Min(_window.Left, work.Right - _window.Width));
-        _window.Top = Math.Max(work.Top, Math.Min(_window.Top, work.Bottom - _window.Height));
+        var monitor = CurrentMonitor();
+        var work = monitor.WorkPhysical;
+        var width = (int)Math.Round(_window.Width * monitor.ScaleX);
+        var height = (int)Math.Round(_window.Height * monitor.ScaleY);
+
+        int x, y;
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        if (hwnd != IntPtr.Zero
+            && NativeMethods.GetWindowRect(hwnd, out var rect)
+            && rect.Right > rect.Left && rect.Bottom > rect.Top)
+        {
+            // 用物理矩形恢复上次位置：Left/Top 是 DIP，跨屏或缩放变化后不能直接换算。
+            x = rect.Left;
+            y = rect.Top;
+        }
+        else
+        {
+            // 从未显示过：在光标所在屏居中。
+            x = work.X + (work.Width - width) / 2;
+            y = work.Y + (work.Height - height) / 2;
+        }
+
+        x = Math.Clamp(x, work.X, Math.Max(work.X, work.X + work.Width - width));
+        y = Math.Clamp(y, work.Y, Math.Max(work.Y, work.Y + work.Height - height));
+        // 先按 DIP 放一次，Show 时不会被创建到屏幕外；Present 之后再用物理坐标纠正。
+        _window.Left = x / monitor.ScaleX;
+        _window.Top = y / monitor.ScaleY;
+        return (x, y);
     }
 
     private void SizeToDefault()
     {
-        var work = SystemParameters.WorkArea;
+        var monitor = CurrentMonitor();
         // 固定尺寸在 1366x768 这类屏上会超出工作区，收窄到九折以内
-        _window.Width = Math.Min(DefaultWidth, work.Width * 0.9);
-        _window.Height = Math.Min(DefaultHeight, work.Height * 0.9);
+        _window.Width = Math.Min(DefaultWidth, monitor.Width * 0.9);
+        _window.Height = Math.Min(DefaultHeight, monitor.Height * 0.9);
     }
+
+    private MonitorWorkArea.Placement CurrentMonitor() =>
+        new WindowInteropHelper(_window).Handle != IntPtr.Zero
+            ? MonitorWorkArea.ForWindow(_window)
+            : MonitorWorkArea.ForPoint(WindowsSelectionCapture.CurrentCursorPoint());
 
     private void StartSpinner(string text)
     {

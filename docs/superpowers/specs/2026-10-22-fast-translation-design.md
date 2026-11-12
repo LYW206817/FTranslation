@@ -384,8 +384,8 @@ public interface ISecretStore
   - 否则自动双向：源为中文 → 英语；源为非中文 → 简体中文。
   - 结果卡可切换目标语言，并记住上次选择（写入设置）。
 - 语言目录内置 Qwen-MT 官方 92 种语言（英文名 + 本地显示名）；设置里的完整列表按官方表；结果卡常用语言优先。
-- Qwen-MT 请求的 `source_lang` 固定传 `"auto"`；`target_lang` 传英文语言名（如 `"Chinese"`、`"English"`、`"Japanese"`）。
-- 若本地判定目标语言与源语言相同：不调用 API，显示“原文已是目标语言”，提供切换目标语言/复制原文；允许用户强制翻译（仍以 `auto` 源语言调用）。
+- Qwen-MT 请求的 `source_lang`：目标语言为「自动（中英互译）」时，按本地判定的方向传显式源语言（中文→English 时传 `Chinese`，非中文→Chinese 时传 `English`）；用户指定了其它目标语言时传 `"auto"`，由模型检测源语言。`target_lang` 一律传英文语言名（如 `"Chinese"`、`"English"`、`"Japanese"`）。
+- 若本地判定目标语言与源语言相同：不调用 API，显示“原文已是目标语言”，提供切换目标语言/复制原文；允许用户强制翻译（源语言仍按上一条规则传）。
 
 ### 6.5 剪贴板兜底的安全规则
 
@@ -443,6 +443,7 @@ public interface ISecretStore
 - UIA 矩形是物理像素；按所在显示器 DPI 转为 WPF DIP；使用 `MonitorFromPoint`/`GetDpiForWindow`。
 - 多显示器混合 DPI：以锚点所在显示器为准；跨屏时重新计算。
 - 工作区使用 `SystemParameters.WorkArea` 的显示器版本（`MonitorFromPoint` + `GetMonitorInfo`），不使用主屏工作区。
+- 跨屏落位用物理像素 + `SetWindowPos`：窗口还在旧屏时直接赋目标屏的 DIP 会按旧 DPI 换算；`Left/Top` 只作首次 Show 的近似落点，句柄建好后按 `rcWork` 物理坐标纠正。窗口命中测试用 `GetWindowRect` 的物理矩形，不用缓存的 DPI 换算。
 - 卡片/按钮不覆盖选区本身；空间不足时放到选区上方；仍不足则夹到工作区并允许覆盖。
 
 ### 7.4 焦点规则
@@ -541,12 +542,14 @@ public interface ISecretStore
     { "role": "user", "content": "待翻译文本" }
   ],
   "translation_options": {
-    "source_lang": "auto",
+    "source_lang": "Chinese",
     "target_lang": "English"
   },
   "stream": false
 }
 ```
+
+- `source_lang` 按 §4.4 的规则：自动目标（中英互译）传本地判定的显式语言，用户指定其它目标语言才传 `"auto"`；上例是中文→English。
 
 - 只允许一条 user message；不发送 system message。
 - v1.0 不使用 `terms`、`tm_list`、`domains`。
@@ -860,7 +863,7 @@ M0 探针若空载 >50MB：
 ### 13.2 Provider 契约测试
 
 - 用 `HttpMessageHandler` mock：
-  - 请求 JSON 包含 `translation_options` 顶层、`source_lang=auto`、`target_lang` 英文名。
+  - 请求 JSON 包含 `translation_options` 顶层、`source_lang` 按设置传 `auto` 或判定的中/英、`target_lang` 英文名。
   - `Authorization: Bearer` 正确。
   - 解析 `choices[0].message.content`。
   - 401/403/429/400/5xx/超时/畸形 JSON/空 content。

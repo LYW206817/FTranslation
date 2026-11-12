@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using FastTranslation.Core;
 using FastTranslation.Core.Speech;
+using FastTranslation.Platform.Windows;
 
 namespace FastTranslation.App.Speech;
 
@@ -180,9 +181,22 @@ public sealed partial class SpeechWindow : Window
 
     private void PlaceAtBottom()
     {
-        var area = SystemParameters.WorkArea;
-        Left = area.Left + (area.Width - ActualWidth > 0 ? (area.Width - ActualWidth) / 2 : 0);
-        Top = area.Bottom - ActualHeight - 80;
+        // v129: 贴光标所在显示器的底部，而不是永远贴主屏；副屏播放视频时字幕
+        // 原来会出现在主屏上。窗口还在主屏、缩放比与目标屏不同，所以按目标屏
+        // 的工作区换算成物理像素后用 SetWindowPos 定位，避免 DIP 换算混用两套 DPI。
+        var monitor = MonitorWorkArea.ForPoint(WindowsSelectionCapture.CurrentCursorPoint());
+        var widthPx = ActualWidth * monitor.ScaleX;
+        var heightPx = ActualHeight * monitor.ScaleY;
+        var x = monitor.WorkPhysical.X + (int)Math.Max(0, (monitor.WorkPhysical.Width - widthPx) / 2);
+        var y = monitor.WorkPhysical.Y + monitor.WorkPhysical.Height - (int)heightPx - (int)(80 * monitor.ScaleY);
+        if (MonitorWorkArea.SetPhysicalPosition(this, x, y))
+        {
+            return;
+        }
+
+        // 极端情况下句柄还没建好：退回 DIP 定位，至少不会留在屏幕外。
+        Left = monitor.Left + Math.Max(0, (monitor.Width - ActualWidth) / 2);
+        Top = monitor.Bottom - ActualHeight - 80;
     }
 
     // 头部拖动：无边框窗口的标题栏就是这一行

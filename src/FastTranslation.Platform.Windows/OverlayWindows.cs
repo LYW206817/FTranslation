@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -408,7 +409,6 @@ public sealed class ResultCardWindow : IDisposable
     private readonly StackPanel _dictionaryPanel;
     private readonly RotateTransform _spinnerRotate = new();
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
-    private System.Windows.DpiScale _dpi = new(1.0, 1.0);
     private ScreenPoint _lastAnchor;
     private ScreenRect? _lastRect;
     private bool _hasPosition;
@@ -559,7 +559,6 @@ public sealed class ResultCardWindow : IDisposable
             NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE,
                 ex | NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_TOPMOST);
             HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
-            _dpi = VisualTreeHelper.GetDpi(_window);
         };
         _noticeTimer.Tick += (_, _) => { _noticeTimer.Stop(); Hide(); };
         // 提示也必须为下一张真实卡片恢复按钮
@@ -570,13 +569,19 @@ public sealed class ResultCardWindow : IDisposable
         };
     }
 
-    private static Button ActionButton(string text, Style style) => new()
+    private static Button ActionButton(string text, Style style)
     {
-        Content = text,
-        Style = style,
-        Padding = new Thickness(13, 7, 13, 7),
-        Margin = new Thickness(0, 0, 8, 0),
-    };
+        var button = new Button
+        {
+            Content = text,
+            Style = style,
+            Padding = new Thickness(13, 7, 13, 7),
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        // 自定义模板没有可视化文本节点的默认名称，屏幕阅读器与 QA 探针都读不到按钮。
+        AutomationProperties.SetName(button, text);
+        return button;
+    }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -678,44 +683,54 @@ public sealed class ResultCardWindow : IDisposable
         {
             anchor = WindowsSelectionCapture.CurrentCursorPoint();
         }
-        double x, y;
-        if (selectionRect is { } r && r.Height > 0)
+
+        // v129: 位置全部按物理像素算，再用 SetWindowPos 落到目标显示器。混合缩放时
+        // WPF 的 Left/Top 会按窗口当前 DPI 换算，窗口还在主屏时直接赋目标屏的 DIP
+        // 会被按旧 DPI 解读，落到错误的位置。
+        var monitor = MonitorWorkArea.ForPoint(anchor);
+        var work = monitor.WorkPhysical;
+        var cardWidth = (int)Math.Round(_window.Width * monitor.ScaleX);
+
+        int x, y;
+        if (selectionRect is { Height: > 0 } r)
         {
-            x = r.X / _dpi.DpiScaleX;
-            y = (r.Y + r.Height + 10) / _dpi.DpiScaleY;
+            x = r.X;
+            y = r.Y + r.Height + 10;
         }
         else
         {
-            x = anchor.X / _dpi.DpiScaleX + 20;
-            y = anchor.Y / _dpi.DpiScaleY + 20;
+            x = anchor.X + 20;
+            y = anchor.Y + 20;
         }
-        var vw = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
-        var vh = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
-        var vx = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
-        var vy = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
-        var cardW = _window.Width;
-        if (x * _dpi.DpiScaleX + cardW * _dpi.DpiScaleX > vx + vw) x = (vx + vw - cardW * _dpi.DpiScaleX) / _dpi.DpiScaleX;
-        if (y * _dpi.DpiScaleY + 160 * _dpi.DpiScaleY > vy + vh) y = Math.Max(vy / _dpi.DpiScaleY, y - 180 / _dpi.DpiScaleY);
+
+        // 夹取只用目标屏的工作区；虚拟屏幕的原点可以是负数，不能按 0 夹。
+        x = Math.Clamp(x, work.X, Math.Max(work.X, work.X + work.Width - cardWidth));
+        var tipHeight = (int)Math.Round(160 * monitor.ScaleY);
+        if (y + tipHeight > work.Y + work.Height)
+        {
+            y = work.Y + work.Height - (int)Math.Round(180 * monitor.ScaleY);
+        }
+        y = Math.Max(work.Y, y);
 
         _lastAnchor = anchor;
         _lastRect = selectionRect;
         _hasPosition = true;
-        // 虚拟屏幕原点可能是负数（副屏在主屏左侧/上方）；夹到 0 会把卡片强行拉回主屏，
-        // 这里按虚拟屏幕左上角夹。
-        _window.Left = Math.Max(vx / _dpi.DpiScaleX, x);
-        _window.Top = Math.Max(vy / _dpi.DpiScaleY, y);
+        // DIP 只是首次 Show 的近似落点；句柄建好后立刻用物理坐标纠正。
+        _window.Left = x / monitor.ScaleX;
+        _window.Top = y / monitor.ScaleY;
         if (!_window.IsVisible) _window.Show();
+        MonitorWorkArea.SetPhysicalPosition(_window, x, y);
         _window.Topmost = true;
     }
 
     public bool ContainsPhysical(ScreenPoint p)
     {
         if (!_window.IsVisible) return false;
-        var l = _window.Left * _dpi.DpiScaleX;
-        var t = _window.Top * _dpi.DpiScaleY;
-        var r = l + _window.ActualWidth * _dpi.DpiScaleX;
-        var b = t + _window.ActualHeight * _dpi.DpiScaleY;
-        return p.X >= l && p.X <= r && p.Y >= t && p.Y <= b;
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        // 用窗口的物理矩形判断：Left/Top 的 DIP 换算在跨屏后会依赖窗口当前 DPI，不可靠。
+        return hwnd != IntPtr.Zero
+            && NativeMethods.GetWindowRect(hwnd, out var rect)
+            && p.X >= rect.Left && p.X <= rect.Right && p.Y >= rect.Top && p.Y <= rect.Bottom;
     }
 
     /// <summary>非模态的短暂提示，取代托盘流程里所有 MessageBox——
