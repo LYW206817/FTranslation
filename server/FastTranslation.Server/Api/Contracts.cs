@@ -54,6 +54,7 @@ public sealed record UpdateProfileRequest(string? DisplayName);
 public sealed record ChangePasswordRequest(
     string? CurrentPassword, string? NewPassword, string? DeviceFingerprint, string? DeviceName);
 
+/// <summary><paramref name="PeriodStart"/> 是当前个人额度周期的起点日期（yyyy-MM-dd，UTC）。</summary>
 public sealed record UsageDto(
     int UsedMonthlyChars,
     int? UsedDailyChars,
@@ -61,7 +62,7 @@ public sealed record UsageDto(
     int? QuotaDailyChars,
     int RemainingMonthlyChars,
     int? RemainingDailyChars,
-    string Month,
+    string PeriodStart,
     string Day);
 
 public sealed record ErrorResponse(string Error, string? Message = null);

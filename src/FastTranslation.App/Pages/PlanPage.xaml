@@ -319,7 +319,7 @@
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Text="本月额度" Style="{StaticResource RuleKey}"/>
-              <TextBlock Grid.Column="1" Text="北京时间每月 1 日 8:00 归零,重新按整月计算。" Style="{StaticResource RuleValue}"/>
+              <TextBlock Grid.Column="1" Text="从账号开通那天起每满一个自然月归零;续费不改变日期(例:11 月 12 日开通,12 月 12 日 8:00 归零)。" Style="{StaticResource RuleValue}"/>
             </Grid>
           </Border>
           <Border Style="{StaticResource RuleRow}">
@@ -329,7 +329,7 @@
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Text="今日额度" Style="{StaticResource RuleKey}"/>
-              <TextBlock Grid.Column="1" Text="北京时间每天 8:00 归零;免费版每天 2,000 字符。" Style="{StaticResource RuleValue}"/>
+              <TextBlock Grid.Column="1" Text="北京时间每天 8:00 归零;免费版每台设备每天 2,000 字符。" Style="{StaticResource RuleValue}"/>
             </Grid>
           </Border>
           <Border Style="{StaticResource RuleRow}">
@@ -339,10 +339,10 @@
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <TextBlock Text="复习队列" Style="{StaticResource RuleKey}"/>
-              <TextBlock Grid.Column="1" Text="同样 8:00 换新的一天:到期卡全部排进来,另加最多 20 条当天新存的。" Style="{StaticResource RuleValue}"/>
+              <TextBlock Grid.Column="1" Text="按本机时间每天 0:00 换新的一天:到期卡全部排进来,另加最多 20 条当天新存的。" Style="{StaticResource RuleValue}"/>
             </Grid>
           </Border>
-          <TextBlock Text="把日历放在 UTC 上是刻意的:服务端不跟着用户机器的时区走,换一台电脑不会多算一天。"
+          <TextBlock Text="额度按 UTC 日历算、不跟随本机时区,换电脑不会多算一天;复习队列按本机零点。"
                      Style="{StaticResource Hint}" Margin="0,12,0,0"/>
         </StackPanel>
       </Border>

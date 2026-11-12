@@ -15,7 +15,7 @@ public class AccountClientTests
       "refreshToken": "refresh-1",
       "expiresInSeconds": 1800,
       "account": { "id": "8f1a2c3d-0000-4000-8000-000000000001", "email": "a@b.test", "plan": "light", "quotaMonthly": 50000, "quotaDaily": null },
-      "usage": { "usedMonthlyChars": 1200, "usedDailyChars": null, "quotaMonthlyChars": 50000, "quotaDailyChars": null, "remainingMonthlyChars": 48800, "remainingDailyChars": null, "month": "2026-10", "day": "2026-10-28" }
+      "usage": { "usedMonthlyChars": 1200, "usedDailyChars": null, "quotaMonthlyChars": 50000, "quotaDailyChars": null, "remainingMonthlyChars": 48800, "remainingDailyChars": null, "periodStart": "2026-10-05", "day": "2026-10-28" }
     }
     """;
 
@@ -23,7 +23,7 @@ public class AccountClientTests
     {
       "usedMonthlyChars": 9000, "usedDailyChars": 500, "quotaMonthlyChars": 10000,
       "quotaDailyChars": 2000, "remainingMonthlyChars": 1000, "remainingDailyChars": 1500,
-      "month": "2026-10", "day": "2026-10-28"
+      "periodStart": "2026-10-05", "day": "2026-10-28"
     }
     """;
 
@@ -117,7 +117,7 @@ public class AccountClientTests
         Assert.Equal("light", session.Profile.Plan);
         Assert.Equal(50000, session.Profile.QuotaMonthly);
         Assert.Equal(1200, result.Value.Usage.UsedMonthlyChars);
-        Assert.Equal("2026-10", result.Value.Usage.Month);
+        Assert.Equal("2026-10-05", result.Value.Usage.PeriodStart);
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class AccountClientTests
       "account": { "id": "8f1a2c3d-0000-4000-8000-000000000001", "email": "a@b.test", "plan": "standard",
                    "quotaMonthly": 200000, "quotaDaily": null, "planExpiresAt": 1798761600 },
       "usage": { "usedMonthlyChars": 0, "usedDailyChars": null, "quotaMonthlyChars": 200000, "quotaDailyChars": null,
-                 "remainingMonthlyChars": 200000, "remainingDailyChars": null, "month": "2026-10", "day": "2026-10-28" }
+                 "remainingMonthlyChars": 200000, "remainingDailyChars": null, "periodStart": "2026-10-05", "day": "2026-10-28" }
     }
     """;
 

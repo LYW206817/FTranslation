@@ -309,7 +309,7 @@ public static class AuthEndpoints
             quotaDaily,
             Math.Max(0, quotaMonthly - usage.MonthlyChars),
             quotaDaily is null ? null : Math.Max(0, quotaDaily.Value - usage.DailyChars),
-            usage.Month,
+            usage.PeriodStart,
             usage.Day);
     }
 

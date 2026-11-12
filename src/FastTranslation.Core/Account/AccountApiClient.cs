@@ -502,11 +502,11 @@ public sealed class AccountApiClient
         [JsonPropertyName("quotaDailyChars")] public int? QuotaDailyChars { get; init; }
         [JsonPropertyName("remainingMonthlyChars")] public int RemainingMonthlyChars { get; init; }
         [JsonPropertyName("remainingDailyChars")] public int? RemainingDailyChars { get; init; }
-        [JsonPropertyName("month")] public string Month { get; init; } = string.Empty;
+        [JsonPropertyName("periodStart")] public string PeriodStart { get; init; } = string.Empty;
         [JsonPropertyName("day")] public string Day { get; init; } = string.Empty;
 
         public AccountUsage ToUsage() => new(
             UsedMonthlyChars, UsedDailyChars, QuotaMonthlyChars, QuotaDailyChars,
-            RemainingMonthlyChars, RemainingDailyChars, Month, Day);
+            RemainingMonthlyChars, RemainingDailyChars, PeriodStart, Day);
     }
 }

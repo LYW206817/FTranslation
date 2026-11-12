@@ -365,7 +365,7 @@ async function loadAccounts() {
   const data = await api(`/api/v1/admin/accounts?${params.toString()}`);
 
   const head = create('tr');
-  ['邮箱', '套餐', '到期', '最后活跃', '本月字符', '状态', '操作'].forEach((text) =>
+  ['邮箱', '套餐', '到期', '最后活跃', '本周期字符', '状态', '操作'].forEach((text) =>
     head.append(create('th', '', text)));
   const thead = create('thead');
   thead.append(head);
@@ -423,7 +423,7 @@ async function loadAccounts() {
       if (upgradeTarget) {
         const upgrade = create('button', 'primary', `升级 ${planName(upgradeTarget)}`);
         upgrade.type = 'button';
-        upgrade.title = '补差价升级，保留到期时间和本月已用字符';
+        upgrade.title = '补差价升级，保留到期时间和本周期已用字符';
         upgrade.addEventListener('click', () => upgradeAccount(item.email, upgradeTarget, upgrade));
         actions.append(upgrade);
       }
@@ -478,9 +478,9 @@ async function changePlan(email, plan, rawDays, button) {
 }
 
 async function upgradeAccount(email, targetPlan, button) {
-  // days=null 让服务端保留原到期时间；用量表不动，所以本月已用字符继续计入新档额度。
+  // days=null 让服务端保留原到期时间；用量表不动，所以本周期已用字符继续计入新档额度。
   // 套餐的传输名仍是 light/standard/max，显示名才是 Lite/Pro/Max；改传输名要连客户端和存量令牌一起迁移。
-  if (!confirm(`确认已收到差价，把 ${email} 升级到 ${planName(targetPlan)}？到期日不变，本月已用字符继续计入，不重置额度。`)) return;
+  if (!confirm(`确认已收到差价，把 ${email} 升级到 ${planName(targetPlan)}？到期日不变，本周期已用字符继续计入，不重置额度。`)) return;
   button.disabled = true;
   try {
     await api(`/api/v1/admin/accounts/${encodeURIComponent(email)}/plan`, {

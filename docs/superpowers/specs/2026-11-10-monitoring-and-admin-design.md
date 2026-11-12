@@ -38,7 +38,7 @@
 
 响应字段沿用现有 `AdminMetricsResponse`、`MessageResponse`、`CreateCodesResponse`、`RedeemCodePageResponse`。
 
-补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本月已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面对生效中的 Lite / Pro 账号分别显示「升级 Pro」「升级 Max」入口；套餐的传输名仍是 `light`（Lite）、`standard`（Pro）与 `max`（Max），显示名与存储值不混用。
+补差价升级复用 `POST /admin/accounts/{email}/plan` 并传 `days: null`：只切换套餐、保留到期时间；`usage_monthly` / `usage_daily` 不动，所以本周期已用字符继续从新套餐额度里扣，不重置。差价由运营在站外收取，服务端不计算金额。后台页面对生效中的 Lite / Pro 账号分别显示「升级 Pro」「升级 Max」入口；套餐的传输名仍是 `light`（Lite）、`standard`（Pro）与 `max`（Max），显示名与存储值不混用。
 
 ### 3.2 新增
 
@@ -90,7 +90,7 @@
 ```
 
 - `effectivePlan` 已把过期付费折算回 `free`；`plan` 保留数据库里的原始值。
-- `lastSeenAt` 取该账号设备的最大 `last_seen_at`；`monthlyChars` 取当前 UTC 月的 `usage_monthly`。
+- `lastSeenAt` 取该账号设备的最大 `last_seen_at`；`monthlyChars` 取该账号当前个人周期的 `usage_monthly`。周期从账号开通日（免费档为注册日，付费档为首次激活日）起算，每满一个自然月归零；有效期内续费或升级不移动周期起点。
 - 按 `created_at DESC` 排序。
 
 #### `POST /api/v1/admin/accounts/{email}/disable` / `enable`

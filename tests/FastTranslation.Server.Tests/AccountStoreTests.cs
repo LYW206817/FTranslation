@@ -307,8 +307,30 @@ public sealed class AccountStoreTests : IDisposable
         var usage = _store.ReadUsage(user.Id, device.Id);
         Assert.Equal(350, usage.MonthlyChars);
         Assert.Equal(350, usage.DailyChars);
-        Assert.Equal(_database.ThisMonthKey, usage.Month);
+        var anchor = QuotaCycle.StartOfUtcDay(_database.NowUnix);
+        Assert.Equal(QuotaCycle.Key(anchor, _database.NowUnix), usage.PeriodStart);
         Assert.Equal(_database.TodayKey, usage.Day);
+    }
+
+    [Fact]
+    public void Migration_BackfillsQuotaAnchorForExistingUsers()
+    {
+        var user = CreateUser("anchor@example.com");
+        using (var connection = _database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE users SET quota_anchor_at = 0 WHERE id = $id";
+            command.Parameters.AddWithValue("$id", user.Id.ToString("D"));
+            command.ExecuteNonQuery();
+        }
+
+        _database.Initialize();
+
+        using var read = _database.Open();
+        using var probe = read.CreateCommand();
+        probe.CommandText = "SELECT quota_anchor_at FROM users WHERE id = $id";
+        probe.Parameters.AddWithValue("$id", user.Id.ToString("D"));
+        Assert.Equal(QuotaCycle.StartOfUtcDay(user.CreatedAt), (long)probe.ExecuteScalar()!);
     }
 
     [Fact]

@@ -109,8 +109,8 @@ public sealed record AccountProfile(
         : null;
 }
 
-/// <summary>服务端上报的一个额度窗口。占比在这里算，好让没有每日上限的套餐
-/// 也不会让进度条除零。</summary>
+/// <summary>服务端上报的一个额度窗口；<c>PeriodStart</c> 是个人周期起点日期（yyyy-MM-dd）。
+/// 占比在这里算，好让没有每日上限的套餐也不会让进度条除零。</summary>
 public sealed record AccountUsage(
     int UsedMonthlyChars,
     int? UsedDailyChars,
@@ -118,7 +118,7 @@ public sealed record AccountUsage(
     int? QuotaDailyChars,
     int RemainingMonthlyChars,
     int? RemainingDailyChars,
-    string Month,
+    string PeriodStart,
     string Day)
 {
     public double MonthlyFraction => QuotaMonthlyChars <= 0

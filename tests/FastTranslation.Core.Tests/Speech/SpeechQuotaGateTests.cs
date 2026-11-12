@@ -14,7 +14,7 @@ public sealed class SpeechQuotaGateTests
         QuotaDailyChars: 2_000,
         RemainingMonthlyChars: monthlyLeft,
         RemainingDailyChars: dailyLeft,
-        Month: "2026-11",
+        PeriodStart: "2026-11-03",
         Day: "2026-11-03");
 
     [Fact]

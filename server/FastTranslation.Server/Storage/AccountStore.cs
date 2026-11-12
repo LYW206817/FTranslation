@@ -12,7 +12,8 @@ public sealed record UserRecord(Guid Id, string Email, string PasswordHash, Plan
 
 public sealed record DeviceRecord(Guid Id, Guid UserId, string Fingerprint, string Name, long CreatedAt, long LastSeenAt);
 
-public sealed record UsageSnapshot(int MonthlyChars, int DailyChars, string Month, string Day);
+/// <summary><paramref name="PeriodStart"/> 是当前个人额度周期的起点日期（yyyy-MM-dd，UTC）。</summary>
+public sealed record UsageSnapshot(int MonthlyChars, int DailyChars, string PeriodStart, string Day);
 
 /// <summary>管理端账号列表的一行。Plan 是存储值；过期折算在端点层做。</summary>
 public sealed record AdminAccountRow(
@@ -59,8 +60,8 @@ public sealed class AccountStore(ServerDatabase database)
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO users (id, email, password_hash, plan, plan_expires_at, created_at, disabled)
-            VALUES ($id, $email, $hash, $plan, $planExpiresAt, $createdAt, 0)
+            INSERT INTO users (id, email, password_hash, plan, plan_expires_at, created_at, disabled, quota_anchor_at)
+            VALUES ($id, $email, $hash, $plan, $planExpiresAt, $createdAt, 0, $anchorAt)
             """;
         command.Parameters.AddWithValue("$id", record.Id.ToString("D"));
         command.Parameters.AddWithValue("$email", record.Email);
@@ -68,6 +69,7 @@ public sealed class AccountStore(ServerDatabase database)
         command.Parameters.AddWithValue("$plan", (int)record.Plan);
         command.Parameters.AddWithValue("$planExpiresAt", (object?)record.PlanExpiresAt ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", record.CreatedAt);
+        command.Parameters.AddWithValue("$anchorAt", QuotaCycle.StartOfUtcDay(record.CreatedAt));
         command.ExecuteNonQuery();
         return record;
     }
@@ -78,11 +80,24 @@ public sealed class AccountStore(ServerDatabase database)
     /// </summary>
     public bool SetPlan(Guid userId, PlanTier plan, long? expiresAtUnix = null)
     {
+        var now = database.NowUnix;
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE users SET plan = $plan, plan_expires_at = $expiresAt WHERE id = $id";
+        command.CommandText = """
+            UPDATE users
+            SET plan = $plan,
+                plan_expires_at = $expiresAt,
+                quota_anchor_at = CASE
+                    WHEN plan != 0 AND (plan_expires_at IS NULL OR plan_expires_at > $now)
+                        THEN quota_anchor_at
+                    ELSE $todayStart
+                END
+            WHERE id = $id
+            """;
         command.Parameters.AddWithValue("$plan", (int)plan);
         command.Parameters.AddWithValue("$expiresAt", (object?)expiresAtUnix ?? DBNull.Value);
+        command.Parameters.AddWithValue("$now", now);
+        command.Parameters.AddWithValue("$todayStart", QuotaCycle.StartOfUtcDay(now));
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
         return command.ExecuteNonQuery() > 0;
     }
@@ -90,6 +105,10 @@ public sealed class AccountStore(ServerDatabase database)
     /// <summary>
     /// 把一段时长接到当前订阅之后。读改写放在同一条 UPDATE 里完成：并发兑换两张码时，
     /// 各自基于「请求开始时读到的到期时间」计算绝对时间会让后写覆盖先写，凭空丢一张码的天数。
+    /// <para>
+    /// v131: 从免费/已失效状态重新开通时重置月度额度锚点；订阅仍有效时续费或升级不动锚点，
+    /// 否则提前续费会额外送一段月额度（与 v121「升级不重置用量」是同一口径）。
+    /// </para>
     /// </summary>
     public bool ExtendPlan(Guid userId, PlanTier plan, int days, long nowUnix)
     {
@@ -102,12 +121,18 @@ public sealed class AccountStore(ServerDatabase database)
                     WHEN plan_expires_at IS NOT NULL AND plan_expires_at > $now
                         THEN plan_expires_at + $seconds
                     ELSE $now + $seconds
+                END,
+                quota_anchor_at = CASE
+                    WHEN plan != 0 AND (plan_expires_at IS NULL OR plan_expires_at > $now)
+                        THEN quota_anchor_at
+                    ELSE $todayStart
                 END
             WHERE id = $id
             """;
         command.Parameters.AddWithValue("$plan", (int)plan);
         command.Parameters.AddWithValue("$seconds", days * 86_400L);
         command.Parameters.AddWithValue("$now", nowUnix);
+        command.Parameters.AddWithValue("$todayStart", QuotaCycle.StartOfUtcDay(nowUnix));
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
         return command.ExecuteNonQuery() > 0;
     }
@@ -384,13 +409,14 @@ public sealed class AccountStore(ServerDatabase database)
     public UsageSnapshot ReadUsage(Guid userId, Guid? deviceId)
     {
         using var connection = database.Open();
+        var periodStart = QuotaPeriodKey(connection, null, userId);
 
         int monthly = 0;
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "SELECT chars FROM usage_monthly WHERE user_id = $userId AND month = $month";
             command.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            command.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            command.Parameters.AddWithValue("$month", periodStart);
             monthly = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
         }
 
@@ -404,7 +430,21 @@ public sealed class AccountStore(ServerDatabase database)
             daily = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
         }
 
-        return new UsageSnapshot(monthly, daily, database.ThisMonthKey, database.TodayKey);
+        return new UsageSnapshot(monthly, daily, periodStart, database.TodayKey);
+    }
+
+    /// <summary>
+    /// 当前个人周期的键（yyyy-MM-dd）。账号不存在时锚点为 0，周期退化为当月 1 日；
+    /// 未知账号的用量本来就是 0，不会因为这条回退产生额度。
+    /// </summary>
+    private string QuotaPeriodKey(SqliteConnection connection, SqliteTransaction? transaction, Guid userId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT quota_anchor_at FROM users WHERE id = $id";
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        var anchor = command.ExecuteScalar() is long value ? value : 0L;
+        return QuotaCycle.Key(anchor, database.NowUnix);
     }
 
     /// <summary>
@@ -423,6 +463,8 @@ public sealed class AccountStore(ServerDatabase database)
         var quotaDaily = Plans.DailyQuota(tier);
 
         using var connection = database.Open();
+        // 周期键在开事务前读一次；账号锚点只在开通/续费时变，单笔请求沿用当下的周期即可。
+        var periodStart = QuotaPeriodKey(connection, null, userId);
         using var transaction = connection.BeginTransaction();
 
         // 先插入零行：deferred 事务只有遇到写操作才加锁，先写才能锁住后面的检查。
@@ -436,7 +478,7 @@ public sealed class AccountStore(ServerDatabase database)
                 ON CONFLICT(device_id, day) DO NOTHING;
                 """;
             seed.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            seed.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            seed.Parameters.AddWithValue("$month", periodStart);
             seed.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
             seed.Parameters.AddWithValue("$day", database.TodayKey);
             seed.ExecuteNonQuery();
@@ -452,12 +494,12 @@ public sealed class AccountStore(ServerDatabase database)
                 """;
             monthly.Parameters.AddWithValue("$chars", chars);
             monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly.Parameters.AddWithValue("$month", periodStart);
             monthly.Parameters.AddWithValue("$quota", quotaMonthly);
             if (monthly.ExecuteNonQuery() == 0)
             {
                 transaction.Rollback();
-                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId);
+                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId, periodStart);
                 return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
             }
         }
@@ -478,12 +520,12 @@ public sealed class AccountStore(ServerDatabase database)
             if (daily.ExecuteNonQuery() == 0)
             {
                 transaction.Rollback();
-                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId);
+                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId, periodStart);
                 return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
             }
         }
 
-        var (monthlyUsed, dailyUsed) = ReadUsageIncludingReserved(connection, transaction, userId, deviceId);
+        var (monthlyUsed, dailyUsed) = ReadUsageIncludingReserved(connection, transaction, userId, deviceId, periodStart);
         transaction.Commit();
         // requested=0：占用已经发生，这里只需要「还剩多少」的决策对象。
         return QuotaPolicy.Evaluate(tier, monthlyUsed, dailyUsed, 0);
@@ -491,13 +533,14 @@ public sealed class AccountStore(ServerDatabase database)
 
     /// <summary>请求未记账就失败（上游拒绝/异常）时退回预留额度。</summary>
     /// <remarks>
-    /// 只按当前月/日键退回。请求跨过午夜或月末时旧桶的预留会留在那一行，但旧桶
+    /// 只按当前周期/日键退回。请求跨过日界或周期起点时旧桶的预留会留在那一行，但旧桶
     /// 已不再被读取（新请求只查当前键），不会影响后续额度判断。
     /// </remarks>
     public void ReleaseQuota(Guid userId, Guid deviceId, int chars)
     {
         if (chars <= 0) return;
         using var connection = database.Open();
+        var periodStart = QuotaPeriodKey(connection, null, userId);
         using var transaction = connection.BeginTransaction();
 
         using (var monthly = connection.CreateCommand())
@@ -509,7 +552,7 @@ public sealed class AccountStore(ServerDatabase database)
                 """;
             monthly.Parameters.AddWithValue("$chars", chars);
             monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly.Parameters.AddWithValue("$month", periodStart);
             monthly.ExecuteNonQuery();
         }
 
@@ -533,7 +576,8 @@ public sealed class AccountStore(ServerDatabase database)
         SqliteConnection connection,
         SqliteTransaction? transaction,
         Guid userId,
-        Guid deviceId)
+        Guid deviceId,
+        string periodStart)
     {
         int monthly = 0;
         using (var command = connection.CreateCommand())
@@ -544,7 +588,7 @@ public sealed class AccountStore(ServerDatabase database)
                 WHERE user_id = $userId AND month = $month
                 """;
             command.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            command.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            command.Parameters.AddWithValue("$month", periodStart);
             monthly = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
         }
 
@@ -567,6 +611,7 @@ public sealed class AccountStore(ServerDatabase database)
     public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source = "gateway", int reservedChars = 0)
     {
         using var connection = database.Open();
+        var periodStart = QuotaPeriodKey(connection, null, userId);
         using var transaction = connection.BeginTransaction();
 
         using (var monthly = connection.CreateCommand())
@@ -579,7 +624,7 @@ public sealed class AccountStore(ServerDatabase database)
                     reserved = MAX(0, reserved - $reserved)
                 """;
             monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", database.ThisMonthKey);
+            monthly.Parameters.AddWithValue("$month", periodStart);
             monthly.Parameters.AddWithValue("$chars", chars);
             monthly.Parameters.AddWithValue("$reserved", reservedChars);
             monthly.ExecuteNonQuery();
@@ -893,29 +938,48 @@ public sealed class AccountStore(ServerDatabase database)
         command.CommandText = $"""
             SELECT u.email, u.plan, u.plan_expires_at, u.disabled, u.created_at,
                    COALESCE((SELECT MAX(d.last_seen_at) FROM devices d WHERE d.user_id = u.id), 0),
-                   COALESCE((SELECT m.chars FROM usage_monthly m WHERE m.user_id = u.id AND m.month = $month), 0)
+                   u.quota_anchor_at, u.id
             FROM users u
             {where}
             ORDER BY u.created_at DESC, u.email ASC
             LIMIT $limit OFFSET $offset
             """;
         AddAccountFilters(command, prefix, plan);
-        command.Parameters.AddWithValue("$month", database.ThisMonthKey);
         command.Parameters.AddWithValue("$limit", limit);
         command.Parameters.AddWithValue("$offset", offset);
 
-        using var reader = command.ExecuteReader();
-        var items = new List<AdminAccountRow>();
-        while (reader.Read())
+        var rows = new List<(AdminAccountRow Row, Guid Id, long Anchor)>();
+        using (var reader = command.ExecuteReader())
         {
-            items.Add(new AdminAccountRow(
-                reader.GetString(0),
-                (PlanTier)reader.GetInt32(1),
-                reader.IsDBNull(2) ? null : reader.GetInt64(2),
-                reader.GetInt32(3) != 0,
-                reader.GetInt64(4),
-                reader.GetInt64(5),
-                reader.GetInt32(6)));
+            while (reader.Read())
+            {
+                rows.Add((
+                    new AdminAccountRow(
+                        reader.GetString(0),
+                        (PlanTier)reader.GetInt32(1),
+                        reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                        reader.GetInt32(3) != 0,
+                        reader.GetInt64(4),
+                        reader.GetInt64(5),
+                        0),
+                    Guid.Parse(reader.GetString(7)),
+                    reader.GetInt64(6)));
+            }
+        }
+
+        // 每个账号的「本周期字符」按各自的锚点算；一页最多 50 行，逐行查一次
+        // 比在 SQLite 里复刻 AddMonths 的月末夹取逻辑更不容易出错。
+        var items = new List<AdminAccountRow>(rows.Count);
+        foreach (var (row, id, anchor) in rows)
+        {
+            using var usage = connection.CreateCommand();
+            usage.CommandText = "SELECT chars FROM usage_monthly WHERE user_id = $userId AND month = $month";
+            usage.Parameters.AddWithValue("$userId", id.ToString("D"));
+            usage.Parameters.AddWithValue("$month", QuotaCycle.Key(anchor, database.NowUnix));
+            var chars = usage.ExecuteScalar() is { } value
+                ? Convert.ToInt32(value, CultureInfo.InvariantCulture)
+                : 0;
+            items.Add(row with { MonthlyChars = chars });
         }
 
         return (items, total);

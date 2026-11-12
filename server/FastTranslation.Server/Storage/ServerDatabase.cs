@@ -41,8 +41,6 @@ public sealed class ServerDatabase
 
     public string TodayKey => _time.GetUtcNow().ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
-    public string ThisMonthKey => _time.GetUtcNow().ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
-
     public SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
@@ -83,6 +81,27 @@ public sealed class ServerDatabase
         // 显示名是用户唯一可编辑的资料字段（账号页）。为空表示“使用邮箱
         // 本地部分”，这样旧行与新行行为一致，无需回填。
         EnsureColumn(connection, "users", "display_name", "TEXT NOT NULL DEFAULT ''");
+
+        // v131: 月度额度从账号自己的开通日起算，不再按 UTC 自然月。锚点按 UTC 日取整；
+        // 免费账号用注册日，首次兑换激活码时改成兑换日（见 AccountStore.ExtendPlan）。
+        EnsureColumn(connection, "users", "quota_anchor_at", "INTEGER NOT NULL DEFAULT 0");
+
+        // 存量账号按最早兑换码的日期回填；没有兑换记录的按注册日。多张码只取最早一张：
+        // 迁移无法还原「中途失效再激活」的历史，取首次开通日是最接近的近似。
+        // 旧 usage_monthly 行仍是 yyyy-MM 键，新周期键是 yyyy-MM-dd，两者不会命中，
+        // 等于上线时按用户选择做了一次清零。
+        using (var quotaAnchor = connection.CreateCommand())
+        {
+            quotaAnchor.CommandText = """
+                UPDATE users
+                SET quota_anchor_at = COALESCE(
+                    (SELECT MIN(r.redeemed_at) - (MIN(r.redeemed_at) % 86400)
+                     FROM redeem_codes r WHERE r.redeemed_by = users.id),
+                    created_at - (created_at % 86400))
+                WHERE quota_anchor_at = 0
+                """;
+            quotaAnchor.ExecuteNonQuery();
+        }
 
         // 从未售出前就录错或泄露的码必须能被作废，否则唯一出路就是
         // 删除该行，同时丢失审计记录。
@@ -178,6 +197,8 @@ public sealed class ServerDatabase
     /// <c>users.plan_expires_at</c> 为 NULL 表示“授权没有到期时间”（见 Domain/Entitlement）。
     /// <c>usage_monthly</c> 按账号计，<c>usage_daily</c> 按设备计——免费档的
     /// 每日上限按设计是按设备计的，这样共享账号也无法把它汇总使用（设计 §7.4）。
+    /// <c>usage_monthly.month</c> 存个人周期起点的 UTC 日期（yyyy-MM-dd，v131 起），
+    /// 不是自然月；v131 之前写入的 yyyy-MM 行不再被读取。
     /// <c>usage_events.cost_micros</c> 以微元为单位，这样整个支出账本保持整数。
     /// </summary>
     private const string Schema = """
@@ -193,7 +214,8 @@ public sealed class ServerDatabase
             plan_expires_at INTEGER,
             created_at    INTEGER NOT NULL,
             disabled      INTEGER NOT NULL DEFAULT 0,
-            display_name  TEXT NOT NULL DEFAULT ''
+            display_name  TEXT NOT NULL DEFAULT '',
+            quota_anchor_at INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS devices (
