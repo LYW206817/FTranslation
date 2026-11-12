@@ -228,6 +228,44 @@ public sealed class AccountCoordinator
     }
 
     /// <summary>
+    /// 订单确认后账号套餐已经变了，但当前 access token 里的 plan 声明还是旧的；
+    /// 重新拉一次资料，侧栏、套餐页和账号页才会同步。
+    /// </summary>
+    public async Task<AccountApiResult<AccountProfile>> RefreshProfileAsync(CancellationToken cancellationToken)
+    {
+        var result = await WithSessionAsync(
+            token => _client.GetProfileAsync(token, cancellationToken), cancellationToken).ConfigureAwait(true);
+        if (result.Succeeded && _session is { } session)
+        {
+            var updated = session with { Profile = result.Value! };
+            _store.Save(updated);
+            SetSession(updated);
+        }
+
+        return result;
+    }
+
+    public Task<AccountApiResult<AccountOrder>> CreateOrderAsync(
+        string plan, string cycle, CancellationToken cancellationToken) =>
+        WithSessionAsync(token => _client.CreateOrderAsync(token, plan, cycle, cancellationToken), cancellationToken);
+
+    public Task<AccountApiResult<AccountOrder>> GetCurrentOrderAsync(CancellationToken cancellationToken) =>
+        WithSessionAsync(token => _client.GetCurrentOrderAsync(token, cancellationToken), cancellationToken);
+
+    public Task<AccountApiResult<AccountOrder>> GetOrderAsync(Guid orderId, CancellationToken cancellationToken) =>
+        WithSessionAsync(token => _client.GetOrderAsync(token, orderId, cancellationToken), cancellationToken);
+
+    public Task<AccountApiResult<AccountOrder>> SubmitOrderAsync(
+        Guid orderId, string paymentMethod, string paymentRef, CancellationToken cancellationToken) =>
+        WithSessionAsync(
+            token => _client.SubmitOrderAsync(token, orderId, paymentMethod, paymentRef, cancellationToken),
+            cancellationToken);
+
+    public Task<AccountApiResult<AccountAction>> CancelOrderAsync(
+        Guid orderId, CancellationToken cancellationToken) =>
+        WithSessionAsync(token => _client.CancelOrderAsync(token, orderId, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// 显示名存在资料里，所以保存成功也必须替换已存储的资料——侧边栏和账号卡片是从
     /// 会话取标签的，不是从名字的第二份副本。
     /// </summary>

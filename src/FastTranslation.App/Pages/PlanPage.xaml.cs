@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using FastTranslation.App;
 using FastTranslation.Core.Account;
 
 namespace FastTranslation.App.Pages;
@@ -11,7 +12,8 @@ namespace FastTranslation.App.Pages;
 /// 这两块以前共用一页，结果两边都受影响。
 ///
 /// <para>
-/// 这个版本没有支付通道。订阅按钮只记录用户的选择并如实说明；它从不假装会打开结算页。
+/// 订阅走订单：登录用户选套餐与周期后创建订单，弹窗显示微信/支付宝收款码；
+/// 运营核对交易单号后直接开通。激活码路径保留给赠送与手动销售。
 /// </para>
 /// </summary>
 public partial class PlanPage : UserControl
@@ -19,6 +21,8 @@ public partial class PlanPage : UserControl
     private readonly AccountCoordinator _account;
     private bool _busy;
     private string _tier = "standard";
+    private string _cycle = "monthly";
+    private bool _canSubscribe = true;
     private bool _subscribed;
 
     public PlanPage(AccountCoordinator account)
@@ -80,17 +84,16 @@ public partial class PlanPage : UserControl
             DailyLeftText.Text = string.Empty;
             DailyBar.Value = 0;
             SubscribeTitle.Text = "订阅后解锁单词本与四档复习";
-            SubscribeButton.Content = "订阅";
             PlanPillText.Text = "未登录";
             PlanNameText.Text = "未登录";
             PlanTermText.Text = string.Empty;
+            SelectCycle();
             SelectTier("standard");
             return;
         }
 
         // 付费套餐让推销话术变得多余：卡片变成「你已经拥有的内容」
         var paid = !string.Equals(session!.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
-        SubscribeButton.Content = paid ? "续订" : "订阅";
         // 同一张卡片服务两类读者：订阅者不该读到「订阅以解锁」，
         // 那项功能他已经付过钱了
         SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与四档复习";
@@ -100,14 +103,10 @@ public partial class PlanPage : UserControl
         PlanNameText.Text = planName;
         PlanTermText.Text = paid ? "已订阅" : "长期有效";
         // 已付费时默认选中自己那一档；免费用户默认 Pro（三档里折中的一档）。
+        SelectCycle();
         SelectTier(session.Profile.Plan is "light" or "standard" or "max"
             ? session.Profile.Plan
             : "standard");
-        if (paid)
-        {
-            SubscribeHint.Text = "已经是" + session.Profile.PlanDisplay
-                + ",续订会顺延到期时间。付款渠道尚未接通。";
-        }
     }
 
     /// <summary>
@@ -241,8 +240,23 @@ public partial class PlanPage : UserControl
         Select(LiteCard, tier == "light");
         Select(ProCard, tier == "standard");
         Select(MaxCard, tier == "max");
-        // 重新选卡会清掉上一个「已记录」提示的内容
-        SubscribeHint.Text = "付款渠道尚未接通,当前版本点击后仅记录意向。";
+        UpdateSubscribeState();
+    }
+
+    private void Cycle_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string cycle })
+        {
+            _cycle = cycle;
+            SelectCycle();
+            UpdateSubscribeState();
+        }
+    }
+
+    private void SelectCycle()
+    {
+        Select(MonthlyCycleCard, _cycle == "monthly");
+        Select(YearlyCycleCard, _cycle == "yearly");
     }
 
     private static string TierName(string tier) => tier switch
@@ -251,6 +265,56 @@ public partial class PlanPage : UserControl
         "max" => "Max",
         _ => "Pro",
     };
+
+    private static int PlanRank(string plan) => plan switch
+    {
+        "light" => 1,
+        "standard" => 2,
+        "max" => 3,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// 订阅按钮同时表达四件事：未登录、可新开/续订、低档买高档（补差价）、高档买低档（拒绝）。
+    /// 客户端先按会话里的套餐档位拦住明显不合法的选择，服务端仍会再校验一次。
+    /// </summary>
+    private void UpdateSubscribeState()
+    {
+        var session = _account.Session;
+        if (session is null)
+        {
+            _canSubscribe = true;
+            SubscribeButton.Content = "订阅 " + TierName(_tier);
+            SubscribeButton.IsEnabled = !_busy;
+            SubscribeHint.Text = "先到「账号」页登录,登录后才能下单。";
+            return;
+        }
+
+        var current = PlanRank(session.Profile.Plan);
+        var selected = PlanRank(_tier);
+        if (current > 0 && selected < current)
+        {
+            _canSubscribe = false;
+            SubscribeButton.Content = "订阅 " + TierName(_tier);
+            SubscribeHint.Text = "当前套餐高于所选套餐,不能购买低档。";
+        }
+        else if (current > 0 && selected > current)
+        {
+            _canSubscribe = false;
+            SubscribeButton.Content = "升级 " + TierName(_tier);
+            SubscribeHint.Text = "升级套餐需要补差价,请联系 " + AccountError.SupportEmail + "。";
+        }
+        else
+        {
+            _canSubscribe = true;
+            SubscribeButton.Content = (current > 0 ? "续订 " : "订阅 ") + TierName(_tier);
+            SubscribeHint.Text = current > 0
+                ? "续订会从当前到期日往后顺延;点按钮后显示微信 / 支付宝收款码。"
+                : "点按钮后会创建订单并显示微信 / 支付宝收款码。";
+        }
+
+        SubscribeButton.IsEnabled = !_busy && _canSubscribe;
+    }
 
     private void Select(Border card, bool selected)
     {
@@ -262,22 +326,76 @@ public partial class PlanPage : UserControl
             : System.Windows.Media.Brushes.Transparent;
     }
 
-    private void Subscribe_Click(object sender, RoutedEventArgs e)
+    private async void Subscribe_Click(object sender, RoutedEventArgs e)
     {
+        if (_busy || !_canSubscribe) return;
         if (_account.Session is null)
         {
-            SubscribeHint.Text = "先到「账号」页登录,再用激活码开通。";
+            SubscribeHint.Text = "先到「账号」页登录,登录后才能下单。";
             return;
         }
 
-        SubscribeHint.Text = "已记录你的选择(" + TierName(_tier) + ")。付款渠道上线后会通知你。";
+        SetBusy(true);
+        try
+        {
+            // 先恢复未结算订单：用户可能关过应用，再点订阅不应再生成一笔。
+            var current = await _account.GetCurrentOrderAsync(CancellationToken.None);
+            if (current.Succeeded)
+            {
+                ShowOrder(current.Value!);
+                return;
+            }
+
+            if (current.Error!.Code != AccountErrorCode.OrderMissing)
+            {
+                SubscribeHint.Text = current.Error.Display;
+                return;
+            }
+
+            var created = await _account.CreateOrderAsync(_tier, _cycle, CancellationToken.None);
+            if (created.Succeeded)
+            {
+                ShowOrder(created.Value!);
+                return;
+            }
+
+            if (created.Error!.Code == AccountErrorCode.OrderPending)
+            {
+                var again = await _account.GetCurrentOrderAsync(CancellationToken.None);
+                if (again.Succeeded)
+                {
+                    ShowOrder(again.Value!);
+                    return;
+                }
+            }
+
+            SubscribeHint.Text = created.Error.Display;
+        }
+        catch (Exception)
+        {
+            // 下单路径只返回 AccountApiResult；这里兜住 ShowDialog 之类的意外，
+            // async void 事件处理器不能让异常逃出 UI 线程。
+            SubscribeHint.Text = "创建订单失败,请稍后重试。";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void ShowOrder(AccountOrder order)
+    {
+        var window = new OrderWindow(_account, order);
+        if (Window.GetWindow(this) is { IsVisible: true } owner) window.Owner = owner;
+        window.ShowDialog();
+        Render();
     }
 
     private void SetBusy(bool busy)
     {
         _busy = busy;
         RedeemButton.IsEnabled = !busy;
-        SubscribeButton.IsEnabled = !busy;
+        SubscribeButton.IsEnabled = !busy && _canSubscribe;
     }
 
     private void Input_Changed(object sender, TextChangedEventArgs e)

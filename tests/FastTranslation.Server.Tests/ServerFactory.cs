@@ -14,6 +14,15 @@ public class ServerFactory : WebApplicationFactory<Program>
         "ft-server-tests",
         Guid.NewGuid().ToString("N") + ".db");
 
+    private readonly string _wechatQrPath = Path.Combine(
+        Path.GetTempPath(), "ft-server-tests", Guid.NewGuid().ToString("N") + "-wechat.png");
+
+    private readonly string _alipayQrPath = Path.Combine(
+        Path.GetTempPath(), "ft-server-tests", Guid.NewGuid().ToString("N") + "-alipay.png");
+
+    private const string OnePixelPng =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
     public const string AdminToken = "test-admin-token";
 
     /// <summary>默认放宽管理限流，避免同一测试类的 admin 调用互相挤掉；限流测试单独覆写。</summary>
@@ -21,6 +30,10 @@ public class ServerFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(_wechatQrPath)!);
+        File.WriteAllBytes(_wechatQrPath, Convert.FromBase64String(OnePixelPng));
+        File.WriteAllBytes(_alipayQrPath, Convert.FromBase64String(OnePixelPng));
+
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -31,6 +44,8 @@ public class ServerFactory : WebApplicationFactory<Program>
             ["Server:AuthRequestsPerMinute"] = "1000",
             ["Server:AdminRequestsPerMinute"] = AdminRequestsPerMinute.ToString(),
             ["Server:AccessTokenMinutes"] = "30",
+            ["Server:Payment:WeChatQrPath"] = _wechatQrPath,
+            ["Server:Payment:AlipayQrPath"] = _alipayQrPath,
         }));
     }
 
@@ -40,15 +55,18 @@ public class ServerFactory : WebApplicationFactory<Program>
         if (disposing)
         {
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            foreach (var path in new[] { _databasePath, _wechatQrPath, _alipayQrPath })
             {
-                try
+                foreach (var suffix in new[] { "", "-wal", "-shm" })
                 {
-                    File.Delete(_databasePath + suffix);
-                }
-                catch (IOException)
-                {
-                    // 尽力而为地清理。
+                    try
+                    {
+                        File.Delete(path + suffix);
+                    }
+                    catch (IOException)
+                    {
+                        // 尽力而为地清理。
+                    }
                 }
             }
         }

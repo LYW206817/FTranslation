@@ -269,6 +269,8 @@ tr:last-child td { border-bottom: 0; }
 
 .row-actions select { width: 86px; }
 .row-actions input { width: 62px; }
+/* 订单审核动词有四个字（确认到账并开通），默认会在按钮内换行成两行，撑高整行。 */
+.row-actions button { white-space: nowrap; }
 
 /* 原生 select 的展开层由系统绘制，和后台卡片不是一套视觉；把 select 留作状态容器，
    显示与弹出层改用页面自己的菜单。 */
@@ -437,4 +439,10 @@ tr:last-child td { border-bottom: 0; }
   #account-query, #code-note { width: auto; }
   table { min-width: 680px; }
   .pager { justify-content: space-between; }
+}
+/* 订单交易单号：等宽显示，便于运营肉眼核对数字。 */
+.mono {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  margin-right: 8px;
 }

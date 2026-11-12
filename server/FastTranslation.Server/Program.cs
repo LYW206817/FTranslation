@@ -4,6 +4,7 @@ using FastTranslation.Server;
 using FastTranslation.Server.Api;
 using FastTranslation.Server.Auth;
 using FastTranslation.Server.Gateway;
+using FastTranslation.Server.Orders;
 using FastTranslation.Server.Storage;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -35,6 +36,8 @@ builder.Services.AddSingleton(sp =>
 });
 
 builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Gateway);
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Payment);
+builder.Services.AddSingleton<PaymentQrProvider>();
 builder.Services.AddSingleton<GatewayRateLimiter>();
 builder.Services.AddSingleton<GatewayBudgetGuard>();
 builder.Services.AddSingleton<SpeechSessionLimiter>();
@@ -42,6 +45,7 @@ builder.Services.AddSingleton<GatewayDiagnostics>();
 builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
 
 builder.Services.AddSingleton<AccountStore>();
+builder.Services.AddSingleton<OrderStore>();
 builder.Services.AddSingleton<RedeemStore>();
 builder.Services.AddSingleton<NoteStore>();
 builder.Services.AddSingleton<VerificationCodeService>();
@@ -82,11 +86,13 @@ app.UseWebSockets();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
+app.MapOrderEndpoints();
 app.MapNotesEndpoints();
 app.MapRedeemEndpoints();
 app.MapGatewayEndpoints();
 app.MapSpeechEndpoints();
 app.MapAdminEndpoints();
+app.MapOrderAdminEndpoints();
 app.MapRedeemAdminEndpoints();
 
 app.Run();

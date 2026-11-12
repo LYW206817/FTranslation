@@ -79,6 +79,28 @@
 
       <section class="panel">
         <div class="section-head">
+          <h2>订单</h2>
+          <div class="inline-form">
+            <select id="order-status" aria-label="订单状态">
+              <option value="pending_review">待审核</option>
+              <option value="pending_payment">待支付</option>
+              <option value="fulfilled">已开通</option>
+              <option value="cancelled">已取消</option>
+              <option value="all">全部</option>
+            </select>
+            <button id="order-refresh" type="button" class="ghost">刷新</button>
+          </div>
+        </div>
+        <div id="orders" class="table-wrap"></div>
+        <div class="pager">
+          <button id="orders-prev" type="button" class="ghost">上一页</button>
+          <span id="orders-page" class="muted"></span>
+          <button id="orders-next" type="button" class="ghost">下一页</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
           <h2>激活码</h2>
           <form id="code-form" class="inline-form">
             <select id="code-plan" aria-label="套餐">

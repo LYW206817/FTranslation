@@ -513,6 +513,91 @@ public class AccountClientTests
         Assert.False(result.Succeeded);
         Assert.Equal(expected, result.Error!.Code);
     }
+
+    [Fact]
+    public async Task CreateOrder_posts_plan_and_cycle_and_maps_amount_and_qr_methods()
+    {
+        const string orderJson = """
+        {
+          "id": "8f1a2c3d-0000-4000-8000-000000000002",
+          "plan": "standard", "cycle": "yearly", "days": 365, "amountCents": 11900,
+          "status": "pending_payment",
+          "paymentMethods": [
+            { "method": "wechat", "label": "微信", "qrDataUrl": "data:image/png;base64,AAAA" },
+            { "method": "alipay", "label": "支付宝", "qrDataUrl": "data:image/png;base64,BBBB" }
+          ],
+          "paymentMethod": "", "paymentRef": "", "createdAt": 1794450000,
+          "submittedAt": null, "confirmedAt": null, "cancelledAt": null, "cancelReason": ""
+        }
+        """;
+        var (client, handler) = Build(HttpStatusCode.OK, orderJson, baseUrl: "https://api.example.com");
+
+        var result = await client.CreateOrderAsync("token", "standard", "yearly", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://api.example.com/api/v1/orders", handler.LastUri!.ToString());
+        Assert.Equal("POST", handler.LastMethod);
+        Assert.Contains("\"plan\":\"standard\"", handler.LastBody);
+        Assert.Contains("\"cycle\":\"yearly\"", handler.LastBody);
+        Assert.Equal("Bearer token", handler.LastAuthorization?.ToString());
+        Assert.Equal(365, result.Value!.Days);
+        Assert.Equal("¥119.00", result.Value.AmountDisplay);
+        Assert.Equal(2, result.Value.PaymentMethods.Count);
+        Assert.Equal("Pro", result.Value.PlanDisplay);
+    }
+
+    [Fact]
+    public async Task Missing_current_order_maps_to_OrderMissing()
+    {
+        var (client, _) = Build(HttpStatusCode.NotFound, """{"error":"order_missing"}""");
+
+        var result = await client.GetCurrentOrderAsync("token", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AccountErrorCode.OrderMissing, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task SubmitOrder_sends_the_full_transaction_number()
+    {
+        const string orderJson = """
+        {
+          "id": "8f1a2c3d-0000-4000-8000-000000000003",
+          "plan": "light", "cycle": "monthly", "days": 30, "amountCents": 690,
+          "status": "pending_review",
+          "paymentMethods": [],
+          "paymentMethod": "wechat", "paymentRef": "420000123456789012345678",
+          "createdAt": 1794450000, "submittedAt": 1794450100,
+          "confirmedAt": null, "cancelledAt": null, "cancelReason": ""
+        }
+        """;
+        var (client, handler) = Build(HttpStatusCode.OK, orderJson);
+
+        var result = await client.SubmitOrderAsync(
+            "token", Guid.Parse("8f1a2c3d-0000-4000-8000-000000000003"),
+            "wechat", "420000123456789012345678", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("POST", handler.LastMethod);
+        Assert.Contains("\"paymentRef\":\"420000123456789012345678\"", handler.LastBody);
+        Assert.Equal("wechat", result.Value!.PaymentMethod);
+        Assert.Equal("等待人工确认", result.Value.StatusDisplay);
+    }
+
+    [Theory]
+    [InlineData("payment_ref_used", AccountErrorCode.PaymentRefUsed)]
+    [InlineData("payment_unavailable", AccountErrorCode.PaymentUnavailable)]
+    [InlineData("upgrade_requires_support", AccountErrorCode.UpgradeRequiresSupport)]
+    [InlineData("order_pending", AccountErrorCode.OrderPending)]
+    public async Task Order_errors_map_to_actionable_codes(string wire, AccountErrorCode expected)
+    {
+        var (client, _) = Build(HttpStatusCode.Conflict, "{\"error\":\"" + wire + "\"}");
+
+        var result = await client.CreateOrderAsync("token", "standard", "monthly", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(expected, result.Error!.Code);
+    }
 }
 
 public class AccountSessionStoreTests
@@ -657,6 +742,8 @@ public class AccountUsageTests
     [Fact]
     public void Error_codes_carry_a_chinese_sentence() =>
         Assert.Contains("网络", new AccountError(AccountErrorCode.Network, "raw").Display);
+
+
 
     [Fact]
     public void Email_format_error_reads_as_a_typo_hint() =>

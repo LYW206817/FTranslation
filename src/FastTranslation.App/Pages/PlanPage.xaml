@@ -245,11 +245,39 @@
                 </Border>
               </StackPanel>
 
+              <!-- 月付 / 年付只决定订单天数与价格；具体金额在下单弹窗里由服务端回传。 -->
+              <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border x:Name="MonthlyCycleCard" Tag="monthly" BorderThickness="1" CornerRadius="8"
+                        BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
+                        Padding="10,7" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
+                  <StackPanel>
+                    <TextBlock Text="月付" FontSize="12.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="30 天" FontSize="11" Margin="0,2,0,0"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                </Border>
+                <Border x:Name="YearlyCycleCard" Grid.Column="1" Tag="yearly" BorderThickness="1"
+                        CornerRadius="8" BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
+                        Padding="10,7" Margin="8,0,0,0" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
+                  <StackPanel>
+                    <TextBlock Text="年付" FontSize="12.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="365 天 · 更划算" FontSize="11" Margin="0,2,0,0"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+
               <Button x:Name="SubscribeButton" Content="订阅" Height="40" Margin="0,14,0,0"
                       Style="{StaticResource PrimaryButton}" Click="Subscribe_Click"/>
               <TextBlock x:Name="SubscribeHint" FontSize="11.5" Margin="0,10,0,0" TextWrapping="Wrap"
                          Foreground="{DynamicResource TextMutedBrush}"
-                         Text="付款渠道尚未接通，当前版本点击后仅记录意向。"/>
+                         Text="登录后点订阅，会创建订单并显示收款码。"/>
             </StackPanel>
           </Border>
         </Grid>

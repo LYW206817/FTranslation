@@ -113,7 +113,19 @@ public sealed class AccountStore(ServerDatabase database)
     public bool ExtendPlan(Guid userId, PlanTier plan, int days, long nowUnix)
     {
         using var connection = database.Open();
+        return ExtendPlan(connection, null, userId, plan, days, nowUnix);
+    }
+
+    /// <summary>
+    /// 在调用方已有事务里延展套餐。订单确认必须和「订单置为 fulfilled」在同一个
+    /// SQLite 事务里完成，否则先置订单再改套餐时进程崩在中间，用户付了钱却没有套餐。
+    /// </summary>
+    internal static bool ExtendPlan(
+        SqliteConnection connection, SqliteTransaction? transaction,
+        Guid userId, PlanTier plan, int days, long nowUnix)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             UPDATE users
             SET plan = $plan,

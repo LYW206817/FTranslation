@@ -67,6 +67,55 @@ public sealed record UsageDto(
 
 public sealed record ErrorResponse(string Error, string? Message = null);
 
+/// <summary>订阅订单：客户端只传套餐与周期，金额、天数由服务端算。</summary>
+public sealed record CreateOrderRequest(string? Plan, string? Cycle);
+
+public sealed record SubmitOrderRequest(string? PaymentMethod, string? PaymentRef);
+
+public sealed record CancelOrderRequest(string? Reason);
+
+/// <summary>收款方式与二维码 data URL；客户端直接把它交给图片控件。</summary>
+public sealed record PaymentMethodDto(string Method, string Label, string QrDataUrl);
+
+public sealed record OrderDto(
+    Guid Id,
+    string Plan,
+    string Cycle,
+    int Days,
+    int AmountCents,
+    string Status,
+    IReadOnlyList<PaymentMethodDto> PaymentMethods,
+    string PaymentMethod,
+    string PaymentRef,
+    long CreatedAt,
+    long? SubmittedAt,
+    long? ConfirmedAt,
+    long? CancelledAt,
+    string CancelReason);
+
+/// <summary>后台订单行带账号邮箱；交易单号只发给管理端，不在用户列表接口里额外暴露。</summary>
+public sealed record AdminOrderDto(
+    Guid Id,
+    string Email,
+    string Plan,
+    string Cycle,
+    int Days,
+    int AmountCents,
+    string Status,
+    string PaymentMethod,
+    string PaymentRef,
+    long CreatedAt,
+    long? SubmittedAt,
+    long? ConfirmedAt,
+    long? CancelledAt,
+    string CancelReason);
+
+public sealed record AdminOrderPageResponse(
+    IReadOnlyList<AdminOrderDto> Items,
+    int Total,
+    int Limit,
+    int Offset);
+
 public sealed record AdminMetricsResponse(
     int TotalUsers,
     int FreeUsers,

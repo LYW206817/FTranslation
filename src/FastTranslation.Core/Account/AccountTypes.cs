@@ -35,6 +35,14 @@ public enum AccountErrorCode
     ConfirmationMismatch,
     MailUnavailable,
     ResetInvalid,
+    OrderPending,
+    OrderMissing,
+    OrderNotPending,
+    PaymentRefUsed,
+    PaymentRefInvalid,
+    PaymentMethodInvalid,
+    PaymentUnavailable,
+    UpgradeRequiresSupport,
 }
 
 public sealed record AccountError(AccountErrorCode Code, string Message)
@@ -73,6 +81,14 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         AccountErrorCode.ConfirmationMismatch => "邮箱输入不一致。请完整输入当前账号的邮箱。",
         AccountErrorCode.MailUnavailable => $"邮箱服务暂不可用,请联系 {SupportEmail}。",
         AccountErrorCode.ResetInvalid => "重置请求已失效,请重新获取验证码。",
+        AccountErrorCode.OrderPending => "你还有一笔待处理的订单,先完成或取消它再下单。",
+        AccountErrorCode.OrderMissing => "没有找到这笔订单,刷新后再试。",
+        AccountErrorCode.OrderNotPending => "这笔订单的状态已经变化,刷新后再试。",
+        AccountErrorCode.PaymentRefUsed => "这个交易单号已经用在另一笔订单上,请核对后联系我们。",
+        AccountErrorCode.PaymentRefInvalid => "交易单号不完整,请从账单详情整段复制。",
+        AccountErrorCode.PaymentMethodInvalid => "请选择微信或支付宝收款码。",
+        AccountErrorCode.PaymentUnavailable => $"当前没有可用的收款码,请联系 {SupportEmail}。",
+        AccountErrorCode.UpgradeRequiresSupport => $"升级套餐需要补差价,请联系 {SupportEmail}。",
         _ => "账号服务器出错了,请稍后再试。",
     };
 }
@@ -191,6 +207,56 @@ public sealed record CodeRequestResult(bool VerificationRequired);
 
 /// <summary>服务端只回一个稳定消息名（code_sent / password_reset / account_deleted）的操作。</summary>
 public sealed record AccountAction(string Name);
+
+/// <summary>订单里的一种收款方式；QrDataUrl 是 base64 data URL，不依赖额外图片请求。</summary>
+public sealed record AccountPaymentMethod(string Method, string Label, string QrDataUrl);
+
+/// <summary>
+/// 一笔订阅订单。金额与天数来自服务端，客户端只用它们展示和提交交易单号。
+/// </summary>
+public sealed record AccountOrder(
+    Guid Id,
+    string Plan,
+    string Cycle,
+    int Days,
+    int AmountCents,
+    string Status,
+    IReadOnlyList<AccountPaymentMethod> PaymentMethods,
+    string PaymentMethod,
+    string PaymentRef,
+    long CreatedAtUnix,
+    long? SubmittedAtUnix,
+    long? ConfirmedAtUnix,
+    long? CancelledAtUnix,
+    string CancelReason)
+{
+    public string PlanDisplay => Plan switch
+    {
+        "light" => "Lite",
+        "standard" => "Pro",
+        "max" => "Max",
+        _ => "免费版",
+    };
+
+    public string CycleDisplay => Cycle == "yearly" ? "年付" : "月付";
+
+    public string AmountDisplay => "¥" + (AmountCents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
+
+    public string StatusDisplay => Status switch
+    {
+        "pending_review" => "等待人工确认",
+        "fulfilled" => "已开通",
+        "cancelled" => "已取消",
+        _ => "待支付",
+    };
+
+    public bool IsPending => Status is "pending_payment" or "pending_review";
+
+    public bool IsFulfilled => Status == "fulfilled";
+
+    /// <summary>给用户看的短订单号：付款备注里写它，后台按交易单号核对。</summary>
+    public string ShortId => Id.ToString("N")[..10].ToUpperInvariant();
+}
 
 public sealed record AccountApiResult<T>(T? Value, AccountError? Error)
 {

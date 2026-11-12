@@ -7,6 +7,7 @@ const state = {
   token: sessionStorage.getItem(TOKEN_KEY) || '',
   usageDays: 7,
   accounts: { offset: 0, limit: 20, total: 0, query: '', plan: '' },
+  orders: { status: 'pending_review', offset: 0, limit: 20, total: 0 },
   codes: { status: 'open', offset: 0, limit: 20, total: 0 },
 };
 
@@ -512,6 +513,140 @@ async function toggleAccount(email, disable, button) {
   }
 }
 
+async function loadOrders() {
+  closeSelectMenu();
+  const params = new URLSearchParams({
+    status: state.orders.status,
+    limit: String(state.orders.limit),
+    offset: String(state.orders.offset),
+  });
+  const data = await api(`/api/v1/admin/orders?${params.toString()}`);
+  const head = create('tr');
+  ['订单号', '账号', '套餐', '周期', '金额', '收款方式', '交易单号', '状态', '提交时间', '操作']
+    .forEach((text) => head.append(create('th', '', text)));
+  const thead = create('thead');
+  thead.append(head);
+  const tbody = create('tbody');
+
+  if (data.items.length === 0) {
+    const row = create('tr');
+    const cell = create('td', 'muted', '没有匹配的订单');
+    cell.colSpan = 10;
+    row.append(cell);
+    tbody.append(row);
+  } else {
+    data.items.forEach((item) => {
+      const row = create('tr');
+      row.append(create('td', '', item.id.slice(0, 8).toUpperCase()));
+      const emailCell = create('td', 'account-email', item.email);
+      emailCell.title = item.email;
+      row.append(emailCell);
+      row.append(create('td', '', planName(item.plan)));
+      row.append(create('td', '', item.cycle === 'yearly' ? '年付' : '月付'));
+      row.append(create('td', '', `¥${(item.amountCents / 100).toFixed(2)}`));
+      row.append(create('td', '', item.paymentMethod === 'wechat' ? '微信'
+        : item.paymentMethod === 'alipay' ? '支付宝' : '—'));
+
+      const refCell = create('td');
+      if (item.paymentRef) {
+        const text = create('span', 'mono', item.paymentRef);
+        text.title = item.paymentRef;
+        const copy = create('button', 'ghost', '复制');
+        copy.type = 'button';
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(item.paymentRef);
+            toast('交易单号已复制');
+          } catch {
+            toast('复制失败，请手动选择', true);
+          }
+        });
+        refCell.append(text, copy);
+      } else {
+        refCell.append(create('span', 'muted', '—'));
+      }
+      row.append(refCell);
+
+      const statusCell = create('td');
+      const statusClass = item.status === 'fulfilled' ? 'badge ok'
+        : item.status === 'cancelled' ? 'badge disabled' : 'badge';
+      statusCell.append(create('span', statusClass, orderStatusText(item.status)));
+      row.append(statusCell);
+      row.append(create('td', '', formatTime(item.submittedAt || item.createdAt)));
+
+      const actions = create('div', 'row-actions');
+      if (item.status === 'pending_review') {
+        const confirmButton = create('button', 'primary', '确认到账并开通');
+        confirmButton.type = 'button';
+        confirmButton.addEventListener('click', () => confirmOrder(item.id, confirmButton));
+        const cancelButton = create('button', 'danger', '取消');
+        cancelButton.type = 'button';
+        cancelButton.addEventListener('click', () => cancelOrder(item.id, cancelButton));
+        actions.append(confirmButton, cancelButton);
+      } else if (item.status === 'pending_payment') {
+        const cancelButton = create('button', 'danger', '取消');
+        cancelButton.type = 'button';
+        cancelButton.addEventListener('click', () => cancelOrder(item.id, cancelButton));
+        actions.append(cancelButton);
+      } else {
+        actions.append(create('span', 'muted', '—'));
+      }
+      row.append(actions);
+      tbody.append(row);
+    });
+  }
+
+  const table = create('table');
+  table.append(thead, tbody);
+  $('orders').replaceChildren(table);
+
+  const page = Math.floor(state.orders.offset / state.orders.limit) + 1;
+  const pages = Math.max(1, Math.ceil(data.total / state.orders.limit));
+  $('orders-page').textContent = `第 ${page} / ${pages} 页 · 共 ${formatNumber(data.total)} 笔`;
+  $('orders-prev').disabled = state.orders.offset === 0;
+  $('orders-next').disabled = state.orders.offset + state.orders.limit >= data.total;
+}
+
+function orderStatusText(status) {
+  return { pending_payment: '待支付', pending_review: '待审核', fulfilled: '已开通', cancelled: '已取消' }[status] || status;
+}
+
+async function confirmOrder(id, button) {
+  if (!confirm('确认已收到这笔款项并给该账号开通套餐？')) return;
+  button.disabled = true;
+  try {
+    await api(`/api/v1/admin/orders/${id}/confirm`, { method: 'POST' });
+    toast('已确认到账并开通');
+    await Promise.all([loadOrders(), loadAccounts(), loadMetrics()]);
+  } catch (error) {
+    // 账号在待审核期间被手工改过套餐时，直接确认旧订单会把用户降档。
+    const message = error.message === 'order_plan_mismatch'
+      ? '账号当前套餐与订单档位不一致：先改回订单档位，或取消订单改走补差价流程'
+      : error.message;
+    toast(message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function cancelOrder(id, button) {
+  const reason = prompt('取消原因（会显示给用户/留档）', '未收到款项');
+  if (reason === null) return;
+  button.disabled = true;
+  try {
+    await api(`/api/v1/admin/orders/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() || 'admin_cancelled' }),
+    });
+    toast('订单已取消');
+    await loadOrders();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadCodes() {
   const params = new URLSearchParams({
     status: state.codes.status,
@@ -650,11 +785,12 @@ async function loadDiagnostics() {
 }
 
 async function loadAll() {
-  // 五块互不依赖，用 allSettled 让单块失败不拖垮整页。
+  // 六块互不依赖，用 allSettled 让单块失败不拖垮整页。
   const results = await Promise.allSettled([
     loadMetrics(),
     loadUsage(),
     loadAccounts(),
+    loadOrders(),
     loadCodes(),
     loadDiagnostics(),
   ]);
@@ -709,6 +845,20 @@ function bind() {
     state.accounts.offset += state.accounts.limit;
     refresh(loadAccounts);
   });
+  $('order-status').addEventListener('change', () => {
+    state.orders.status = $('order-status').value;
+    state.orders.offset = 0;
+    refresh(loadOrders);
+  });
+  $('orders-prev').addEventListener('click', () => {
+    state.orders.offset = Math.max(0, state.orders.offset - state.orders.limit);
+    refresh(loadOrders);
+  });
+  $('orders-next').addEventListener('click', () => {
+    state.orders.offset += state.orders.limit;
+    refresh(loadOrders);
+  });
+  $('order-refresh').addEventListener('click', () => refresh(loadOrders));
   $('code-form').addEventListener('submit', createCodes);
   $('code-status').addEventListener('change', () => {
     state.codes.status = $('code-status').value;
@@ -727,7 +877,7 @@ function bind() {
 }
 
 bind();
-['account-plan', 'code-plan', 'code-status'].forEach((id) => enhanceSelect($(id)));
+['account-plan', 'order-status', 'code-plan', 'code-status'].forEach((id) => enhanceSelect($(id)));
 if (state.token) {
   showApp();
   refresh(loadAll);

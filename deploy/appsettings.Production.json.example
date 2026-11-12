@@ -32,6 +32,10 @@
         "MaxConcurrentSessionsPerUser": 1,
         "DailyBudgetMicros": 2000000
       }
+    },
+    "Payment": {
+      "WeChatQrPath": "/opt/fasttranslation/payment/wechat.png",
+      "AlipayQrPath": "/opt/fasttranslation/payment/alipay.png"
     }
   }
 }

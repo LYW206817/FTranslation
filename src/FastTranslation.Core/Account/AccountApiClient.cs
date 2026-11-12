@@ -268,6 +268,63 @@ public sealed class AccountApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>创建订阅订单。金额与天数由服务端算，客户端只传套餐和周期。</summary>
+    public async Task<AccountApiResult<AccountOrder>> CreateOrderAsync(
+        string accessToken, string plan, string cycle, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/orders", accessToken, new CreateOrderBody(plan, cycle),
+            cancellationToken).ConfigureAwait(false);
+        return await ReadOrderAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>当前待处理订单；没有时服务端回 order_missing，调用方按「没有」处理。</summary>
+    public async Task<AccountApiResult<AccountOrder>> GetCurrentOrderAsync(
+        string accessToken, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Get, "api/v1/orders/current", accessToken, null, cancellationToken).ConfigureAwait(false);
+        return await ReadOrderAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<AccountApiResult<AccountOrder>> GetOrderAsync(
+        string accessToken, Guid orderId, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Get, "api/v1/orders/" + orderId.ToString("D"), accessToken, null,
+            cancellationToken).ConfigureAwait(false);
+        return await ReadOrderAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>提交完整交易单号。服务端会去空白、去重并转成待审核。</summary>
+    public async Task<AccountApiResult<AccountOrder>> SubmitOrderAsync(
+        string accessToken, Guid orderId, string paymentMethod, string paymentRef,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post,
+            "api/v1/orders/" + orderId.ToString("D") + "/submit",
+            accessToken,
+            new SubmitOrderBody(paymentMethod, paymentRef),
+            cancellationToken).ConfigureAwait(false);
+        return await ReadOrderAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<AccountApiResult<AccountAction>> CancelOrderAsync(
+        string accessToken, Guid orderId, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            HttpMethod.Post, "api/v1/orders/" + orderId.ToString("D") + "/cancel", accessToken,
+            new EmptyBody(), cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<MessageResponse, AccountAction>(
+            response, body => new AccountAction(body.Message), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AccountApiResult<AccountOrder>> ReadOrderAsync(
+        HttpResponseMessage? response, CancellationToken cancellationToken) =>
+        await ReadAsync<OrderResponse, AccountOrder>(
+            response, body => body.ToOrder(), cancellationToken).ConfigureAwait(false);
+
     private async Task<AccountApiResult<AccountSignIn>> SendSignInAsync(
         string path, object body, CancellationToken cancellationToken)
     {
@@ -385,6 +442,14 @@ public sealed class AccountApiClient
                 case "confirmation_mismatch": return AccountErrorCode.ConfirmationMismatch;
                 case "mail_unavailable": return AccountErrorCode.MailUnavailable;
                 case "reset_invalid": return AccountErrorCode.ResetInvalid;
+                case "order_pending": return AccountErrorCode.OrderPending;
+                case "order_missing": return AccountErrorCode.OrderMissing;
+                case "order_not_pending": return AccountErrorCode.OrderNotPending;
+                case "payment_ref_used": return AccountErrorCode.PaymentRefUsed;
+                case "payment_ref_invalid": return AccountErrorCode.PaymentRefInvalid;
+                case "payment_method_invalid": return AccountErrorCode.PaymentMethodInvalid;
+                case "payment_unavailable": return AccountErrorCode.PaymentUnavailable;
+                case "upgrade_requires_support": return AccountErrorCode.UpgradeRequiresSupport;
             }
         }
         return status switch
@@ -445,6 +510,9 @@ public sealed class AccountApiClient
     private sealed record PasswordBody(
         string CurrentPassword, string NewPassword, string? DeviceFingerprint, string? DeviceName);
 
+    private sealed record CreateOrderBody(string Plan, string Cycle);
+
+    private sealed record SubmitOrderBody(string PaymentMethod, string PaymentRef);
 
     private sealed record EmptyBody;
 
@@ -461,6 +529,38 @@ public sealed class AccountApiClient
     {
         [JsonPropertyName("account")] public AccountResponse Account { get; init; } = new();
         [JsonPropertyName("usage")] public UsageResponse Usage { get; init; } = new();
+    }
+
+    private sealed class OrderResponse
+    {
+        [JsonPropertyName("id")] public Guid Id { get; init; }
+        [JsonPropertyName("plan")] public string Plan { get; init; } = "free";
+        [JsonPropertyName("cycle")] public string Cycle { get; init; } = "monthly";
+        [JsonPropertyName("days")] public int Days { get; init; }
+        [JsonPropertyName("amountCents")] public int AmountCents { get; init; }
+        [JsonPropertyName("status")] public string Status { get; init; } = "pending_payment";
+        [JsonPropertyName("paymentMethods")] public List<PaymentMethodResponse> PaymentMethods { get; init; } = [];
+        [JsonPropertyName("paymentMethod")] public string PaymentMethod { get; init; } = string.Empty;
+        [JsonPropertyName("paymentRef")] public string PaymentRef { get; init; } = string.Empty;
+        [JsonPropertyName("createdAt")] public long CreatedAt { get; init; }
+        [JsonPropertyName("submittedAt")] public long? SubmittedAt { get; init; }
+        [JsonPropertyName("confirmedAt")] public long? ConfirmedAt { get; init; }
+        [JsonPropertyName("cancelledAt")] public long? CancelledAt { get; init; }
+        [JsonPropertyName("cancelReason")] public string CancelReason { get; init; } = string.Empty;
+
+        public AccountOrder ToOrder() => new(
+            Id, Plan, Cycle, Days, AmountCents, Status,
+            PaymentMethods.Select(item => item.ToMethod()).ToList(),
+            PaymentMethod, PaymentRef, CreatedAt, SubmittedAt, ConfirmedAt, CancelledAt, CancelReason);
+    }
+
+    private sealed class PaymentMethodResponse
+    {
+        [JsonPropertyName("method")] public string Method { get; init; } = string.Empty;
+        [JsonPropertyName("label")] public string Label { get; init; } = string.Empty;
+        [JsonPropertyName("qrDataUrl")] public string QrDataUrl { get; init; } = string.Empty;
+
+        public AccountPaymentMethod ToMethod() => new(Method, Label, QrDataUrl);
     }
 
     private sealed class AccountResponse

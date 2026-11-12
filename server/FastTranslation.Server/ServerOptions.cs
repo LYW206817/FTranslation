@@ -37,6 +37,23 @@ public sealed class ServerOptions
 
     /// <summary>代理网关，用开发者自己的 DashScope Key 为免费档用户付费。</summary>
     public GatewayOptions Gateway { get; set; } = new();
+
+    /// <summary>个人收款码配置；文件只存在于服务器，绝不进仓库或安装包。</summary>
+    public PaymentOptions Payment { get; set; } = new();
+}
+
+/// <summary>
+/// 订阅订单的收款码。两个路径都可为空——没配置的收款方式不会出现在下单响应里，
+/// 两个都没配置时下单接口返回 payment_unavailable，而不是假装能收款。
+/// </summary>
+public sealed class PaymentOptions
+{
+    public string WeChatQrPath { get; set; } = string.Empty;
+
+    public string AlipayQrPath { get; set; } = string.Empty;
+
+    /// <summary>单张二维码的硬上限，防止误配成整张截图后每次下单都塞进响应体。</summary>
+    public int MaxQrBytes { get; set; } = 200_000;
 }
 
 public sealed class SmtpOptions

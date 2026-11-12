@@ -319,5 +319,29 @@ public sealed class ServerDatabase
         );
 
         CREATE INDEX IF NOT EXISTS ix_redeem_codes_redeemed ON redeem_codes(redeemed_at);
+
+        CREATE TABLE IF NOT EXISTS orders (
+            id              TEXT PRIMARY KEY,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            plan            INTEGER NOT NULL,
+            cycle           TEXT NOT NULL,
+            days            INTEGER NOT NULL,
+            amount_cents    INTEGER NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'pending_payment',
+            payment_method  TEXT NOT NULL DEFAULT '',
+            payment_ref     TEXT NOT NULL DEFAULT '',
+            created_at      INTEGER NOT NULL,
+            submitted_at    INTEGER,
+            confirmed_at    INTEGER,
+            cancelled_at    INTEGER,
+            cancel_reason   TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_orders_user_time ON orders(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS ix_orders_status_time ON orders(status, created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_payment_ref
+            ON orders(payment_ref) WHERE payment_ref <> '';
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_active_user
+            ON orders(user_id) WHERE status IN ('pending_payment', 'pending_review');
         """;
 }
