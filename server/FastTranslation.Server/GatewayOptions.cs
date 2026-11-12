@@ -44,6 +44,8 @@ public sealed class GatewayOptions
     /// <summary>
     /// v129: 客户端可以指定 model 并把网关当通用 LLM 用；输出长度不设上限时，
     /// 输入只按字符计费、输出 token 完全不进额度，成本会与账本脱节。
+    /// v130: 这是绝对平顶；端点还会按输入长度收紧到 max(64, 2×输入字符)，见
+    /// <see cref="Gateway.GatewayEndpoints"/>。
     /// </summary>
     public int MaxOutputTokens { get; set; } = 4_096;
 

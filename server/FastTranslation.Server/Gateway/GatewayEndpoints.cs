@@ -21,6 +21,12 @@ public static class GatewayEndpoints
 
     private const string AnonymousFingerprint = "gateway-anonymous";
 
+    // v130: 绝对上限之外再按输入长度收紧。翻译输出通常与输入同量级，给 2 倍余量；
+    // 极短文本至少留 64 token，否则「你好」这类请求会被自己的长度上限误杀。
+    private const int OutputTokensPerInputChar = 2;
+
+    private const int MinOutputTokenAllowance = 64;
+
     private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros);
 
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
@@ -77,7 +83,12 @@ public static class GatewayEndpoints
         }
 
         var maxTokens = ReadMaxTokens(body);
-        if (maxTokens is { } requestedTokens && requestedTokens > gateway.MaxOutputTokens)
+        // v130: 4096 的平顶仍允许「10 字符输入配 4096 输出」——额度只按输入字符扣，
+        // 单笔真实成本可以远超这笔额度。按输入长度给相对上限，把输出/输入比压回
+        // 额度倍率能覆盖的量级；桌面端不传 max_tokens，不受这条影响。
+        var outputLimit = Math.Min(gateway.MaxOutputTokens,
+            Math.Max(MinOutputTokenAllowance, chars * OutputTokensPerInputChar));
+        if (maxTokens is { } requestedTokens && requestedTokens > outputLimit)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "max_tokens_too_large");
         }

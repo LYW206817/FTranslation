@@ -367,6 +367,50 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     }
 
     [Fact]
+    public async Task Chat_RejectsMaxTokensOutOfProportionToTheInput()
+    {
+        // 5 字符输入的相对上限只有 64 token；1000 虽低于绝对上限 4096，仍必须拒绝。
+        var client = await SignedInClientAsync(PlanTier.Free);
+        var before = await CallCountAsync();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = "qwen-mt-flash",
+                messages = new[] { new { role = "user", content = "hello" } },
+                max_tokens = 1_000,
+            }),
+        };
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("max_tokens_too_large", await response.Content.ReadAsStringAsync());
+        Assert.Equal(before, await CallCountAsync());
+        Assert.Equal(0, (await ReadUsageAsync(client)).UsedMonthlyChars);
+    }
+
+    [Fact]
+    public async Task Chat_AllowsMaxTokensWithinTheRelativeLimit()
+    {
+        // 4000 字符的相对上限是 min(4096, 8000)=4096；长文本不能被相对上限误杀。
+        var client = await SignedInClientAsync(PlanTier.Light);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = "qwen-mt-flash",
+                messages = new[] { new { role = "user", content = new string('a', 4_000) } },
+                max_tokens = 4_096,
+            }),
+        };
+
+        using var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Chat_RejectsAnOversizedBody()
     {
         var client = await SignedInClientAsync(PlanTier.Free);
