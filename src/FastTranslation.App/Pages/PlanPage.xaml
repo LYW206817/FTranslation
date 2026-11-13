@@ -176,6 +176,7 @@
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto"/>
                       <RowDefinition Height="Auto"/>
+                      <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -191,6 +192,10 @@
                     </StackPanel>
                     <TextBlock Grid.Row="1" Text="88 万字符/月 · 年付 ¥69" FontSize="11" Margin="0,2,0,0"
                                Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                      <Run Text="日常推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
+                      <Run Text=" · 划词、截图、文档、语音" Foreground="{DynamicResource TextMutedBrush}"/>
+                    </TextBlock>
                   </Grid>
                 </Border>
 
@@ -199,6 +204,7 @@
                         Padding="12,9" Margin="0,8,0,0" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
                   <Grid>
                     <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto"/>
                       <RowDefinition Height="Auto"/>
                       <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -216,6 +222,10 @@
                     </StackPanel>
                     <TextBlock Grid.Row="1" Text="188 万字符/月 · 年付 ¥119" FontSize="11" Margin="0,2,0,0"
                                Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                      <Run Text="进阶推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
+                      <Run Text=" · 整天读外文、语音字幕" Foreground="{DynamicResource TextMutedBrush}"/>
+                    </TextBlock>
                   </Grid>
                 </Border>
 
@@ -224,6 +234,7 @@
                         Padding="12,9" Margin="0,8,0,0" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
                   <Grid>
                     <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto"/>
                       <RowDefinition Height="Auto"/>
                       <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -241,6 +252,10 @@
                     </StackPanel>
                     <TextBlock Grid.Row="1" Text="388 万字符/月 · 年付 ¥199" FontSize="11" Margin="0,2,0,0"
                                Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                      <Run Text="重度推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
+                      <Run Text=" · 批量文档、长期使用" Foreground="{DynamicResource TextMutedBrush}"/>
+                    </TextBlock>
                   </Grid>
                 </Border>
               </StackPanel>

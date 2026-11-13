@@ -232,6 +232,9 @@ ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--
 .plan { border: 1px solid var(--rule); border-radius: 12px; padding: 1.5rem 1.2rem; background: var(--surface); }
 .plan.feature { border-color: var(--blue-wash); box-shadow: 0 0 0 3px rgba(37,98,255,0.06); }
 .plan h3 { margin: 0; font-family: var(--serif); font-size: 1.2rem; font-weight: 500; }
+/* 先给定位再看额度：推荐语用品牌色，避免四张卡只剩数字。 */
+.plan .pitch { margin: 0.5rem 0 0; font-size: 0.87rem; line-height: 1.55; color: var(--ink-soft); }
+.plan .pitch strong { color: var(--blue-ink); font-weight: 600; }
 /* 四档卡片比三档窄，额度与价格在 markup 里换行显示，避免在「元 / 月」中间折断。 */
 .plan .quota { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin: 0.3rem 0 1.05rem; letter-spacing: 0.02em; }
 .plan ul { margin: 0; padding: 0; list-style: none; font-size: 0.89rem; color: var(--ink-soft); }
