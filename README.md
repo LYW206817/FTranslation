@@ -237,10 +237,10 @@ site/                                产品介绍静态单页（纯 HTML/CSS，�
 admin/                               运营后台静态单页（纯 HTML/CSS/JS，无构建步骤）
 deploy/                              一台 ECS 的部署文件（systemd + Caddy）
 tests/
-  FastTranslation.Core.Tests/              441 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）
+  FastTranslation.Core.Tests/              448 个测试（设置、复习调度、文档拆段、额度、语音口径、本地词库）
   FastTranslation.Platform.Windows.Tests/  109 个测试（热键解析、写回校验、UIA 行切片、ICO 解析、调色板）
   FastTranslation.Providers.QwenMt.Tests/  101 个测试（本地假 HTTP 服务）
-  FastTranslation.Server.Tests/            310 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
+  FastTranslation.Server.Tests/            322 个测试（WebApplicationFactory 起真服务 + 临时 SQLite）
 tools/
   qa/        截图、内存浸泡、安装校验、E2E 联调等 PowerShell 脚本
   Probe*/    启动耗时与内存探针（历史决策依据）
