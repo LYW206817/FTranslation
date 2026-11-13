@@ -520,7 +520,7 @@ public class AccountClientTests
         const string orderJson = """
         {
           "id": "8f1a2c3d-0000-4000-8000-000000000002",
-          "plan": "standard", "cycle": "yearly", "days": 365, "amountCents": 11900,
+          "plan": "standard", "cycle": "quarterly", "days": 90, "amountCents": 3570,
           "status": "pending_payment",
           "paymentMethods": [
             { "method": "wechat", "label": "微信", "qrDataUrl": "data:image/png;base64,AAAA" },
@@ -532,16 +532,17 @@ public class AccountClientTests
         """;
         var (client, handler) = Build(HttpStatusCode.OK, orderJson, baseUrl: "https://api.example.com");
 
-        var result = await client.CreateOrderAsync("token", "standard", "yearly", CancellationToken.None);
+        var result = await client.CreateOrderAsync("token", "standard", "quarterly", CancellationToken.None);
 
         Assert.True(result.Succeeded);
         Assert.Equal("https://api.example.com/api/v1/orders", handler.LastUri!.ToString());
         Assert.Equal("POST", handler.LastMethod);
         Assert.Contains("\"plan\":\"standard\"", handler.LastBody);
-        Assert.Contains("\"cycle\":\"yearly\"", handler.LastBody);
+        Assert.Contains("\"cycle\":\"quarterly\"", handler.LastBody);
         Assert.Equal("Bearer token", handler.LastAuthorization?.ToString());
-        Assert.Equal(365, result.Value!.Days);
-        Assert.Equal("¥119.00", result.Value.AmountDisplay);
+        Assert.Equal(90, result.Value!.Days);
+        Assert.Equal("¥35.70", result.Value.AmountDisplay);
+        Assert.Equal("季付", result.Value.CycleDisplay);
         Assert.Equal(2, result.Value.PaymentMethods.Count);
         Assert.Equal("Pro", result.Value.PlanDisplay);
     }

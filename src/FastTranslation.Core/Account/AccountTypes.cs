@@ -238,7 +238,13 @@ public sealed record AccountOrder(
         _ => "免费版",
     };
 
-    public string CycleDisplay => Cycle == "yearly" ? "年付" : "月付";
+    // yearly 只出现在 v141 之前创建的历史订单里；新订单只接受 monthly / quarterly。
+    public string CycleDisplay => Cycle switch
+    {
+        "quarterly" => "季付",
+        "yearly" => "年付",
+        _ => "月付",
+    };
 
     public string AmountDisplay => "¥" + (AmountCents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
 

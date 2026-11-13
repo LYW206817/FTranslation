@@ -250,6 +250,11 @@ function planName(plan) {
   return { free: '免费', light: 'Lite', standard: 'Pro', max: 'Max' }[plan] || plan || '—';
 }
 
+// yearly 是 v141 停售年付前的历史订单，后台仍要能读懂；新订单只有 monthly / quarterly。
+function cycleName(cycle) {
+  return { monthly: '月付', quarterly: '季付', yearly: '年付' }[cycle] || cycle || '—';
+}
+
 // 升级只升一档：Lite→Pro、Pro→Max；Max 已是最高档，没有升级入口。
 const UPGRADE_TARGETS = { light: 'standard', standard: 'max' };
 
@@ -667,7 +672,7 @@ function renderOrdersTable(items) {
     const planStack = create('div', 'cell-stack');
     planStack.append(
       create('span', 'cell-strong', planName(item.plan)),
-      create('span', 'sub', `${item.cycle === 'yearly' ? '年付' : '月付'} · ${item.days} 天`));
+      create('span', 'sub', `${cycleName(item.cycle)} · ${item.days} 天`));
     planCell.append(planStack);
     row.append(planCell);
 
@@ -757,7 +762,7 @@ async function confirmOrder(item) {
   const summary = create('dl', 'dialog-summary');
   [
     ['账号', item.email],
-    ['套餐', `${planName(item.plan)} · ${item.cycle === 'yearly' ? '年付' : '月付'} · ${item.days} 天`],
+    ['套餐', `${planName(item.plan)} · ${cycleName(item.cycle)} · ${item.days} 天`],
     ['金额', `¥${(item.amountCents / 100).toFixed(2)}`],
     ['交易单号', item.paymentRef || '—'],
   ].forEach(([label, value]) => summary.append(create('dt', '', label), create('dd', '', value)));

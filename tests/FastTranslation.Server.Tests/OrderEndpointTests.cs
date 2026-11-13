@@ -77,14 +77,14 @@ public class OrderEndpointTests : IClassFixture<ServerFactory>, IClassFixture<Or
     {
         var (client, _) = await RegisterAsync();
 
-        var response = await CreateOrderAsync(client, "standard", "yearly");
+        var response = await CreateOrderAsync(client, "standard", "quarterly");
 
         response.EnsureSuccessStatusCode();
         var order = (await response.Content.ReadFromJsonAsync<OrderDto>())!;
         Assert.Equal("standard", order.Plan);
-        Assert.Equal("yearly", order.Cycle);
-        Assert.Equal(365, order.Days);
-        Assert.Equal(11_900, order.AmountCents);
+        Assert.Equal("quarterly", order.Cycle);
+        Assert.Equal(90, order.Days);
+        Assert.Equal(3_570, order.AmountCents);
         Assert.Equal("pending_payment", order.Status);
         Assert.Equal(2, order.PaymentMethods.Count);
         Assert.Contains(order.PaymentMethods, item => item.Method == "wechat" && item.QrDataUrl.StartsWith("data:image/png;base64,"));
@@ -97,7 +97,7 @@ public class OrderEndpointTests : IClassFixture<ServerFactory>, IClassFixture<Or
         var (client, _) = await RegisterAsync();
         (await CreateOrderAsync(client, "light", "monthly")).EnsureSuccessStatusCode();
 
-        var again = await CreateOrderAsync(client, "light", "yearly");
+        var again = await CreateOrderAsync(client, "light", "quarterly");
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         Assert.Contains("order_pending", await again.Content.ReadAsStringAsync());
 
@@ -207,12 +207,12 @@ public class OrderEndpointTests : IClassFixture<ServerFactory>, IClassFixture<Or
         (await SetPlanAsync(auth.Account.Email, PlanTier.Light, 30)).EnsureSuccessStatusCode();
         var before = await GetMeAsync(client);
 
-        var created = (await (await CreateOrderAsync(client, "light", "yearly")).Content.ReadFromJsonAsync<OrderDto>())!;
+        var created = (await (await CreateOrderAsync(client, "light", "quarterly")).Content.ReadFromJsonAsync<OrderDto>())!;
         (await SubmitAsync(client, created.Id, "alipay", "420000222222222222")).EnsureSuccessStatusCode();
         (await AdminPostAsync($"/api/v1/admin/orders/{created.Id}/confirm")).EnsureSuccessStatusCode();
 
         var after = await GetMeAsync(client);
-        Assert.Equal(365L * 86_400L, after.PlanExpiresAt!.Value - before.PlanExpiresAt!.Value);
+        Assert.Equal(90L * 86_400L, after.PlanExpiresAt!.Value - before.PlanExpiresAt!.Value);
     }
 
     [Fact]

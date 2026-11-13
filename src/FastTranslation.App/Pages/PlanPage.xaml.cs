@@ -251,7 +251,7 @@ public partial class PlanPage : UserControl
     private void SelectCycle()
     {
         Select(MonthlyCycleCard, _cycle == "monthly");
-        Select(YearlyCycleCard, _cycle == "yearly");
+        Select(QuarterlyCycleCard, _cycle == "quarterly");
     }
 
     private static string TierName(string tier) => tier switch
