@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using FastTranslation.App;
 using FastTranslation.Core.Account;
@@ -24,6 +25,12 @@ public partial class PlanPage : UserControl
     private string _cycle = "monthly";
     private bool _canSubscribe = true;
     private bool _subscribed;
+
+    // 价格文案与服务端 OrderPricing.PricesCents 同批改；四个值依次是月价、季价、
+    // 月标价、季标价。季付按 3 倍月价，标价按「88 万字符 10 元」线性折算。
+    private static readonly PriceCopy LitePrice = new("6.9", "20.7", "10", "30");
+    private static readonly PriceCopy ProPrice = new("11.9", "35.7", "21.4", "64.1");
+    private static readonly PriceCopy MaxPrice = new("19.9", "59.7", "44.1", "132.3");
 
     public PlanPage(AccountCoordinator account)
     {
@@ -250,8 +257,35 @@ public partial class PlanPage : UserControl
 
     private void SelectCycle()
     {
+        UpdatePrices();
         Select(MonthlyCycleCard, _cycle == "monthly");
         Select(QuarterlyCycleCard, _cycle == "quarterly");
+    }
+
+    /// <summary>
+    /// 大价格跟着周期走：月付显示月价，季付显示 90 天总价；副行回显另一种周期与它的标价，
+    /// 这样切换时用户不用自己乘 3 或除 3。
+    /// </summary>
+    private void UpdatePrices()
+    {
+        ApplyPrice(LitePriceText, LiteUnitText, LiteAltText, LitePrice);
+        ApplyPrice(ProPriceText, ProUnitText, ProAltText, ProPrice);
+        ApplyPrice(MaxPriceText, MaxUnitText, MaxAltText, MaxPrice);
+    }
+
+    private void ApplyPrice(TextBlock price, TextBlock unit, TextBlock alt, PriceCopy copy)
+    {
+        var quarterly = _cycle == "quarterly";
+        price.Text = "¥" + (quarterly ? copy.Quarterly : copy.Monthly);
+        unit.Text = quarterly ? "/季" : "/月";
+        alt.Inlines.Clear();
+        alt.Inlines.Add(new Run(quarterly
+            ? $"月付 ¥{copy.Monthly} · 标价 "
+            : $"季付 ¥{copy.Quarterly} · 标价 "));
+        alt.Inlines.Add(new Run("¥" + (quarterly ? copy.MonthlyAnchor : copy.QuarterlyAnchor))
+        {
+            TextDecorations = TextDecorations.Strikethrough,
+        });
     }
 
     private static string TierName(string tier) => tier switch
@@ -400,4 +434,6 @@ public partial class PlanPage : UserControl
             RedeemHint.Text = "买到激活码后填在这里,兑换后套餐立刻生效。";
         }
     }
+
+    private readonly record struct PriceCopy(string Monthly, string Quarterly, string MonthlyAnchor, string QuarterlyAnchor);
 }

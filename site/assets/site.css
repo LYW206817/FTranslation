@@ -15,6 +15,7 @@
   --blue: #2562FF;
   --blue-wash: #D8E3FF;
   --blue-ink: #16327F;
+  --hot: #D92D20;
   --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "SimSun", Georgia, serif;
   --sans: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
   --mono: "Cascadia Mono", "Consolas", "SF Mono", ui-monospace, monospace;
@@ -263,6 +264,7 @@ ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--
 .dl-note { margin-top: 1.5rem; font-size: 0.83rem; color: var(--muted); }
 
 .plan .tag { display: inline-block; font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em; color: var(--blue-ink); background: var(--blue-wash); padding: 0.1rem 0.4rem; border-radius: 3px; margin-bottom: 0.7rem; }
+.plan .tag-hot { color: #fff; background: var(--hot); }
 
 /* 下载 */
 .dl { margin-top: 2.4rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
