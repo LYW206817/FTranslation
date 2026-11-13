@@ -83,7 +83,6 @@ public partial class PlanPage : UserControl
             DailyText.Text = string.Empty;
             DailyLeftText.Text = string.Empty;
             DailyBar.Value = 0;
-            SubscribeTitle.Text = "订阅后解锁单词本与四档复习";
             PlanPillText.Text = "未登录";
             PlanNameText.Text = "未登录";
             PlanTermText.Text = string.Empty;
@@ -92,11 +91,7 @@ public partial class PlanPage : UserControl
             return;
         }
 
-        // 付费套餐让推销话术变得多余：卡片变成「你已经拥有的内容」
         var paid = !string.Equals(session!.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
-        // 同一张卡片服务两类读者：订阅者不该读到「订阅以解锁」，
-        // 那项功能他已经付过钱了
-        SubscribeTitle.Text = paid ? "你的套餐" : "订阅后解锁单词本与四档复习";
         // v91：hero 的 42px 大字与右上角药丸读的都是同一个套餐名，两处必须同源。
         var planName = session.Profile.PlanDisplay;
         PlanPillText.Text = planName;
