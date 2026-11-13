@@ -160,14 +160,19 @@
         </Grid>
       </Border>
 
-      <!-- v135：套餐选择单独一栏，三张档位卡横向排；周期与订阅按钮放在下一行。
-           价格与额度是静态文案，改价时这里、site 和 server/Plan.cs 要同批改。 -->
-      <Border Style="{StaticResource Card}" Padding="26,22,28,24" Margin="0,16,0,0">
+      <!-- v135：套餐选择单独一栏。
+           v136：卡片改成「名称/价格 → 额度 → 推荐语」四段，周期与订阅按钮收进同一底色条，
+           避免按钮孤零零挂在右边。价格与额度是静态文案，改价时这里、site 和 server/Plan.cs 要同批改。 -->
+      <Border Style="{StaticResource Card}" Padding="24,20,24,18" Margin="0,0,0,16">
         <StackPanel>
-          <TextBlock x:Name="SubscribeTitle" Text="选择套餐与周期" FontSize="13" FontWeight="SemiBold"
-                     TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}"/>
+          <StackPanel>
+            <TextBlock x:Name="SubscribeTitle" Text="选择套餐与周期" FontSize="15" FontWeight="SemiBold"
+                       TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <TextBlock Text="三档功能相同，按每月用量选；年付按 10 个月计。" FontSize="11.5" Margin="0,3,0,0"
+                       Foreground="{DynamicResource TextMutedBrush}"/>
+          </StackPanel>
 
-          <Grid Margin="0,14,0,0">
+          <Grid Margin="0,16,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="12"/>
@@ -176,90 +181,142 @@
               <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="LiteCard" Tag="light" BorderThickness="1" CornerRadius="10"
+            <Border x:Name="LiteCard" Tag="light" BorderThickness="1" CornerRadius="12"
                     BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                    Padding="14,12" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+                    Padding="16,14" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Lite" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="¥6.9" FontSize="18" FontWeight="SemiBold"
+
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="Lite" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                  <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,2"
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="¥6.9" FontSize="23" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,3"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,7,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="88 万字符 / 月" FontSize="12.5"
+                             Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  <TextBlock Grid.Column="1" Text="年付 ¥69" FontSize="11.5"
                              Foreground="{DynamicResource TextMutedBrush}"/>
-                </StackPanel>
-                <TextBlock Grid.Row="1" Text="88 万字符/月 · 年付 ¥69" FontSize="11" Margin="0,2,0,0"
-                           Foreground="{DynamicResource TextMutedBrush}"/>
-                <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                </Grid>
+
+                <Border Grid.Row="2" Height="1" Background="{DynamicResource HairBrush}" Margin="0,10,0,0"/>
+                <TextBlock Grid.Row="3" Margin="0,8,0,0" FontSize="11.5" TextWrapping="Wrap">
                   <Run Text="日常推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
                   <Run Text=" · 划词、截图、文档、语音" Foreground="{DynamicResource TextMutedBrush}"/>
                 </TextBlock>
               </Grid>
             </Border>
 
-            <Border x:Name="ProCard" Tag="standard" Grid.Column="2" BorderThickness="1.5" CornerRadius="10"
+            <Border x:Name="ProCard" Tag="standard" Grid.Column="2" BorderThickness="1.5" CornerRadius="12"
                     BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
-                    Padding="14,12" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+                    Padding="16,14" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Pro" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="¥11.9" FontSize="18" FontWeight="SemiBold"
-                             Foreground="{DynamicResource TextPrimaryBrush}"/>
-                  <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,2"
+
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pro" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <Border Background="{DynamicResource BrandBrush}" CornerRadius="5" Padding="6,1"
+                            Margin="8,1,0,0" VerticalAlignment="Center">
+                      <TextBlock Text="推荐" FontSize="10" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource OnBrandTextBrush}"/>
+                    </Border>
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="¥11.9" FontSize="23" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,3"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,7,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="188 万字符 / 月" FontSize="12.5"
+                             Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  <TextBlock Grid.Column="1" Text="年付 ¥119" FontSize="11.5"
                              Foreground="{DynamicResource TextMutedBrush}"/>
-                </StackPanel>
-                <TextBlock Grid.Row="1" Text="188 万字符/月 · 年付 ¥119" FontSize="11" Margin="0,2,0,0"
-                           Foreground="{DynamicResource TextMutedBrush}"/>
-                <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                </Grid>
+
+                <Border Grid.Row="2" Height="1" Background="{DynamicResource HairBrush}" Margin="0,10,0,0"/>
+                <TextBlock Grid.Row="3" Margin="0,8,0,0" FontSize="11.5" TextWrapping="Wrap">
                   <Run Text="进阶推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
                   <Run Text=" · 整天读外文、语音字幕" Foreground="{DynamicResource TextMutedBrush}"/>
                 </TextBlock>
               </Grid>
             </Border>
 
-            <Border x:Name="MaxCard" Tag="max" Grid.Column="4" BorderThickness="1" CornerRadius="10"
+            <Border x:Name="MaxCard" Tag="max" Grid.Column="4" BorderThickness="1" CornerRadius="12"
                     BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                    Padding="14,12" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+                    Padding="16,14" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Max" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="¥19.9" FontSize="18" FontWeight="SemiBold"
+
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="Max" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                  <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,2"
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="¥19.9" FontSize="23" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="/月" FontSize="11" VerticalAlignment="Bottom" Margin="2,0,0,3"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                  </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,7,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="388 万字符 / 月" FontSize="12.5"
+                             Foreground="{DynamicResource TextSecondaryBrush}"/>
+                  <TextBlock Grid.Column="1" Text="年付 ¥199" FontSize="11.5"
                              Foreground="{DynamicResource TextMutedBrush}"/>
-                </StackPanel>
-                <TextBlock Grid.Row="1" Text="388 万字符/月 · 年付 ¥199" FontSize="11" Margin="0,2,0,0"
-                           Foreground="{DynamicResource TextMutedBrush}"/>
-                <TextBlock Grid.Row="2" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap">
+                </Grid>
+
+                <Border Grid.Row="2" Height="1" Background="{DynamicResource HairBrush}" Margin="0,10,0,0"/>
+                <TextBlock Grid.Row="3" Margin="0,8,0,0" FontSize="11.5" TextWrapping="Wrap">
                   <Run Text="重度推荐" Foreground="{DynamicResource BrandTextBrush}" FontWeight="SemiBold"/>
                   <Run Text=" · 批量文档、长期使用" Foreground="{DynamicResource TextMutedBrush}"/>
                 </TextBlock>
@@ -267,44 +324,55 @@
             </Border>
           </Grid>
 
-          <Grid Margin="0,14,0,0">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Border x:Name="MonthlyCycleCard" Tag="monthly" BorderThickness="1" CornerRadius="8"
-                    BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
-                    Padding="14,8" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
-              <StackPanel>
-                <TextBlock Text="月付" FontSize="12.5" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <TextBlock Text="30 天" FontSize="11" Margin="0,2,0,0"
-                           Foreground="{DynamicResource TextMutedBrush}"/>
-              </StackPanel>
-            </Border>
-            <Border x:Name="YearlyCycleCard" Grid.Column="1" Tag="yearly" BorderThickness="1"
-                    CornerRadius="8" BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                    Padding="14,8" Margin="8,0,0,0" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
-              <StackPanel>
-                <TextBlock Text="年付" FontSize="12.5" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <TextBlock Text="365 天 · 更划算" FontSize="11" Margin="0,2,0,0"
-                           Foreground="{DynamicResource TextMutedBrush}"/>
-              </StackPanel>
-            </Border>
-            <Button x:Name="SubscribeButton" Grid.Column="3" Content="订阅" Width="220" Height="44"
-                    Margin="16,0,0,0" VerticalAlignment="Center"
-                    Style="{StaticResource PrimaryButton}" Click="Subscribe_Click"/>
-          </Grid>
+          <Border Margin="0,16,0,0" Background="{DynamicResource WindowBgBrush}" CornerRadius="12"
+                  BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="14,11">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
 
-          <TextBlock x:Name="SubscribeHint" FontSize="11.5" Margin="0,10,0,0" TextWrapping="Wrap"
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="付费周期" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                  <Border x:Name="MonthlyCycleCard" Tag="monthly" BorderThickness="1" CornerRadius="8"
+                          BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
+                          Padding="12,7" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="月付" FontSize="12.5" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="30 天" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource TextMutedBrush}"/>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="YearlyCycleCard" Tag="yearly" BorderThickness="1" CornerRadius="8"
+                          BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
+                          Padding="12,7" Margin="8,0,0,0" Cursor="Hand" MouseLeftButtonUp="Cycle_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="年付" FontSize="12.5" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="365 天 · 更划算" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource TextMutedBrush}"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </StackPanel>
+
+              <TextBlock Grid.Column="1" Text="微信 / 支付宝收款" FontSize="11" Margin="16,0,20,0"
+                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextMutedBrush}"/>
+
+              <Button x:Name="SubscribeButton" Grid.Column="2" Content="订阅" Width="220" Height="44"
+                      VerticalAlignment="Center" Style="{StaticResource PrimaryButton}" Click="Subscribe_Click"/>
+            </Grid>
+          </Border>
+
+          <TextBlock x:Name="SubscribeHint" FontSize="11.5" Margin="2,9,0,0" TextWrapping="Wrap"
                      Foreground="{DynamicResource TextMutedBrush}"
                      Text="登录后点订阅，会创建订单并显示收款码。"/>
         </StackPanel>
       </Border>
-
       <!-- v92：按效果图 A 的阅读顺序——先三张 facts 小卡并排，再让「激活码」和
            「额度怎么重置」各自独占一行。原来的三列要点挤在一张卡里用圆点列举，
            下面两张卡又被 CardBoard 拆成左右两半，读起来比效果图碎。 -->
