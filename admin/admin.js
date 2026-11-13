@@ -5,6 +5,7 @@ const TOKEN_KEY = 'ft-admin-token';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const state = {
   token: sessionStorage.getItem(TOKEN_KEY) || '',
+  view: 'orders',
   usageDays: 7,
   accounts: { offset: 0, limit: 20, total: 0, query: '', plan: '' },
   orders: { status: 'pending_review', offset: 0, limit: 20, total: 0 },
@@ -28,6 +29,7 @@ function toast(message, isError = false) {
 
 function showLogin(message = '') {
   closeSelectMenu();
+  closeDialog(null);
   state.token = '';
   sessionStorage.removeItem(TOKEN_KEY);
   setHidden($('app'), true);
@@ -44,7 +46,7 @@ function showApp() {
 }
 
 function refresh(task) {
-  task().catch((error) => {
+  return task().catch((error) => {
     if (error.message !== 'admin_forbidden') toast(error.message, true);
   });
 }
@@ -263,6 +265,80 @@ function summary(label, value) {
   return el;
 }
 
+const VIEW_META = {
+  orders: { title: '订单处理', subtitle: '核对到账后直接开通，交易单号全局唯一' },
+  overview: { title: '概览', subtitle: '账号结构、用量与成本' },
+  accounts: { title: '账号', subtitle: '套餐、额度与设备状态' },
+  codes: { title: '激活码', subtitle: '生成、兑换与作废' },
+  gateway: { title: '网关健康', subtitle: '请求、失败与数据库状态' },
+};
+
+function emptyState(title, hint) {
+  const box = create('div', 'empty');
+  box.append(
+    create('div', 'icon', '—'),
+    create('strong', '', title),
+    create('span', '', hint),
+  );
+  return box;
+}
+
+function formatShortTime(unix) {
+  if (!unix) return '—';
+  const date = new Date(unix * 1000);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// ---------- 对话框 ----------
+// 后台的确认/取消原来用 window.confirm/prompt，样式和页面完全脱节；
+// 这里用同一套卡片样式，并把订单摘要放进确认框，减少点错的可能。
+let dialogClose = null;
+
+function openDialog(options) {
+  if (dialogClose) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const backdrop = $('dialog');
+    $('dialog-title').textContent = options.title || '';
+    $('dialog-body').replaceChildren(...(options.body || []));
+
+    const actions = $('dialog-actions');
+    actions.replaceChildren();
+    const cancel = create('button', 'ghost', options.cancelText || '取消');
+    const confirm = create('button', options.danger ? 'danger' : 'primary',
+      options.confirmText || '确定');
+    cancel.type = 'button';
+    confirm.type = 'button';
+
+    const previous = document.activeElement;
+    const finish = (value) => {
+      if (dialogClose !== finish) return;
+      dialogClose = null;
+      setHidden(backdrop, true);
+      $('dialog-body').replaceChildren();
+      $('dialog-actions').replaceChildren();
+      previous?.focus?.({ preventScroll: true });
+      resolve(value);
+    };
+
+    cancel.addEventListener('click', () => finish(null));
+    confirm.addEventListener('click', () => {
+      const value = options.read ? options.read() : true;
+      finish(value === undefined ? true : value);
+    });
+    actions.append(cancel, confirm);
+
+    dialogClose = finish;
+    setHidden(backdrop, false);
+    (options.focus || cancel).focus({ preventScroll: true });
+    if (options.focus?.select) options.focus.select();
+  });
+}
+
+function closeDialog(value = null) {
+  if (dialogClose) dialogClose(value);
+}
+
 async function loadMetrics() {
   const data = await api('/api/v1/admin/metrics');
   $('cards').replaceChildren(
@@ -461,7 +537,13 @@ async function changePlan(email, plan, rawDays, button) {
     return;
   }
   const duration = isFree ? '清除到期时间' : days === 0 ? '永久' : `${days} 天`;
-  if (!confirm(`把 ${email} 改为 ${planName(plan)}（${duration}）？`)) return;
+  const ok = await openDialog({
+    title: '修改套餐',
+    body: [create('p', 'muted', `把 ${email} 改为 ${planName(plan)}（${duration}）？`)],
+    confirmText: '确认修改',
+    danger: isFree,
+  });
+  if (!ok) return;
   button.disabled = true;
   try {
     // 邮箱里的 @ 走 URL 编码，避免被当成路径分段。
@@ -481,7 +563,13 @@ async function changePlan(email, plan, rawDays, button) {
 async function upgradeAccount(email, targetPlan, button) {
   // days=null 让服务端保留原到期时间；用量表不动，所以本周期已用字符继续计入新档额度。
   // 套餐的传输名仍是 light/standard/max，显示名才是 Lite/Pro/Max；改传输名要连客户端和存量令牌一起迁移。
-  if (!confirm(`确认已收到差价，把 ${email} 升级到 ${planName(targetPlan)}？到期日不变，本周期已用字符继续计入，不重置额度。`)) return;
+  const ok = await openDialog({
+    title: '补差价升级',
+    body: [create('p', 'muted',
+      `确认已收到差价，把 ${email} 升级到 ${planName(targetPlan)}？到期日不变，本周期已用字符继续计入，不重置额度。`)],
+    confirmText: '确认升级',
+  });
+  if (!ok) return;
   button.disabled = true;
   try {
     await api(`/api/v1/admin/accounts/${encodeURIComponent(email)}/plan`, {
@@ -498,7 +586,15 @@ async function upgradeAccount(email, targetPlan, button) {
 }
 
 async function toggleAccount(email, disable, button) {
-  if (disable && !confirm(`禁用 ${email}？现有登录会立即失效。`)) return;
+  if (disable) {
+    const ok = await openDialog({
+      title: '禁用账号',
+      body: [create('p', 'muted', `禁用 ${email}？现有登录会立即失效。`)],
+      confirmText: '禁用',
+      danger: true,
+    });
+    if (!ok) return;
+  }
   button.disabled = true;
   try {
     await api(`/api/v1/admin/accounts/${encodeURIComponent(email)}/${disable ? 'disable' : 'enable'}`, {
@@ -521,129 +617,203 @@ async function loadOrders() {
     offset: String(state.orders.offset),
   });
   const data = await api(`/api/v1/admin/orders?${params.toString()}`);
-  const head = create('tr');
-  ['订单号', '账号', '套餐', '周期', '金额', '收款方式', '交易单号', '状态', '提交时间', '操作']
-    .forEach((text) => head.append(create('th', '', text)));
-  const thead = create('thead');
-  thead.append(head);
-  const tbody = create('tbody');
 
   if (data.items.length === 0) {
-    const row = create('tr');
-    const cell = create('td', 'muted', '没有匹配的订单');
-    cell.colSpan = 10;
-    row.append(cell);
-    tbody.append(row);
+    $('orders').replaceChildren(emptyState(
+      '暂无订单',
+      state.orders.status === 'pending_review'
+        ? '新的付款提交后会出现在这里。'
+        : '换一个状态看看，或等待新的订单。'));
   } else {
-    data.items.forEach((item) => {
-      const row = create('tr');
-      row.append(create('td', '', item.id.slice(0, 8).toUpperCase()));
-      const emailCell = create('td', 'account-email', item.email);
-      emailCell.title = item.email;
-      row.append(emailCell);
-      row.append(create('td', '', planName(item.plan)));
-      row.append(create('td', '', item.cycle === 'yearly' ? '年付' : '月付'));
-      row.append(create('td', '', `¥${(item.amountCents / 100).toFixed(2)}`));
-      row.append(create('td', '', item.paymentMethod === 'wechat' ? '微信'
-        : item.paymentMethod === 'alipay' ? '支付宝' : '—'));
-
-      const refCell = create('td');
-      if (item.paymentRef) {
-        const text = create('span', 'mono', item.paymentRef);
-        text.title = item.paymentRef;
-        const copy = create('button', 'ghost', '复制');
-        copy.type = 'button';
-        copy.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(item.paymentRef);
-            toast('交易单号已复制');
-          } catch {
-            toast('复制失败，请手动选择', true);
-          }
-        });
-        refCell.append(text, copy);
-      } else {
-        refCell.append(create('span', 'muted', '—'));
-      }
-      row.append(refCell);
-
-      const statusCell = create('td');
-      const statusClass = item.status === 'fulfilled' ? 'badge ok'
-        : item.status === 'cancelled' ? 'badge disabled' : 'badge';
-      statusCell.append(create('span', statusClass, orderStatusText(item.status)));
-      row.append(statusCell);
-      row.append(create('td', '', formatTime(item.submittedAt || item.createdAt)));
-
-      const actions = create('div', 'row-actions');
-      if (item.status === 'pending_review') {
-        const confirmButton = create('button', 'primary', '确认到账并开通');
-        confirmButton.type = 'button';
-        confirmButton.addEventListener('click', () => confirmOrder(item.id, confirmButton));
-        const cancelButton = create('button', 'danger', '取消');
-        cancelButton.type = 'button';
-        cancelButton.addEventListener('click', () => cancelOrder(item.id, cancelButton));
-        actions.append(confirmButton, cancelButton);
-      } else if (item.status === 'pending_payment') {
-        const cancelButton = create('button', 'danger', '取消');
-        cancelButton.type = 'button';
-        cancelButton.addEventListener('click', () => cancelOrder(item.id, cancelButton));
-        actions.append(cancelButton);
-      } else {
-        actions.append(create('span', 'muted', '—'));
-      }
-      row.append(actions);
-      tbody.append(row);
-    });
+    $('orders').replaceChildren(renderOrdersTable(data.items));
   }
-
-  const table = create('table');
-  table.append(thead, tbody);
-  $('orders').replaceChildren(table);
 
   const page = Math.floor(state.orders.offset / state.orders.limit) + 1;
   const pages = Math.max(1, Math.ceil(data.total / state.orders.limit));
   $('orders-page').textContent = `第 ${page} / ${pages} 页 · 共 ${formatNumber(data.total)} 笔`;
   $('orders-prev').disabled = state.orders.offset === 0;
   $('orders-next').disabled = state.orders.offset + state.orders.limit >= data.total;
+
+  if (state.orders.status === 'pending_review') {
+    setOrderBadge(data.total);
+  }
+}
+
+function renderOrdersTable(items) {
+  const head = create('tr');
+  ['订单', '账号', '套餐', '金额', '收款', '交易单号', '状态', '操作']
+    .forEach((text) => head.append(create('th', '', text)));
+  const thead = create('thead');
+  thead.append(head);
+  const tbody = create('tbody');
+
+  items.forEach((item) => {
+    const row = create('tr');
+
+    const orderCell = create('td');
+    const orderStack = create('div', 'cell-stack');
+    orderStack.title = formatTime(item.submittedAt || item.createdAt);
+    orderStack.append(
+      create('span', 'order-id', '#' + item.id.slice(0, 8).toUpperCase()),
+      create('span', 'sub', formatShortTime(item.submittedAt || item.createdAt)));
+    orderCell.append(orderStack);
+    row.append(orderCell);
+
+    const emailCell = create('td', 'account-email', item.email);
+    emailCell.title = item.email;
+    row.append(emailCell);
+
+    const planCell = create('td');
+    const planStack = create('div', 'cell-stack');
+    planStack.append(
+      create('span', 'cell-strong', planName(item.plan)),
+      create('span', 'sub', `${item.cycle === 'yearly' ? '年付' : '月付'} · ${item.days} 天`));
+    planCell.append(planStack);
+    row.append(planCell);
+
+    row.append(create('td', 'cell-amount', `¥${(item.amountCents / 100).toFixed(2)}`));
+
+    const methodCell = create('td');
+    if (item.paymentMethod) {
+      methodCell.append(create('span', 'method ' + item.paymentMethod,
+        item.paymentMethod === 'wechat' ? '微信'
+          : item.paymentMethod === 'alipay' ? '支付宝' : item.paymentMethod));
+    } else {
+      methodCell.append(create('span', 'muted', '—'));
+    }
+    row.append(methodCell);
+
+    const refCell = create('td');
+    if (item.paymentRef) {
+      const refWrap = create('div', 'ref-cell');
+      const text = create('span', 'ref-text', item.paymentRef);
+      text.title = item.paymentRef;
+      const copy = create('button', 'ghost small', '复制');
+      copy.type = 'button';
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(item.paymentRef);
+          toast('交易单号已复制');
+        } catch {
+          toast('复制失败，请手动选择', true);
+        }
+      });
+      refWrap.append(text, copy);
+      refCell.append(refWrap);
+    } else {
+      refCell.append(create('span', 'muted', '—'));
+    }
+    row.append(refCell);
+
+    const statusCell = create('td');
+    statusCell.append(create('span', 'status-pill ' + item.status, orderStatusText(item.status)));
+    row.append(statusCell);
+
+    const actions = create('div', 'row-actions');
+    if (item.status === 'pending_review') {
+      const confirmButton = create('button', 'primary small', '确认开通');
+      confirmButton.type = 'button';
+      confirmButton.addEventListener('click', () => confirmOrder(item));
+      const cancelButton = create('button', 'danger small', '取消');
+      cancelButton.type = 'button';
+      cancelButton.addEventListener('click', () => cancelOrder(item));
+      actions.append(confirmButton, cancelButton);
+    } else if (item.status === 'pending_payment') {
+      const cancelButton = create('button', 'danger small', '取消');
+      cancelButton.type = 'button';
+      cancelButton.addEventListener('click', () => cancelOrder(item));
+      actions.append(cancelButton);
+    } else {
+      actions.append(create('span', 'muted', '—'));
+    }
+    const actionCell = create('td');
+    actionCell.append(actions);
+    row.append(actionCell);
+    tbody.append(row);
+  });
+
+  const table = create('table', 'orders-table');
+  table.append(thead, tbody);
+  return table;
+}
+
+function setOrderBadge(total) {
+  const badge = $('orders-badge');
+  if (!badge) return;
+  badge.textContent = total > 99 ? '99+' : String(total);
+  setHidden(badge, total === 0);
+}
+
+async function loadOrdersBadge() {
+  const data = await api('/api/v1/admin/orders?status=pending_review&limit=1');
+  setOrderBadge(data.total);
 }
 
 function orderStatusText(status) {
   return { pending_payment: '待支付', pending_review: '待审核', fulfilled: '已开通', cancelled: '已取消' }[status] || status;
 }
 
-async function confirmOrder(id, button) {
-  if (!confirm('确认已收到这笔款项并给该账号开通套餐？')) return;
-  button.disabled = true;
+async function confirmOrder(item) {
+  const summary = create('dl', 'dialog-summary');
+  [
+    ['账号', item.email],
+    ['套餐', `${planName(item.plan)} · ${item.cycle === 'yearly' ? '年付' : '月付'} · ${item.days} 天`],
+    ['金额', `¥${(item.amountCents / 100).toFixed(2)}`],
+    ['交易单号', item.paymentRef || '—'],
+  ].forEach(([label, value]) => summary.append(create('dt', '', label), create('dd', '', value)));
+
+  const ok = await openDialog({
+    title: '确认到账并开通',
+    body: [
+      create('p', 'muted', '确认这笔款项已到账后，账号套餐会立即开通。'),
+      summary,
+      create('p', 'dialog-warning', '确认后不可撤销；账号当前套餐与订单不一致时会被拒绝。'),
+    ],
+    confirmText: '确认开通',
+  });
+  if (!ok) return;
+
   try {
-    await api(`/api/v1/admin/orders/${id}/confirm`, { method: 'POST' });
+    await api(`/api/v1/admin/orders/${item.id}/confirm`, { method: 'POST' });
     toast('已确认到账并开通');
-    await Promise.all([loadOrders(), loadAccounts(), loadMetrics()]);
+    await Promise.all([loadOrders(), loadOrdersBadge()]);
   } catch (error) {
     // 账号在待审核期间被手工改过套餐时，直接确认旧订单会把用户降档。
     const message = error.message === 'order_plan_mismatch'
       ? '账号当前套餐与订单档位不一致：先改回订单档位，或取消订单改走补差价流程'
       : error.message;
     toast(message, true);
-  } finally {
-    button.disabled = false;
   }
 }
 
-async function cancelOrder(id, button) {
-  const reason = prompt('取消原因（会显示给用户/留档）', '未收到款项');
+async function cancelOrder(item) {
+  const input = create('input', 'dialog-input');
+  input.type = 'text';
+  input.value = '未收到款项';
+  input.maxLength = 80;
+
+  const reason = await openDialog({
+    title: '取消订单',
+    body: [
+      create('p', 'muted', `取消 ${item.email} 的这笔订单？原因会显示给用户并留档。`),
+      input,
+    ],
+    confirmText: '取消订单',
+    danger: true,
+    focus: input,
+    read: () => input.value.trim(),
+  });
   if (reason === null) return;
-  button.disabled = true;
+
   try {
-    await api(`/api/v1/admin/orders/${id}/cancel`, {
+    await api(`/api/v1/admin/orders/${item.id}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ reason: reason.trim() || 'admin_cancelled' }),
+      body: JSON.stringify({ reason: reason || 'admin_cancelled' }),
     });
     toast('订单已取消');
-    await loadOrders();
+    await Promise.all([loadOrders(), loadOrdersBadge()]);
   } catch (error) {
     toast(error.message, true);
-  } finally {
-    button.disabled = false;
   }
 }
 
@@ -752,7 +922,13 @@ function showCodeResult(data) {
 }
 
 async function revokeCode(code, button) {
-  if (!confirm(`作废 ${code}？作废后不能兑换。`)) return;
+  const ok = await openDialog({
+    title: '作废激活码',
+    body: [create('p', 'muted', `作废 ${code}？作废后不能兑换。`)],
+    confirmText: '作废',
+    danger: true,
+  });
+  if (!ok) return;
   button.disabled = true;
   try {
     await api(`/api/v1/admin/codes/${encodeURIComponent(code)}/revoke`, { method: 'POST' });
@@ -784,22 +960,29 @@ async function loadDiagnostics() {
   $('diag-updated').textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
 }
 
-async function loadAll() {
-  // 六块互不依赖，用 allSettled 让单块失败不拖垮整页。
-  const results = await Promise.allSettled([
-    loadMetrics(),
-    loadUsage(),
-    loadAccounts(),
-    loadOrders(),
-    loadCodes(),
-    loadDiagnostics(),
-  ]);
-  for (const result of results) {
-    if (result.status === 'rejected' && result.reason && result.reason.message !== 'admin_forbidden') {
-      toast(result.reason.message || '加载失败', true);
-      break;
-    }
-  }
+function showView(view) {
+  state.view = view;
+  document.querySelectorAll('.nav-item').forEach((item) =>
+    item.classList.toggle('active', item.dataset.view === view));
+  document.querySelectorAll('.view').forEach((section) =>
+    setHidden(section, section.dataset.view !== view));
+
+  const meta = VIEW_META[view] || VIEW_META.orders;
+  $('view-title').textContent = meta.title;
+  $('view-subtitle').textContent = meta.subtitle;
+  return loadView(view);
+}
+
+function loadView(view) {
+  // 每块视图独立加载：切到哪一块才拉哪一块的数据，不再登录后一次打六个接口。
+  const loaders = {
+    orders: () => Promise.all([loadOrders(), loadOrdersBadge().catch(() => {})]),
+    overview: () => Promise.all([loadMetrics(), loadUsage()]),
+    accounts: loadAccounts,
+    codes: loadCodes,
+    gateway: loadDiagnostics,
+  };
+  return refresh(loaders[view] || (() => Promise.resolve()));
 }
 
 async function login(event) {
@@ -815,13 +998,28 @@ async function login(event) {
   }
   sessionStorage.setItem(TOKEN_KEY, token);
   showApp();
-  await loadAll();
+  await showView(state.view);
 }
 
 function bind() {
   $('login-form').addEventListener('submit', login);
   $('logout').addEventListener('click', () => showLogin());
-  $('refresh').addEventListener('click', () => refresh(loadAll));
+  $('refresh').addEventListener('click', () => loadView(state.view));
+
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    item.addEventListener('click', () => showView(item.dataset.view));
+  });
+
+  $('dialog-close').addEventListener('click', () => closeDialog(null));
+  $('dialog').addEventListener('pointerdown', (event) => {
+    if (event.target === $('dialog')) closeDialog(null);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && dialogClose) {
+      event.preventDefault();
+      closeDialog(null);
+    }
+  });
   document.querySelectorAll('[data-days]').forEach((button) => {
     button.addEventListener('click', () => {
       state.usageDays = Number(button.dataset.days);
@@ -845,9 +1043,13 @@ function bind() {
     state.accounts.offset += state.accounts.limit;
     refresh(loadAccounts);
   });
-  $('order-status').addEventListener('change', () => {
-    state.orders.status = $('order-status').value;
+  $('order-tabs').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-status]');
+    if (!button) return;
+    state.orders.status = button.dataset.status;
     state.orders.offset = 0;
+    document.querySelectorAll('#order-tabs button').forEach((item) =>
+      item.classList.toggle('active', item === button));
     refresh(loadOrders);
   });
   $('orders-prev').addEventListener('click', () => {
@@ -858,7 +1060,8 @@ function bind() {
     state.orders.offset += state.orders.limit;
     refresh(loadOrders);
   });
-  $('order-refresh').addEventListener('click', () => refresh(loadOrders));
+  $('order-refresh').addEventListener('click', () =>
+    refresh(() => Promise.all([loadOrders(), loadOrdersBadge().catch(() => {})])));
   $('code-form').addEventListener('submit', createCodes);
   $('code-status').addEventListener('change', () => {
     state.codes.status = $('code-status').value;
@@ -877,10 +1080,10 @@ function bind() {
 }
 
 bind();
-['account-plan', 'order-status', 'code-plan', 'code-status'].forEach((id) => enhanceSelect($(id)));
+['account-plan', 'code-plan', 'code-status'].forEach((id) => enhanceSelect($(id)));
 if (state.token) {
   showApp();
-  refresh(loadAll);
+  showView(state.view);
 } else {
   showLogin();
 }
