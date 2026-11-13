@@ -1065,23 +1065,47 @@ public partial class App : Application, IResultPresenter
         }
         if (string.IsNullOrEmpty(capture.Text))
         {
-            ShowCaptureEmptyHint();
+            var reason = !_settings.ClipboardFallbackEnabled
+                ? CaptureEmptyReason.ClipboardDisabled
+                : capture.SourceWindowHandle == 0
+                    || SelectionCoordinator.IsClipboardRisky(ProcessNameOf(capture.SourceWindowHandle))
+                    ? CaptureEmptyReason.ClipboardRisky
+                    : CaptureEmptyReason.ClipboardNoText;
+            ShowCaptureEmptyHint(reason);
             return;
         }
         await _coordinator!.TranslateCapturedAsync(capture);
     }
 
     /// <summary>
-    /// 取词为空时的唯一反馈（工具栏点击与热键共用）。规格 §6.6/§7.2 要求提示一次、
+    /// 取词为空时的唯一反馈（工具栏点击与热键共用）。规格 §L4 要求提示一次、
     /// 24 小时内不重复；用右下角提示条而不是托盘气泡——Win11 通知设置会把气泡吞掉（v93）。
+    /// 文案按失败原因区分：未开兜底去设置，应用不支持复制或终端则引导截图翻译。
     /// </summary>
-    private void ShowCaptureEmptyHint()
+    private void ShowCaptureEmptyHint(CaptureEmptyReason reason)
     {
         if (!_captureEmptyHint.ShouldShow()) return;
-        ToastWindow.Show(
-            "没读到选中的文字，请重新选择。如果这个应用总是读不到，去设置里确认「取词」的剪贴板兜底已开启。",
-            "打开设置",
-            ShowSettings);
+        switch (reason)
+        {
+            case CaptureEmptyReason.ClipboardDisabled:
+                ToastWindow.Show(
+                    "没读到选中的文字。设置里的「取词」剪贴板兜底是关着的，打开后再试。",
+                    "打开设置",
+                    ShowSettings);
+                break;
+            case CaptureEmptyReason.ClipboardRisky:
+                ToastWindow.Show(
+                    "没读到选中的文字。这个应用不能自动复制，可以选中后点工具条上的「截图翻译」。",
+                    "截图翻译",
+                    RunScreenshotTranslation);
+                break;
+            default:
+                ToastWindow.Show(
+                    "没读到选中的文字。这个应用可能不支持复制，可以选中后点工具条上的「截图翻译」。",
+                    "截图翻译",
+                    RunScreenshotTranslation);
+                break;
+        }
     }
 
     private static string ProcessNameOf(long hwnd)

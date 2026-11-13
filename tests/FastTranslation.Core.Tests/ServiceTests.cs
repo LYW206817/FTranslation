@@ -86,14 +86,17 @@ public class SelectionCoordinatorTests
         public event Action<TriggerEvent>? TriggerRaised;
         public Func<ScreenPoint, CapturedSelection> OnRead = _ => CapturedSelection.Empty(default);
         public int FallbackCalls;
+        public bool FallbackReturnsText = true;
 
         public Task<CapturedSelection> ReadSelectionAsync(ScreenPoint point, CancellationToken ct) => Task.FromResult(OnRead(point));
 
         public Task<CapturedSelection> ReadViaClipboardAsync(long hwnd, ScreenPoint anchor, CancellationToken ct)
         {
             FallbackCalls++;
-            return Task.FromResult(new CapturedSelection("clip text", Array.Empty<ScreenRect>(),
-                default, CaptureMethod.ClipboardFallback, "notepad", hwnd, null, false));
+            return Task.FromResult(FallbackReturnsText
+                ? new CapturedSelection("clip text", Array.Empty<ScreenRect>(),
+                    default, CaptureMethod.ClipboardFallback, "notepad", hwnd, null, false)
+                : CapturedSelection.Failed(anchor, "notepad", hwnd));
         }
 
         public void Raise(TriggerEvent e) => TriggerRaised?.Invoke(e);
@@ -116,15 +119,32 @@ public class SelectionCoordinatorTests
         var service = new TranslationService(new FakeProvider());
         var settings = AppSettings.Default();
         settings.ClipboardFallbackEnabled = false;
-        var hints = 0;
+        CaptureEmptyReason? reason = null;
         using var coordinator = new SelectionCoordinator(
-            capture, presenter, service, () => settings, captureEmptyHint: () => hints++);
+            capture, presenter, service, () => settings, captureEmptyHint: r => reason = r);
 
         await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "notepad", 0));
 
-        Assert.Equal(1, hints);
+        Assert.Equal(CaptureEmptyReason.ClipboardDisabled, reason);
         Assert.DoesNotContain(presenter.Shown, s => s.StartsWith("card"));
         Assert.Equal(0, capture.FallbackCalls);
+    }
+
+    [Fact]
+    public async Task EmptyCapture_Notifies_WhenClipboardHasNoText()
+    {
+        var capture = new FakeCapture { FallbackReturnsText = false };
+        var presenter = new FakePresenter();
+        var service = new TranslationService(new FakeProvider());
+        CaptureEmptyReason? reason = null;
+        using var coordinator = new SelectionCoordinator(
+            capture, presenter, service, () => AppSettings.Default(), captureEmptyHint: r => reason = r);
+
+        await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "notepad", 0));
+
+        Assert.Equal(CaptureEmptyReason.ClipboardNoText, reason);
+        Assert.Equal(1, capture.FallbackCalls);
+        Assert.DoesNotContain(presenter.Shown, s => s.StartsWith("card"));
     }
 
     [Fact]
@@ -147,11 +167,14 @@ public class SelectionCoordinatorTests
         var capture = new FakeCapture();
         var presenter = new FakePresenter();
         var service = new TranslationService(new FakeProvider());
-        using var coordinator = new SelectionCoordinator(capture, presenter, service, () => AppSettings.Default());
+        CaptureEmptyReason? reason = null;
+        using var coordinator = new SelectionCoordinator(
+            capture, presenter, service, () => AppSettings.Default(), captureEmptyHint: r => reason = r);
 
         await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "WindowsTerminal", 0));
 
         Assert.Equal(0, capture.FallbackCalls);
+        Assert.Equal(CaptureEmptyReason.ClipboardRisky, reason);
     }
 
     [Fact]
@@ -164,7 +187,7 @@ public class SelectionCoordinatorTests
         settings.ExcludedProcesses.Add("PrivateApp");
         var hints = 0;
         using var coordinator = new SelectionCoordinator(
-            capture, presenter, service, () => settings, captureEmptyHint: () => hints++);
+            capture, presenter, service, () => settings, captureEmptyHint: _ => hints++);
 
         await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "PrivateApp", 0));
 

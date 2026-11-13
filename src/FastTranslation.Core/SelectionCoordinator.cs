@@ -1,5 +1,18 @@
 namespace FastTranslation.Core;
 
+/// <summary>取词为空的原因，决定提示文案与动作（规格 §L4）。</summary>
+public enum CaptureEmptyReason
+{
+    /// <summary>剪贴板兜底被用户关掉了——引导去设置打开。</summary>
+    ClipboardDisabled,
+
+    /// <summary>终端等宿主不能按 Ctrl+C——引导用截图翻译。</summary>
+    ClipboardRisky,
+
+    /// <summary>按了 Ctrl+C，但应用没有把选中的文字写进剪贴板。</summary>
+    ClipboardNoText,
+}
+
 /// <summary>
 /// 流程核心：触发 → 取词（UIA，失败走剪贴板兜底）→ 翻译 → 展示。
 /// 平台相关的部分靠注入；本类从不直接碰 Win32/WPF。
@@ -13,7 +26,7 @@ public sealed class SelectionCoordinator : IDisposable
     private readonly TranslationService _translation;
     private readonly Func<AppSettings> _settings;
     private readonly Action<string>? _log;
-    private readonly Action? _captureEmptyHint;
+    private readonly Action<CaptureEmptyReason>? _captureEmptyHint;
 
     private CancellationTokenSource? _sessionCts;
 
@@ -23,7 +36,7 @@ public sealed class SelectionCoordinator : IDisposable
         TranslationService translation,
         Func<AppSettings> settings,
         Action<string>? log = null,
-        Action? captureEmptyHint = null)
+        Action<CaptureEmptyReason>? captureEmptyHint = null)
     {
         _capture = capture;
         _presenter = presenter;
@@ -57,10 +70,18 @@ public sealed class SelectionCoordinator : IDisposable
         {
             _log?.Invoke($"capture empty at {trigger.Point.X},{trigger.Point.Y} ({trigger.Kind})");
             _presenter.HideCard();
-            _captureEmptyHint?.Invoke();
+            _captureEmptyHint?.Invoke(EmptyReason(settings0, trigger.SourceProcessName));
             return;
         }
         await RunSessionAsync(selection);
+    }
+
+    private static CaptureEmptyReason EmptyReason(AppSettings settings, string processName)
+    {
+        if (!settings.ClipboardFallbackEnabled) return CaptureEmptyReason.ClipboardDisabled;
+        return IsClipboardRisky(processName)
+            ? CaptureEmptyReason.ClipboardRisky
+            : CaptureEmptyReason.ClipboardNoText;
     }
 
     private async Task RunSessionAsync(CapturedSelection selection)
