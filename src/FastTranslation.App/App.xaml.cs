@@ -51,6 +51,9 @@ public partial class App : Application, IResultPresenter
     private TranslationService? _translation;
     private SettingsService _settingsService = new();
     private AppSettings _settings = new();
+    // v138：取词为空的提示 24 小时最多一次（规格 §6.6）。只记在进程内——重启后最多再提示一次，
+    // 不值得为一条提示改 settings.json 的存储结构。
+    private readonly CaptureEmptyHintThrottle _captureEmptyHint = new();
     // v127: 第二次启动在读盘前就 Shutdown()，但 WPF 仍会触发 OnExit。没有这个标志时
     // OnExit 会把字段里的默认 AppSettings 写回 settings.json，用户的语言/热键/主题全丢。
     private bool _settingsLoaded;
@@ -203,7 +206,7 @@ public partial class App : Application, IResultPresenter
         _writeBack = new WriteBackService(_capture.Reader);
         // 日志落到 %TEMP%\ft-uitest-errors.log：卡片上的「翻译失败,请重试」是兜底文案，
         // 没有这行日志就查不出到底哪一步抛了异常
-        _coordinator = new SelectionCoordinator(_capture, this, _translation, () => _settings, Trace);
+        _coordinator = new SelectionCoordinator(_capture, this, _translation, () => _settings, Trace, ShowCaptureEmptyHint);
         _capture.SelectionToolbarRequested += captured =>
         {
             if (!_captureEnabled) return;
@@ -1060,8 +1063,25 @@ public partial class App : Application, IResultPresenter
             }
             return;
         }
-        if (string.IsNullOrEmpty(capture.Text)) return; // 没选中任何东西——保持安静
+        if (string.IsNullOrEmpty(capture.Text))
+        {
+            ShowCaptureEmptyHint();
+            return;
+        }
         await _coordinator!.TranslateCapturedAsync(capture);
+    }
+
+    /// <summary>
+    /// 取词为空时的唯一反馈（工具栏点击与热键共用）。规格 §6.6/§7.2 要求提示一次、
+    /// 24 小时内不重复；用右下角提示条而不是托盘气泡——Win11 通知设置会把气泡吞掉（v93）。
+    /// </summary>
+    private void ShowCaptureEmptyHint()
+    {
+        if (!_captureEmptyHint.ShouldShow()) return;
+        ToastWindow.Show(
+            "没读到选中的文字，请重新选择。如果这个应用总是读不到，去设置里确认「取词」的剪贴板兜底已开启。",
+            "打开设置",
+            ShowSettings);
     }
 
     private static string ProcessNameOf(long hwnd)

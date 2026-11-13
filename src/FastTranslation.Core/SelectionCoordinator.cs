@@ -13,6 +13,7 @@ public sealed class SelectionCoordinator : IDisposable
     private readonly TranslationService _translation;
     private readonly Func<AppSettings> _settings;
     private readonly Action<string>? _log;
+    private readonly Action? _captureEmptyHint;
 
     private CancellationTokenSource? _sessionCts;
 
@@ -21,13 +22,15 @@ public sealed class SelectionCoordinator : IDisposable
         IResultPresenter presenter,
         TranslationService translation,
         Func<AppSettings> settings,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Action? captureEmptyHint = null)
     {
         _capture = capture;
         _presenter = presenter;
         _translation = translation;
         _settings = settings;
         _log = log;
+        _captureEmptyHint = captureEmptyHint;
         _capture.TriggerRaised += OnTriggerRaised;
     }
 
@@ -47,11 +50,14 @@ public sealed class SelectionCoordinator : IDisposable
     public async Task HandleTriggerAsync(TriggerEvent trigger)
     {
         var settings0 = _settings();
+        // 用户主动排除的应用不再提示——排除是他们要的结果，不是取词失败。
+        if (IsExcluded(trigger.SourceProcessName, settings0)) return;
         var selection = await CaptureAsync(trigger, settings0, CancellationToken.None).ConfigureAwait(true);
         if (string.IsNullOrEmpty(selection.Text))
         {
             _log?.Invoke($"capture empty at {trigger.Point.X},{trigger.Point.Y} ({trigger.Kind})");
             _presenter.HideCard();
+            _captureEmptyHint?.Invoke();
             return;
         }
         await RunSessionAsync(selection);
@@ -90,8 +96,6 @@ public sealed class SelectionCoordinator : IDisposable
 
     private async Task<CapturedSelection> CaptureAsync(TriggerEvent trigger, AppSettings settings, CancellationToken ct)
     {
-        if (IsExcluded(trigger.SourceProcessName, settings)) return CapturedSelection.Empty(trigger.Point);
-
         var selection = await _capture.ReadSelectionAsync(trigger.Point, ct).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(selection.Text)) return selection;
 

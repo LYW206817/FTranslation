@@ -109,17 +109,20 @@ public class SelectionCoordinatorTests
     }
 
     [Fact]
-    public async Task EmptyCapture_StaysSilent_NoFallback_WhenDisabled()
+    public async Task EmptyCapture_Notifies_WhenFallbackDisabled()
     {
         var capture = new FakeCapture();
         var presenter = new FakePresenter();
         var service = new TranslationService(new FakeProvider());
         var settings = AppSettings.Default();
         settings.ClipboardFallbackEnabled = false;
-        using var coordinator = new SelectionCoordinator(capture, presenter, service, () => settings);
+        var hints = 0;
+        using var coordinator = new SelectionCoordinator(
+            capture, presenter, service, () => settings, captureEmptyHint: () => hints++);
 
         await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "notepad", 0));
 
+        Assert.Equal(1, hints);
         Assert.DoesNotContain(presenter.Shown, s => s.StartsWith("card"));
         Assert.Equal(0, capture.FallbackCalls);
     }
@@ -159,10 +162,13 @@ public class SelectionCoordinatorTests
         var service = new TranslationService(new FakeProvider());
         var settings = AppSettings.Default();
         settings.ExcludedProcesses.Add("PrivateApp");
-        using var coordinator = new SelectionCoordinator(capture, presenter, service, () => settings);
+        var hints = 0;
+        using var coordinator = new SelectionCoordinator(
+            capture, presenter, service, () => settings, captureEmptyHint: () => hints++);
 
         await coordinator.HandleTriggerAsync(new TriggerEvent(TriggerKind.DragSelect, new ScreenPoint(1, 1), 5, "PrivateApp", 0));
 
+        Assert.Equal(0, hints);
         Assert.DoesNotContain(presenter.Shown, s => s.StartsWith("card"));
     }
 }
