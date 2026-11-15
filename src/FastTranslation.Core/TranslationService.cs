@@ -83,11 +83,14 @@ public sealed class TranslationService
             }
         }
 
-        var previous = Interlocked.Exchange(ref _inFlight, new CancellationTokenSource());
+        // v143：新 CTS 先落到局部变量再 Exchange。旧写法交换后用 `_inFlight!` 重新读字段，
+        // 两个并发请求之间另一个线程可能已经把它换成别人的 CTS——结果这一笔请求监听了
+        // 别人的取消信号、又在 finally 里释放了别人的 CTS。交换与读取必须是同一个对象。
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _inFlight, cts);
         // 只取消、不 Dispose——在这里释放会和取消回调竞争；由所属请求在完成时
         // 于自己的 finally 块里释放它自己的 CTS。
         try { previous?.Cancel(); } catch { }
-        var cts = _inFlight!;
 
         var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, external);
         var token = linked.Token;

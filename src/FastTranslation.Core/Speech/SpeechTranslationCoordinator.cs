@@ -18,6 +18,7 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
 
     private readonly ISpeechTransport _transport;
     private readonly SpeechTranscriptService _subtitles;
+    private readonly Action<SpeechTranscriptLine> _onLineUpdated;
     private readonly TimeProvider _time;
     private readonly Queue<byte[]> _audio = new();
     private readonly object _gate = new();
@@ -48,7 +49,10 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
         _time = time ?? TimeProvider.System;
         _ready = CreateReadySource();
         _transport.Received += OnTransportEvent;
-        _subtitles.LineUpdated += line => TranscriptUpdated?.Invoke(line);
+        // v143：lambda 直接挂事件后 DisposeAsync 无法退订，协调器会被字幕服务反过来钉住。
+        // 存成字段，退出时按同一个委托退订。
+        _onLineUpdated = line => TranscriptUpdated?.Invoke(line);
+        _subtitles.LineUpdated += _onLineUpdated;
     }
 
     public event Action<SpeechTranscriptLine>? TranscriptUpdated;
@@ -123,6 +127,7 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _transport.Received -= OnTransportEvent;
+        _subtitles.LineUpdated -= _onLineUpdated;
         _pump?.Dispose();
         _pump = null;
         try
@@ -200,6 +205,16 @@ public sealed class SpeechTranslationCoordinator : IAsyncDisposable
         try
         {
             await DrainAudioCoreAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // v143：定时器回调是 `_ = DrainAudioCycle()`，异常没人观察，会话会永远停在
+            // Streaming 而字幕不再更新。传输层的断线有专门分支处理，这里兜住其余未预期异常，
+            // 在仍在推流时按致命错误收起并通知 UI。
+            if (_state == SpeechCoordinatorState.Streaming)
+            {
+                OnFatal("语音发送中断，请重新开始。");
+            }
         }
         finally
         {

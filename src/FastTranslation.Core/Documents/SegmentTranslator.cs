@@ -496,8 +496,13 @@ internal static class PlaceholderProtector
         var position = 0;
         foreach (Match match in SentinelPattern.Matches(translated))
         {
-            var number = int.Parse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture);
-            if (number < 1 || number > originals.Count || !seen.Add(number)) return translated;
+            // v143：模型偶尔写出位数失控的哨兵（或把编号写成超大数字）。int.Parse 抛
+            // OverflowException 会整篇文档中止；按「哨兵对不上」整段放弃更符合这里的恢复语义。
+            if (!int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+                || number < 1 || number > originals.Count || !seen.Add(number))
+            {
+                return translated;
+            }
             builder.Append(translated, position, match.Index - position);
             builder.Append(originals[number - 1]);
             position = match.Index + match.Length;

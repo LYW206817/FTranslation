@@ -169,7 +169,19 @@ public sealed class SpeechTranscriptService : IDisposable
             string merged;
             lock (_gate)
             {
-                merged = string.Join("\n", batch.Select(id => _lines[id].Source));
+                // v143：批次入队后 EvictOverflow 可能已经删掉其中一些 id。
+                // 原来直接索引会抛 KeyNotFoundException，被下面吞掉后整批都译不出来；
+                // 这里跳过已淘汰的行，剩下的照常翻译。
+                var sources = new List<string>(batch.Count);
+                foreach (var id in batch)
+                {
+                    if (_lines.TryGetValue(id, out var line))
+                    {
+                        sources.Add(line.Source);
+                    }
+                }
+                if (sources.Count == 0) return;
+                merged = string.Join("\n", sources);
             }
 
             string translated = await _translate(merged, _lifetime.Token).ConfigureAwait(false);
