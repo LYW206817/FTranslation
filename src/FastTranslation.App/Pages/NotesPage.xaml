@@ -73,7 +73,8 @@
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+                <!-- v143：BrandBrush 在深色主题的 BrandFill 上只有约 3.7:1，文字要用专用 BrandText -->
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>

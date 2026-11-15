@@ -39,6 +39,12 @@ public partial class NoticeWindow : Window
             CancelAction.Visibility = Visibility.Visible;
             PrimaryAction.Content = "继续";
         }
+        else
+        {
+            // 纯告知窗按回车即可关掉。确认窗不设默认按钮：删除/覆盖这类问题
+            // 不能因为一次误按回车就执行，必须让用户明确选「继续」。
+            PrimaryAction.IsDefault = true;
+        }
     }
 
     /// <summary>
@@ -93,7 +99,8 @@ public partial class NoticeWindow : Window
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && !_confirm)
+        // Esc 永远是「不」：确认窗也必须能退出，不能把用户困在只有两个按钮的窗口里。
+        if (e.Key == Key.Escape)
         {
             DialogResult = false;
             e.Handled = true;

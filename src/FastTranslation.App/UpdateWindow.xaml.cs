@@ -30,7 +30,7 @@ public partial class UpdateWindow : Window
 
         Headline.Text = $"发现新版本 {manifest.Version}";
         Subline.Text = selfInstallable
-            ? $"当前版本 {currentVersion}。更新会关闭程序、安装新版本,然后自动重新打开。"
+            ? $"当前版本 {currentVersion}。更新会关闭程序、安装新版本，然后自动重新打开。"
             : $"当前版本 {currentVersion}。便携版需要手动下载新版本。";
         NotesText.Text = string.IsNullOrWhiteSpace(manifest.Notes) ? "本次更新没有附带说明。" : manifest.Notes;
         StatusText.Text = $"安装包 {manifest.SizeBytes / 1024 / 1024.0:F1} MB";
@@ -81,7 +81,7 @@ public partial class UpdateWindow : Window
             }
 
             UpdateLog.Write($"download failed for {_manifest.Version}: {result.Detail}");
-            StatusText.Text = "下载失败。可能是网络不通,稍后再试,或到下载页手动获取。";
+            StatusText.Text = "下载失败。可能是网络不通，稍后再试，或到下载页手动获取。";
             ApplyButton.IsEnabled = true;
             LaterButton.IsEnabled = true;
         }
@@ -92,7 +92,7 @@ public partial class UpdateWindow : Window
         catch (Exception ex)
         {
             UpdateLog.Write($"download threw: {ex}");
-            StatusText.Text = "下载出错,稍后再试。";
+            StatusText.Text = "下载出错，稍后再试。";
             ApplyButton.IsEnabled = true;
             LaterButton.IsEnabled = true;
         }
@@ -114,7 +114,7 @@ public partial class UpdateWindow : Window
         catch (Exception ex)
         {
             UpdateLog.Write($"open download page failed: {ex.Message}");
-            StatusText.Text = $"打不开浏览器,请手动访问 {url}";
+            StatusText.Text = $"打不开浏览器，请手动访问 {url}";
             return;
         }
         DialogResult = false;

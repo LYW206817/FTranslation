@@ -111,6 +111,10 @@
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Grid x:Name="root" Background="Transparent">
+              <!-- v143：自定义模板吞掉了系统焦点框，Tab 过来时完全看不出焦点在哪。
+                   沿用侧栏/评分按钮的画法：外面一圈 2px 品牌色环。 -->
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="9" Margin="-2"/>
               <Border x:Name="bd" Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
@@ -139,6 +143,9 @@
                 <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="bd" Property="TextElement.Foreground" Value="{DynamicResource TextMutedBrush}"/>
               </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -155,6 +162,9 @@
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Grid x:Name="root" Background="Transparent">
+              <!-- v143：与默认按钮同一圈焦点环 -->
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="11" Margin="-2"/>
               <!-- 内边距交给 ContentPresenter：底色要铺满整个按钮，
                    如果 Padding 留在 Border 上，蓝色底会缩在描边里面一圈 -->
               <Border x:Name="bd" BorderBrush="{TemplateBinding BorderBrush}"
@@ -193,6 +203,9 @@
                 <!-- v68：禁用态底色是 HairStrong，比 TextMuted 深一档的浅色，
                      用 TextMuted 只有 2.28:1，改用 TextSecondary 是 4.18:1 -->
                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -294,7 +307,7 @@
                       Background="{DynamicResource SurfaceBrush}"
                       BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1"
                       VerticalAlignment="Center">
-                <Path x:Name="check" Data="M 3.5,8.5 L 7,12 L 13.5,4.5" Stroke="White"
+                <Path x:Name="check" Data="M 3.5,8.5 L 7,12 L 13.5,4.5" Stroke="{DynamicResource OnBrandTextBrush}"
                       StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                       Visibility="Collapsed"/>
               </Border>
@@ -312,6 +325,10 @@
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.5"/>
               </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <Setter TargetName="box" Property="BorderThickness" Value="2"/>
+              </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -326,7 +343,8 @@
           <ControlTemplate TargetType="CheckBox">
             <StackPanel Orientation="Horizontal" Background="Transparent">
               <Grid VerticalAlignment="Center" Width="38" Height="20">
-                <Border x:Name="track" CornerRadius="10" Background="{DynamicResource BorderStrongBrush}"/>
+                <Border x:Name="track" CornerRadius="10" Background="{DynamicResource BorderStrongBrush}"
+                        BorderBrush="Transparent" BorderThickness="2"/>
                 <Ellipse x:Name="thumb" Width="14" Height="14" Fill="White"
                          HorizontalAlignment="Left" Margin="3,0,0,0"/>
               </Grid>
@@ -338,12 +356,17 @@
                 <Setter TargetName="track" Property="Background" Value="{DynamicResource BrandBrush}"/>
                 <Setter TargetName="thumb" Property="HorizontalAlignment" Value="Right"/>
                 <Setter TargetName="thumb" Property="Margin" Value="0,0,3,0"/>
+                <!-- v143：深色主题的品牌色是浅蓝，白滑块对比不足；选中后改用 OnBrandText -->
+                <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource OnBrandTextBrush}"/>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="track" Property="Background" Value="{DynamicResource AccentBrush}"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.5"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="track" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -627,11 +650,15 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <!-- v92：与 TopPill 同为 10 圆角，胶囊形状不再出现在任何方框上 -->
-            <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="10"
-                    Padding="{TemplateBinding Padding}">
-              <ContentPresenter VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="11" Margin="-2"/>
+              <!-- v92：与 TopPill 同为 10 圆角，胶囊形状不再出现在任何方框上 -->
+              <Border x:Name="fill" Background="{TemplateBinding Background}" CornerRadius="10"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandFillHoverBrush}"/>
@@ -639,6 +666,9 @@
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -657,11 +687,19 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border Background="Transparent" Padding="{TemplateBinding Padding}">
-              <ContentPresenter VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="1"
+                      CornerRadius="4" Margin="-3"/>
+              <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                <ContentPresenter VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
                 <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>

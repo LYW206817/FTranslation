@@ -49,7 +49,7 @@ public partial class MainPage : UserControl
         _settingsService = settingsService;
         _secrets = secrets;
 
-        TargetCombo.Items.Add(new ComboBoxItem { Content = "自动(中英互译)", Tag = "auto" });
+        TargetCombo.Items.Add(new ComboBoxItem { Content = "自动（中英互译）", Tag = "auto" });
         foreach (var lang in LanguageCatalog.Languages)
         {
             TargetCombo.Items.Add(new ComboBoxItem { Content = lang.DisplayName, Tag = lang.Code });
@@ -106,6 +106,8 @@ public partial class MainPage : UserControl
 
         TranslateButton.IsEnabled = false;
         ResultBlock.Text = "正在翻译…";
+        // v143：上一次「已保存到单词本」不能留到下一笔结果上，否则新译文看起来已经存过。
+        SaveButton.Content = "保存";
         CopyResultButton.IsEnabled = false;
         SaveButton.IsEnabled = false;
         _lastSource = null;
@@ -123,6 +125,7 @@ public partial class MainPage : UserControl
             if (result.Succeeded)
             {
                 ResultBlock.Text = result.TranslatedText;
+                ResultBlock.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
                 CopyResultButton.IsEnabled = true;
                 SaveButton.IsEnabled = true;
                 _lastSource = text;
@@ -131,8 +134,16 @@ public partial class MainPage : UserControl
             }
             else
             {
+                // v143：失败文案原来沿用正文颜色，读起来像一条正常译文。
                 ResultBlock.Text = result.Error?.Message ?? "翻译失败";
+                ResultBlock.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
             }
+        }
+        catch (Exception)
+        {
+            // async void 的异常会直接终结 UI 线程；翻译链路失败只该毁掉这一次结果。
+            ResultBlock.Text = "翻译失败，请稍后再试";
+            ResultBlock.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         }
         finally
         {
@@ -210,7 +221,7 @@ public partial class MainPage : UserControl
     public void RefreshKeyStatus()
     {
         var hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
-        KeyStatus.Text = hasKey ? "API Key:已配置(本机加密保存)" : "API Key:未配置";
+        KeyStatus.Text = hasKey ? "API Key：已配置（本机加密保存）" : "API Key：未配置";
         KeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
     }
 }

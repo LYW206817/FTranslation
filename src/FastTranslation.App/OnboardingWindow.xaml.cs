@@ -40,12 +40,23 @@ public partial class OnboardingWindow : Window
             {
                 _secrets.SaveSecret(QwenMtProvider.ApiKeySecretName, key);
                 KeyBox.Clear();
-                TestStatus.Text = $"连接成功(示例翻译:{result.TranslatedText}),Key 已保存到本机。";
+                TestStatus.Text = $"连接成功（示例翻译：{result.TranslatedText}），Key 已保存到本机。";
+                TestStatus.SetResourceReference(
+                    System.Windows.Controls.TextBlock.ForegroundProperty, "TextSecondaryBrush");
             }
             else
             {
-                TestStatus.Text = $"连接失败:{result.Error?.Message}";
+                TestStatus.Text = $"连接失败：{result.Error?.Message}";
+                TestStatus.SetResourceReference(
+                    System.Windows.Controls.TextBlock.ForegroundProperty, "DangerBrush");
             }
+        }
+        catch (Exception)
+        {
+            // async void 事件处理器：测试失败必须留在窗口里，不能让 UI 线程停摆。
+            TestStatus.Text = "连接失败：请检查网络或 Key 后重试。";
+            TestStatus.SetResourceReference(
+                System.Windows.Controls.TextBlock.ForegroundProperty, "DangerBrush");
         }
         finally
         {
@@ -64,7 +75,11 @@ public partial class OnboardingWindow : Window
 
     private void Later_Click(object sender, RoutedEventArgs e)
     {
-        // 没有 Key 应用照样能跑；在设置好之前翻译都会失败
+        // v143：「稍后再说」要算作已看过引导。原来不写 FirstRunCompleted，下次启动又会
+        // 弹同一扇窗——用户说的「稍后」不是「每次启动都问我」。没填 Key 时翻译会失败，
+        // 但设置页随时可以补。
+        _settings.FirstRunCompleted = true;
+        _service.Save(_settings);
         Close();
     }
 }

@@ -51,7 +51,7 @@
             <!-- v93：药丸当外壳，下拉框自己不再带底和描边；宽度跟着语言名走，
                  原来写死 132x26 撞上样式默认的 Padding="12,8"，26 高只剩 10 给字，
                  文字被上下裁掉。高度只用来和其他药丸对齐。 -->
-            <local:FtComboBox x:Name="TargetCombo" MinWidth="96" Height="26"
+            <local:FtComboBox x:Name="TargetCombo" MinWidth="96" Height="26" AutomationProperties.Name="文档译成"
                               Background="Transparent" BorderThickness="0"
                               Padding="0,0,24,0" VerticalAlignment="Center"
                               FontSize="12.5"
@@ -114,7 +114,7 @@
 
       <!-- 未译段清单：黄色在深色主题下不可读，统一用危险色描边当警示 -->
       <Border x:Name="FailedCard" Style="{StaticResource Card}" Visibility="Collapsed"
-              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}">
+              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1">
         <StackPanel>
           <TextBlock x:Name="FailedTitle" Style="{StaticResource CardTitle}" Text="有段没译成"/>
           <TextBlock Style="{StaticResource Hint}"
@@ -168,7 +168,7 @@
       </Border>
 
       <Border x:Name="ErrorCard" Style="{StaticResource Card}" Visibility="Collapsed"
-              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}">
+              Margin="0,16,0,0" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1">
         <StackPanel>
           <TextBlock Style="{StaticResource CardTitle}" Text="没能继续"/>
           <TextBlock x:Name="ErrorText" FontSize="12" TextWrapping="Wrap"

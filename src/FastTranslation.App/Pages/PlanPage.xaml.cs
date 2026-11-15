@@ -24,6 +24,7 @@ public partial class PlanPage : UserControl
     private string _tier = "standard";
     private string _cycle = "monthly";
     private bool _canSubscribe = true;
+    private bool _redeemHintIsError;
     private bool _subscribed;
 
     // 价格文案与服务端 OrderPricing.PricesCents 同批改；四个值依次是月价、季价、
@@ -161,6 +162,10 @@ public partial class PlanPage : UserControl
         DailyText.Text = "读取中…";
         DailyLeftText.Text = string.Empty;
         DailyBar.Value = 0;
+        // v143：进度环不能在请求期间装作 0%——那会被读成「本月一点都没用」。
+        // MonthlyBar.Value=0 会触发 UpdateRing，所以这两行必须放在它后面。
+        RingProgress.Data = null;
+        RingPercent.Text = "…";
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
@@ -172,15 +177,20 @@ public partial class PlanPage : UserControl
         // v69：拿到结果前先写清楚「在读取」。原来这里什么都不写，卡片里只剩两条
         // 空进度条，看起来像坏了而不是在等网络。
         ShowReading();
-        var result = await _account.ReadUsageAsync(CancellationToken.None);
+        AccountApiResult<AccountUsage> result;
+        try
+        {
+            result = await _account.ReadUsageAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // async void 的刷新入口没有上层 catch；网络层意外异常也要落到卡片里
+            ShowUsageFailure("读取失败，请稍后再试。");
+            return;
+        }
         if (!result.Succeeded)
         {
-            MonthlyText.Text = "读取失败";
-            MonthlyLeftText.Text = string.Empty;
-            DailyText.Text = string.Empty;
-            DailyLeftText.Text = string.Empty;
-            UsageError.Text = result.Error!.Display;
-            UsageError.Visibility = Visibility.Visible;
+            ShowUsageFailure(result.Error!.Display);
             return;
         }
 
@@ -198,13 +208,26 @@ public partial class PlanPage : UserControl
         }
     }
 
+    /// <summary>用量读取失败：文字与进度环一起落到明确的失败态，不留假的 0%。</summary>
+    private void ShowUsageFailure(string message)
+    {
+        MonthlyText.Text = "读取失败";
+        MonthlyLeftText.Text = string.Empty;
+        DailyText.Text = string.Empty;
+        DailyLeftText.Text = string.Empty;
+        RingProgress.Data = null;
+        RingPercent.Text = "—";
+        UsageError.Text = message;
+        UsageError.Visibility = Visibility.Visible;
+    }
+
     private async void Redeem_Click(object sender, RoutedEventArgs e)
     {
         if (_busy) return;
         var code = RedeemBox.Text.Trim();
         if (code.Length == 0)
         {
-            RedeemHint.Text = "先把激活码填进来。";
+            SetRedeemHint("先把激活码填进来。", isError: true);
             return;
         }
 
@@ -214,20 +237,33 @@ public partial class PlanPage : UserControl
             var result = await _account.RedeemAsync(code, CancellationToken.None);
             if (!result.Succeeded)
             {
-                RedeemHint.Text = result.Error!.Display;
+                SetRedeemHint(result.Error!.Display, isError: true);
                 return;
             }
 
             // Render 是经 Changed 事件跑的；计量要自己再刷一次，因为回包里的用量快照
             // 只和那次兑换请求一样新。
             RedeemBox.Text = string.Empty;
-            RedeemHint.Text = "已开通 " + result.Value!.Profile.PlanDisplay + "。";
+            SetRedeemHint("已开通 " + result.Value!.Profile.PlanDisplay + "。");
             await LoadUsageAsync();
+        }
+        catch (Exception)
+        {
+            SetRedeemHint("兑换没成功，请稍后再试。", isError: true);
         }
         finally
         {
             SetBusy(false);
         }
+    }
+
+    /// <summary>兑换提示在出错时用危险色；否则与普通说明文字同色。</summary>
+    private void SetRedeemHint(string text, bool isError = false)
+    {
+        RedeemHint.Text = text;
+        _redeemHintIsError = isError;
+        RedeemHint.Foreground = (System.Windows.Media.Brush)FindResource(
+            isError ? "DangerBrush" : "TextMutedBrush");
     }
 
     private void Tier_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -315,7 +351,7 @@ public partial class PlanPage : UserControl
             _canSubscribe = true;
             SubscribeButton.Content = "订阅 " + TierName(_tier);
             SubscribeButton.IsEnabled = !_busy;
-            SubscribeHint.Text = "先到「账号」页登录,登录后才能下单。";
+            SubscribeHint.Text = "先到「账号」页登录，登录后才能下单。";
             return;
         }
 
@@ -325,20 +361,20 @@ public partial class PlanPage : UserControl
         {
             _canSubscribe = false;
             SubscribeButton.Content = "订阅 " + TierName(_tier);
-            SubscribeHint.Text = "当前套餐高于所选套餐,不能购买低档。";
+            SubscribeHint.Text = "当前套餐高于所选套餐，不能购买低档。";
         }
         else if (current > 0 && selected > current)
         {
             _canSubscribe = false;
             SubscribeButton.Content = "升级 " + TierName(_tier);
-            SubscribeHint.Text = "升级套餐需要补差价,请联系 " + AccountError.SupportEmail + "。";
+            SubscribeHint.Text = "升级套餐需要补差价，请联系 " + AccountError.SupportEmail + "。";
         }
         else
         {
             _canSubscribe = true;
             SubscribeButton.Content = (current > 0 ? "续订 " : "订阅 ") + TierName(_tier);
             SubscribeHint.Text = current > 0
-                ? "续订会从当前到期日往后顺延;点按钮后显示微信 / 支付宝收款码。"
+                ? "续订会从当前到期日往后顺延；点按钮后显示微信 / 支付宝收款码。"
                 : "点按钮后会创建订单并显示微信 / 支付宝收款码。";
         }
 
@@ -360,7 +396,7 @@ public partial class PlanPage : UserControl
         if (_busy || !_canSubscribe) return;
         if (_account.Session is null)
         {
-            SubscribeHint.Text = "先到「账号」页登录,登录后才能下单。";
+            SubscribeHint.Text = "先到「账号」页登录，登录后才能下单。";
             return;
         }
 
@@ -404,7 +440,7 @@ public partial class PlanPage : UserControl
         {
             // 下单路径只返回 AccountApiResult；这里兜住 ShowDialog 之类的意外，
             // async void 事件处理器不能让异常逃出 UI 线程。
-            SubscribeHint.Text = "创建订单失败,请稍后重试。";
+            SubscribeHint.Text = "创建订单失败，请稍后重试。";
         }
         finally
         {
@@ -429,9 +465,9 @@ public partial class PlanPage : UserControl
 
     private void Input_Changed(object sender, TextChangedEventArgs e)
     {
-        if (RedeemHint.Text.StartsWith("先把激活码", StringComparison.Ordinal))
+        if (_redeemHintIsError || RedeemHint.Text.StartsWith("先把激活码", StringComparison.Ordinal))
         {
-            RedeemHint.Text = "买到激活码后填在这里,兑换后套餐立刻生效。";
+            SetRedeemHint("买到激活码后填在这里，兑换后套餐立刻生效。");
         }
     }
 

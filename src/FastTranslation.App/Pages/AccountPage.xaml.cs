@@ -129,14 +129,14 @@ public partial class AccountPage : UserControl
         }
 
         var usage = result.Value!;
-        MonthlyLeftText.Text = usage.RemainingMonthlyChars.ToString("N0") + " 字符,已用 "
+        MonthlyLeftText.Text = usage.RemainingMonthlyChars.ToString("N0") + " 字符，已用 "
             + usage.UsedMonthlyChars.ToString("N0") + " / " + usage.QuotaMonthlyChars.ToString("N0");
         MonthlyBar.Value = usage.MonthlyFraction;
 
         DailyRow.Visibility = usage.HasDaily ? Visibility.Visible : Visibility.Collapsed;
         if (usage.HasDaily)
         {
-            DailyLeftText.Text = (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符,已用 "
+            DailyLeftText.Text = (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符，已用 "
                 + (usage.UsedDailyChars ?? 0).ToString("N0") + " / " + usage.QuotaDailyChars!.Value.ToString("N0");
             DailyBar.Value = usage.DailyFraction;
         }
@@ -153,7 +153,7 @@ public partial class AccountPage : UserControl
         {
             // 这两个调用走 AccountApiClient，正常失败都会变成 AccountError；到这里是
             // 意料之外的异常，不能让它从 async void 里冒出去把进程带走。
-            SetStatus("刷新失败,请稍后重试。", isError: true);
+            SetStatus("刷新失败，请稍后重试。", isError: true);
             System.Diagnostics.Debug.WriteLine("account refresh: " + ex);
         }
     }
@@ -168,7 +168,7 @@ public partial class AccountPage : UserControl
         {
             DeviceItems.ItemsSource = null;
             DeviceCountText.Text = string.Empty;
-            DeviceEmptyText.Text = "读不到设备列表:" + result.Error!.Display;
+            DeviceEmptyText.Text = "读不到设备列表：" + result.Error!.Display;
             DeviceEmptyText.Visibility = Visibility.Visible;
             return;
         }
@@ -189,7 +189,7 @@ public partial class AccountPage : UserControl
 
         // 移除是破坏性操作，先问一句；系统 MessageBox 不认调色板，统一用 NoticeWindow
         if (!NoticeWindow.Confirm(Window.GetWindow(this), "移除设备",
-                $"移除「{name}」后,这台设备会退出登录,需要时重新登录即可。"))
+                $"移除「{name}」后，这台设备会退出登录，需要时重新登录即可。"))
         {
             return;
         }
@@ -210,7 +210,7 @@ public partial class AccountPage : UserControl
         }
         catch (Exception ex)
         {
-            SetStatus("移除设备时出错,请稍后重试。", isError: true);
+            SetStatus("移除设备时出错，请稍后重试。", isError: true);
             System.Diagnostics.Debug.WriteLine("remove device: " + ex);
         }
         finally
@@ -249,7 +249,7 @@ public partial class AccountPage : UserControl
             ? "输入注册邮箱，收到验证码后设置一个新密码。"
             : register
                 ? "注册后自动登录，免费额度立刻可用。"
-                : "登录后免费额度、生词本与复习进度都跟着账号同步。";
+                : "登录后免费额度、单词本与复习进度都跟着账号同步。";
         PasswordLabelText.Text = reset ? "新密码" : "密码";
         PasswordHint.Text = reset ? "至少 8 位。重置后其他设备需要重新登录。" : "至少 8 位。";
         ConfirmPasswordRow.Visibility = reset ? Visibility.Visible : Visibility.Collapsed;
@@ -267,7 +267,7 @@ public partial class AccountPage : UserControl
     {
         var email = EmailBox.Text.Trim();
         if (email.Length == 0) { SetError("请先填写邮箱。"); return; }
-        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对,检查一下有没有输错。"); return; }
+        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对，检查一下有没有输错。"); return; }
 
         SendCodeButton.IsEnabled = false;
         try
@@ -281,7 +281,7 @@ public partial class AccountPage : UserControl
                     return;
                 }
                 // 服务端不区分邮箱是否存在，界面也必须保持同样的口径。
-                CodeHint.Text = "如果该邮箱已注册,验证码已发送,10 分钟内有效。";
+                CodeHint.Text = "如果该邮箱已注册，验证码已发送，10 分钟内有效。";
                 SetError(null);
                 return;
             }
@@ -298,11 +298,16 @@ public partial class AccountPage : UserControl
                 _verificationRequired = false;
                 CodeRow.Visibility = Visibility.Collapsed;
                 SetError(null);
-                CodeHint.Text = "这个服务器不需要邮箱验证码,直接注册即可。";
+                CodeHint.Text = "这个服务器不需要邮箱验证码，直接注册即可。";
                 return;
             }
-            CodeHint.Text = "验证码已发送,10 分钟内有效。";
+            CodeHint.Text = "验证码已发送，10 分钟内有效。";
             SetError(null);
+        }
+        catch (Exception)
+        {
+            // async void 入口必须自己兜住：全局处理器只记 Debug，用户会看到按钮转一圈后毫无反馈。
+            SetError("发送验证码失败，请稍后再试。");
         }
         finally
         {
@@ -319,7 +324,7 @@ public partial class AccountPage : UserControl
         var password = PasswordBox.Password;
         if (email.Length == 0) { SetError("请填写邮箱。"); return; }
         // 登录也先查格式:服务端登录只查不校验,填错格式只会得到含糊的「邮箱或密码不正确」。
-        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对,检查一下有没有输错。"); return; }
+        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对，检查一下有没有输错。"); return; }
         if (password.Length == 0) { SetError(_mode == AuthMode.Reset ? "请填写新密码。" : "请填写密码。"); return; }
 
         SetBusy(true);
@@ -345,7 +350,7 @@ public partial class AccountPage : UserControl
                 _mode = AuthMode.Login;
                 ApplyMode();
                 SetError(null);
-                ToastWindow.Show("密码已重置,请用新密码登录。");
+                ToastWindow.Show("密码已重置，请用新密码登录。");
                 return;
             }
 
@@ -359,7 +364,7 @@ public partial class AccountPage : UserControl
                 // 「注册成功」的提示才不会比页面先出现。
                 Render();
                 // 面板从表单切到已登录卡片是唯一反馈，用户看不出「成功」还是「什么都没发生」(v98)
-                ToastWindow.Show("注册成功,已自动登录,免费额度立刻可用。");
+                ToastWindow.Show("注册成功，已自动登录，免费额度立刻可用。");
                 await LoadUsageAsync();
                 return;
             }
@@ -370,8 +375,12 @@ public partial class AccountPage : UserControl
             var profile = _account.Session?.Profile;
             ToastWindow.Show(profile is null
                 ? "登录成功。"
-                : $"登录成功:{profile.Email}({profile.PlanDisplay})");
+                : $"登录成功：{profile.Email}（{profile.PlanDisplay}）");
             await LoadUsageAsync();
+        }
+        catch (Exception)
+        {
+            SetError("操作没完成，请稍后再试。");
         }
         finally
         {
@@ -381,7 +390,7 @@ public partial class AccountPage : UserControl
 
     private static string RegisterError(AccountError error) => error.Code switch
     {
-        AccountErrorCode.Verification => "验证码不正确或已过期,点「获取验证码」重新发送。",
+        AccountErrorCode.Verification => "验证码不正确或已过期，点「获取验证码」重新发送。",
         _ => error.Display,
     };
 
@@ -402,6 +411,10 @@ public partial class AccountPage : UserControl
         {
             var result = await _account.UpdateDisplayNameAsync(name, CancellationToken.None);
             SetStatus(result.Succeeded ? "名字已保存。" : result.Error!.Display, isError: !result.Succeeded);
+        }
+        catch (Exception)
+        {
+            SetStatus("保存失败，请稍后再试。", isError: true);
         }
         finally
         {
@@ -438,6 +451,10 @@ public partial class AccountPage : UserControl
             ConfirmPasswordBox.Clear();
             SetStatus("密码已改。其他设备需要重新登录。", isError: false);
         }
+        catch (Exception)
+        {
+            SetStatus("改密码失败，请稍后再试。", isError: true);
+        }
         finally
         {
             SetBusy(false);
@@ -450,6 +467,11 @@ public partial class AccountPage : UserControl
         try
         {
             await _account.SignOutAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            SetStatus("退出登录失败，请稍后再试。", isError: true);
+            return;
         }
         finally
         {
@@ -520,11 +542,11 @@ public partial class AccountPage : UserControl
             _mode = AuthMode.Login;
             ApplyMode();
             SetError(null);
-            ToastWindow.Show("账号已注销,学习记录已删除。");
+            ToastWindow.Show("账号已注销，学习记录已删除。");
         }
         catch (Exception ex)
         {
-            SetStatus("注销账号时出错,请稍后重试。", isError: true);
+            SetStatus("注销账号时出错，请稍后重试。", isError: true);
             System.Diagnostics.Debug.WriteLine("delete account: " + ex);
         }
         finally
@@ -546,7 +568,7 @@ public partial class AccountPage : UserControl
         catch (Exception ex)
         {
             // 没装邮件客户端时 mailto 会失败；把地址显式留在界面上，用户仍能手动复制。
-            SetStatus("打不开邮件客户端,请手动发到 " + SupportEmail + "。", isError: true);
+            SetStatus("打不开邮件客户端，请手动发到 " + SupportEmail + "。", isError: true);
             System.Diagnostics.Debug.WriteLine("support mail: " + ex);
         }
     }

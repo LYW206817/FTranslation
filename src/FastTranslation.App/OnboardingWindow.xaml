@@ -15,7 +15,7 @@
     </StackPanel>
     <TextBlock TextWrapping="Wrap" FontSize="13" LineHeight="21"
                Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,16"
-               Text="划词即译:在任意应用里选中文本,点一下弹出的小按钮就能翻译、替换或插入。需要你自己的 Qwen-MT API Key(阿里云 DashScope 控制台获取,sk- 开头)。"/>
+               Text="划词即译：在任意应用里选中文本，点一下弹出的小按钮就能翻译、替换或插入。需要你自己的 Qwen-MT API Key（阿里云 DashScope 控制台获取，sk- 开头）。"/>
 
     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
       <Border Width="18" Height="18" CornerRadius="9" Background="{DynamicResource BrandBrush}">
@@ -30,7 +30,7 @@
       <Border Width="18" Height="18" CornerRadius="9" Background="{DynamicResource BrandBrush}">
         <TextBlock Text="2" FontSize="11" Foreground="{DynamicResource OnBrandTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
-      <TextBlock Text="测试连接(可选)" FontSize="13"
+      <TextBlock Text="测试连接（可选）" FontSize="13"
                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="9,0,0,0" VerticalAlignment="Center"/>
     </StackPanel>
     <Grid Margin="27,0,0,10">

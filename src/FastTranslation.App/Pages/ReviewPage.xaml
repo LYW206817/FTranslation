@@ -160,7 +160,11 @@
 
         <!-- 卡片：上面是被考的内容，下面是答案槽。这个槽必须落在文字
              下方而不是盖在文字上：横在中间的一块遮罩会把单词挡住。 -->
-        <StackPanel x:Name="CardHost" Grid.Row="1" VerticalAlignment="Center">
+        <!-- v143：长句子/长译文原来没有滚动容器，下半张卡被 Grid 行高硬切掉。
+             整块卡片进 ScrollViewer，评分条仍在行外固定可见。 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="CardHost" VerticalAlignment="Center" Margin="0,0,4,0">
           <TextBlock x:Name="PromptText" FontSize="21" LineHeight="34" Margin="24,0"
                      TextWrapping="Wrap" TextAlignment="Center"
                      Foreground="{DynamicResource TextPrimaryBrush}"/>
@@ -202,6 +206,7 @@
                      TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
                      Visibility="Collapsed"/>
         </StackPanel>
+        </ScrollViewer>
 
         <!-- 四档评分；答案可见之前置灰。故意设 Focusable="False"：
              键盘路径是 1/2/3/4，若按钮可获得焦点，它既会抢走 Space（用来揭晓答案），

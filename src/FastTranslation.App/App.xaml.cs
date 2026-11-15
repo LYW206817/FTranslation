@@ -254,7 +254,7 @@ public partial class App : Application, IResultPresenter
         _tray.Show("Fast Translation — 取词已开启");
         if (hookFailed)
         {
-            _tray.ShowBalloon("Fast Translation", "全局鼠标钩子安装失败,取词不可用。");
+            _tray.ShowBalloon("Fast Translation", "全局鼠标钩子安装失败，取词不可用。");
         }
 
         // 截屏翻译走独立的图片通道：端点、模型、返回（译图）都和文本翻译不同，
@@ -304,7 +304,7 @@ public partial class App : Application, IResultPresenter
         _imageHotkey.Pressed += RunScreenshotTranslation;
         if (!_imageHotkey.Register(_settings.ImageHotkey))
         {
-            _tray.ShowBalloon("Fast Translation", $"截图翻译热键 {_settings.ImageHotkey} 被占用,请到设置里换一个");
+            _tray.ShowBalloon("Fast Translation", $"截图翻译热键 {_settings.ImageHotkey} 被占用，请到设置里换一个");
         }
 
         // 第三个热键实例：HotkeyService 每个实例自建 message-only 窗口，(hwnd,id) 互不冲突
@@ -312,7 +312,7 @@ public partial class App : Application, IResultPresenter
         _speechHotkey.Pressed += RunSpeechTranslation;
         if (!_speechHotkey.Register(_settings.SpeechHotkey))
         {
-            _tray.ShowBalloon("Fast Translation", $"语音翻译热键 {_settings.SpeechHotkey} 被占用,请到设置里换一个");
+            _tray.ShowBalloon("Fast Translation", $"语音翻译热键 {_settings.SpeechHotkey} 被占用，请到设置里换一个");
         }
 
         _mainWindow = new MainWindow(
@@ -329,7 +329,7 @@ public partial class App : Application, IResultPresenter
                 _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
             },
             () => _captureEnabled,
-            () => _updates?.CheckAsync(interactive: true));
+            () => _updates?.CheckAsync(interactive: true) ?? Task.CompletedTask);
         _mainWindow.SettingsRequested += () => ShowPage(MainPageId.Settings);
         _mainWindow.ScreenshotRequested += RunScreenshotTranslation;
         _mainWindow.SpeechRequested += RunSpeechTranslation;
@@ -482,7 +482,7 @@ public partial class App : Application, IResultPresenter
                     // _lastResult/_lastSelection，只有 ShowCard() 才会记录它们
                     ShowCard(new Core.TranslationResult(
                         "the quick brown fox jumps over the lazy dog and keeps running",
-                        "那只敏捷的棕色狐狸跳过了那只懒惰的狗,然后继续在草地上奔跑。",
+                        "那只敏捷的棕色狐狸跳过了那只懒惰的狗，然后继续在草地上奔跑。",
                         "auto", "Chinese", "qwen-mt-flash", 531, false),
                         CapturedSelection.Empty(new ScreenPoint(200, 260)));
                 }
@@ -506,7 +506,7 @@ public partial class App : Application, IResultPresenter
                         "auto", "Chinese", "qwen-mt-flash", 486, false)
                     {
                         Usage = new Core.TokenUsage(56, 9),
-                        Notice = "本月额度已用完,这次用了你自己的 Key",
+                        Notice = "本月额度已用完，这次用了你自己的 Key",
                     },
                         CapturedSelection.Empty(new ScreenPoint(200, 260)));
                 }
@@ -522,7 +522,7 @@ public partial class App : Application, IResultPresenter
             {
                 uiTimer.Stop();
                 _ = Dispatcher.BeginInvoke(() => NoticeWindow.Confirm(_mainWindow,
-                    "确认操作", "这是一个带「取消」与「继续」的提示窗口,只用来核对按钮形态与归属窗口。"));
+                    "确认操作", "这是一个带「取消」与「继续」的提示窗口，只用来核对按钮形态与归属窗口。"));
             };
             uiTimer.Start();
         }
@@ -707,7 +707,7 @@ public partial class App : Application, IResultPresenter
                     _imageWindow?.ShowResult(
                         BuildSampleCapture(),
                         "截图翻译 · 3 行 · qwen-mt-image",
-                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文，谢谢。",
                         true,
                         new ImageNoteContext("The quick brown fox jumped over the lazy dog.", "Chinese", "English", "qwen-mt-flash"));
                 }
@@ -727,7 +727,7 @@ public partial class App : Application, IResultPresenter
                     _imageWindow?.ShowResult(
                         BuildSampleCapture(),
                         "截图翻译 · 3 行 · qwen-mt-image",
-                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                        "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文，谢谢。",
                         true,
                         new ImageNoteContext("The quick brown fox jumped over the lazy dog.", "Chinese", "English", "qwen-mt-flash"));
                     _imageWindow?.MarkSaved("单词");
@@ -850,7 +850,7 @@ public partial class App : Application, IResultPresenter
                     _speechWindow.BeginSession();
                     if (uitest == "speech-window-failed")
                     {
-                        _speechWindow.EndSession("无法连接语音服务,请稍后再试");
+                        _speechWindow.EndSession("无法连接语音服务，请稍后再试");
                         return;
                     }
                     // v106: 终稿但没有译文要显式标「未翻译」；草稿行不标，否则每句出字前
@@ -936,11 +936,11 @@ public partial class App : Application, IResultPresenter
                 {
                     if (uitest == "toast")
                     {
-                        ToastWindow.Show("注册成功,已自动登录,免费额度立刻可用。");
+                        ToastWindow.Show("注册成功，已自动登录，免费额度立刻可用。");
                     }
                     else
                     {
-                        ToastWindow.Show("未登录:免费额度、生词本同步与语音翻译都用不了。", "去登录",
+                        ToastWindow.Show("未登录：免费额度、单词本同步与语音翻译都用不了。", "去登录",
                             () => ShowPage(MainPageId.Account));
                     }
                 }
@@ -963,7 +963,7 @@ public partial class App : Application, IResultPresenter
             Padding = new System.Windows.Thickness(26),
             Child = new System.Windows.Controls.TextBlock
             {
-                Text = "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文,谢谢。",
+                Text = "快速的棕色狐狸跳过了懒狗。\nThe quick brown fox jumps over the lazy dog.\n请把这句话翻译成英文，谢谢。",
                 FontSize = 20,
                 LineHeight = 44,
                 Foreground = System.Windows.Media.Brushes.Black,
@@ -1166,7 +1166,7 @@ public partial class App : Application, IResultPresenter
         {
             // v110: 以前先把等待窗收起来，再进协调器才发现忙——用户看到的是「窗没了、
             // 选框也没起来」，以为热键失灵。忙时在收起任何窗口之前就明确提示。
-            ToastWindow.Show("上一张截图还在翻译,请稍候。");
+            ToastWindow.Show("上一张截图还在翻译，请稍候。");
             return;
         }
 
@@ -1345,7 +1345,7 @@ public partial class App : Application, IResultPresenter
         if (_account is not { IsSignedIn: true })
         {
             _imageWindow?.ShowSaveError("先在账号里登录再保存");
-            _tray?.ShowBalloon("Fast Translation", "先在账号里登录,保存的单词才能跨设备同步");
+            _tray?.ShowBalloon("Fast Translation", "先在账号里登录，保存的单词才能跨设备同步");
             ShowAccount();
             return;
         }
@@ -1384,7 +1384,7 @@ public partial class App : Application, IResultPresenter
             }
 
             var message = saved.Error.Code == AccountErrorCode.NotSignedIn
-                ? "先在账号里登录,保存的单词才能跨设备同步"
+                ? "先在账号里登录，保存的单词才能跨设备同步"
                 : saved.Error.Display;
             _imageWindow?.ShowSaveError(message);
             _tray?.ShowBalloon("Fast Translation", message);
@@ -1392,8 +1392,8 @@ public partial class App : Application, IResultPresenter
         catch (Exception ex)
         {
             Trace($"save screenshot note: {ex}");
-            _imageWindow?.ShowSaveError("保存没成功,稍后再试一次");
-            _tray?.ShowBalloon("Fast Translation", "保存没成功,稍后再试一次");
+            _imageWindow?.ShowSaveError("保存没成功，稍后再试一次");
+            _tray?.ShowBalloon("Fast Translation", "保存没成功，稍后再试一次");
         }
     }
 
@@ -1428,7 +1428,7 @@ public partial class App : Application, IResultPresenter
         if (_lastResult is not { Succeeded: true } result) return;
         if (_account is null || !_account.IsSignedIn)
         {
-            _card?.ShowNotice("先在账号里登录,保存的单词才能跨设备同步");
+            _card?.ShowNotice("先在账号里登录，保存的单词才能跨设备同步");
             ShowAccount();
             return;
         }
@@ -1464,13 +1464,13 @@ public partial class App : Application, IResultPresenter
                 return;
             }
             _card?.ShowNotice(saved.Error!.Code == AccountErrorCode.NotSignedIn
-                ? "先在账号里登录,保存的单词才能跨设备同步"
+                ? "先在账号里登录，保存的单词才能跨设备同步"
                 : saved.Error!.Display);
         }
         catch (Exception ex)
         {
             Trace($"save note: {ex}");
-            _card?.ShowNotice("保存没成功,稍后再试一次");
+            _card?.ShowNotice("保存没成功，稍后再试一次");
         }
     }
 
@@ -1483,13 +1483,26 @@ public partial class App : Application, IResultPresenter
         if (_lastResult is not { Succeeded: true } || string.IsNullOrEmpty(_lastSelection.Text)) return;
         if (!_settings.WriteBackEnabled) return;
         _card?.Hide();
-        var outcome = replace
-            ? await _writeBack!.ReplaceAsync(_lastSelection, _lastResult.TranslatedText, CancellationToken.None)
-            : await _writeBack!.InsertAsync(_lastSelection, _lastResult.TranslatedText, CancellationToken.None);
+        WriteBackOutcome outcome;
+        try
+        {
+            outcome = replace
+                ? await _writeBack!.ReplaceAsync(_lastSelection, _lastResult.TranslatedText, CancellationToken.None)
+                : await _writeBack!.InsertAsync(_lastSelection, _lastResult.TranslatedText, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // v143：这两个 async void 入口原来没有 catch，WriteBackService 在目标窗口消失、
+            // SendInput 失败等情况下抛出的异常会直接终结 UI 线程。写回失败只是这一次动作失败，
+            // 用卡片提示即可，进程必须活着。
+            Trace($"writeback: {ex}");
+            _card?.ShowNotice(replace ? "替换没成功，稍后再试一次" : "插入没成功，稍后再试一次");
+            return;
+        }
         if (outcome is not (WriteBackOutcome.Replaced or WriteBackOutcome.Inserted))
         {
             // 非模态通知（曾经用 MessageBox 把应用冻住过一次）；不产生剪贴板副作用
-            _card?.ShowNotice(replace ? "当前内容不能替换诶,换一个试试" : "当前内容不能插入诶,换一个试试");
+            _card?.ShowNotice(replace ? "当前内容不能替换诶，换一个试试" : "当前内容不能插入诶，换一个试试");
         }
     }
 
@@ -1638,7 +1651,7 @@ public partial class App : Application, IResultPresenter
         if (_account is not { IsSignedIn: false }) return;
         // 首次运行的引导窗正在收集 API Key，再压一条「先登录」只是噪音
         if (!_settings.FirstRunCompleted) return;
-        ToastWindow.Show("未登录:免费额度、生词本同步与语音翻译都用不了。", "去登录",
+        ToastWindow.Show("未登录：免费额度、单词本同步与语音翻译都用不了。", "去登录",
             () => ShowPage(MainPageId.Account));
     }
 
@@ -1685,7 +1698,7 @@ public partial class App : Application, IResultPresenter
         if (!_updates.ApplyUpdate(installer, out var error))
         {
             UpdateLog.Write($"apply failed: {error}");
-            _tray?.ShowBalloon("更新失败", "无法启动安装程序,请到下载页手动更新。");
+            _tray?.ShowBalloon("更新失败", "无法启动安装程序，请到下载页手动更新。");
         }
         // ApplyUpdate 成功就已经退出了应用；这之后不会再执行
     }
@@ -1714,7 +1727,7 @@ public partial class App : Application, IResultPresenter
             ShowSpeechWindow();
             _mainWindow?.SetSpeechState(
                 _speechCoordinator.State == SpeechCoordinatorState.Streaming
-                    ? "语音翻译进行中,字幕在浮窗"
+                    ? "语音翻译进行中，字幕在浮窗"
                     : "正在连接语音服务…",
                 isError: false);
             return;
@@ -1728,7 +1741,7 @@ public partial class App : Application, IResultPresenter
         }
         if (_account is not { IsSignedIn: true })
         {
-            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费，先登录账号再开始");
             _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
             return;
         }
@@ -1758,8 +1771,8 @@ public partial class App : Application, IResultPresenter
         var usage = await account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
         if (!usage.Succeeded || usage.Value is null)
         {
-            _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息,请稍后再试");
-            _mainWindow?.SetSpeechState("读不到额度信息,请稍后再试", isError: true);
+            _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息，请稍后再试");
+            _mainWindow?.SetSpeechState("读不到额度信息，请稍后再试", isError: true);
             return;
         }
         SetSpeechQuotaHint(usage.Value);
@@ -1819,7 +1832,7 @@ public partial class App : Application, IResultPresenter
         // 交给 EndSpeechSession，这里不要再写一条泛化错误把它盖掉。
         if (coordinator.State == SpeechCoordinatorState.Streaming)
         {
-            _mainWindow?.SetSpeechState("语音翻译进行中,字幕在浮窗", isError: false);
+            _mainWindow?.SetSpeechState("语音翻译进行中，字幕在浮窗", isError: false);
         }
     }
 
@@ -1839,7 +1852,7 @@ public partial class App : Application, IResultPresenter
         capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(
             () => Observe(RestartSpeechCaptureAsync(), "切换音频设备后恢复失败"));
         capture.Failed += ex => Dispatcher.BeginInvoke(() =>
-            EndSpeechSession("无法采集系统声音: " + ex.Message));
+            EndSpeechSession("无法采集系统声音：" + ex.Message));
         capture.Start();
     }
 
@@ -1872,8 +1885,8 @@ public partial class App : Application, IResultPresenter
         // 所以时长交给 SpeechQuotaGate.DescribeDuration，秒/分钟按实际大小选。
         var monthly = SpeechQuotaGate.DescribeDuration(usage.RemainingMonthlyChars);
         var text = usage.RemainingDailyChars is { } daily
-            ? $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费,今天可讲约 {SpeechQuotaGate.DescribeDuration(daily)},本月约 {monthly}"
-            : $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费,本月剩余可讲约 {monthly}";
+            ? $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费，今天可讲约 {SpeechQuotaGate.DescribeDuration(daily)},本月约 {monthly}"
+            : $"语音按 {SpeechQuotaGate.CharsPerSecond} 字符/秒计费，本月剩余可讲约 {monthly}";
         _mainWindow?.SetSpeechQuota(text);
     }
 
@@ -1929,7 +1942,7 @@ public partial class App : Application, IResultPresenter
         if (_speechCoordinator is not null) return;
         if (_account is not { IsSignedIn: true })
         {
-            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费,先登录账号再开始");
+            _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费，先登录账号再开始");
             _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
             return;
         }
@@ -1958,7 +1971,7 @@ public partial class App : Application, IResultPresenter
                 // 旧会话的停传最多等 2s，用户可能已经点了「继续」；没有这道判断时旧会话的
                 // 异常会走 EndSpeechSession 把新会话的协调器与采集直接清掉。
                 if (_speechCoordinator is not null || _speechStarting) return;
-                EndSpeechSession("语音结束失败:" + t.Exception!.GetBaseException().Message);
+                EndSpeechSession("语音结束失败：" + t.Exception!.GetBaseException().Message);
             }),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
@@ -2037,7 +2050,7 @@ public partial class App : Application, IResultPresenter
         if (paused)
         {
             _speechWindow?.PauseSession();
-            _mainWindow?.SetSpeechState("已暂停,点「继续」重新开始", isError: false);
+            _mainWindow?.SetSpeechState("已暂停，点「继续」重新开始", isError: false);
         }
         else
         {
@@ -2101,6 +2114,10 @@ public partial class App : Application, IResultPresenter
         _documentProvider = null;
         _gatewayHttp?.Dispose();
         _gatewayHttp = null;
+        // UpdateCoordinator 持有 DispatcherTimer 与 HttpClient；进程退出前显式收掉，
+        // 否则计时器可能在窗口已关闭后再触发一次检查。
+        _updates?.Dispose();
+        _updates = null;
         // 只取消不 Dispose：探测循环此刻可能正挂在 Task.Delay 上，Dispose 会让它的注册抛
         // ObjectDisposedException；后台线程随进程退出即可。
         _gatewayProbeCts.Cancel();

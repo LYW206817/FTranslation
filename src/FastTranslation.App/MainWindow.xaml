@@ -45,7 +45,7 @@
               <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
                         IsChecked="True" Checked="CaptureToggle_Changed" Unchecked="CaptureToggle_Changed"/>
             </Border>
-            <TextBlock x:Name="AccountStatus" Text="账号:未登录" Margin="6,9,6,2"
+            <TextBlock x:Name="AccountStatus" Text="账号：未登录" Margin="6,9,6,2"
                        TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"/>
           </StackPanel>
@@ -148,8 +148,21 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Style="{StaticResource NavIcon}" Text="&#xE8C7;"/>
                 <TextBlock Grid.Column="1" Text="套餐" VerticalAlignment="Center"/>
-                <TextBlock x:Name="PlanLabel" Grid.Column="2" VerticalAlignment="Center"
-                           Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"/>
+                <TextBlock x:Name="PlanLabel" Grid.Column="2" VerticalAlignment="Center" FontSize="10.5">
+                  <!-- v143：活动项的底色是品牌渐变，PlanLabel 若继续用 TextMutedBrush 会在蓝底上
+                       变成深灰字（浅色和深色主题都几乎读不出）。跟着 SidebarItem 的 Foreground 走。 -->
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding (local:SidebarState.IsActive), RelativeSource={RelativeSource AncestorType=Button}}"
+                                     Value="True">
+                          <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
               </Grid>
             </Button>
             <Button x:Name="AccountButton" AutomationProperties.Name="账号" Style="{StaticResource SidebarItem}" Tag="Account" Click="Nav_Click" Margin="0,1,0,0">

@@ -88,7 +88,7 @@ public sealed partial class SpeechWindow : Window
         _paused = true;
         _timer.Stop();
         LiveDot.Fill = (Brush)FindResource("TextMutedBrush");
-        StateText.Text = $"已暂停,字幕保留;点「继续」重开一轮采集(每轮最少按 {SpeechQuotaGate.MinBilledSeconds} 秒计费)";
+        StateText.Text = $"已暂停，字幕保留；点「继续」重开一轮采集（每轮最少按 {SpeechQuotaGate.MinBilledSeconds} 秒计费）";
         PauseButton.Content = "继续";
         // 暂停态没有会话可「结束」，那颗按钮回到关闭的语义；要接着讲是点「继续」
         StopButton.Content = "关闭";
@@ -119,7 +119,7 @@ public sealed partial class SpeechWindow : Window
         StateText.Text = !string.IsNullOrEmpty(error)
             ? error
             : dropped > 0
-                ? $"已结束({dropped} 句因处理不过来被丢弃)"
+                ? $"已结束（{dropped} 句因处理不过来被丢弃）"
                 : "已结束";
         StopButton.Content = "关闭";
         // 会话已释放，没有「继续」可点——重开得走「开始语音翻译」，那会重新预检额度

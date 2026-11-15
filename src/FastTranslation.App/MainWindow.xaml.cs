@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly ISecretStore _secrets;
     private readonly HotkeyService _hotkey;
-    private readonly Action? _checkUpdates;
+    private readonly Func<Task>? _checkUpdates;
     private readonly Action<bool> _setCaptureEnabled;
     private readonly Func<bool> _isCaptureEnabled;
     private readonly DocumentTranslationCoordinator _documents;
@@ -80,10 +80,16 @@ public partial class MainWindow : Window
         DocumentTranslationCoordinator documents,
         Action<bool> setCaptureEnabled,
         Func<bool> isCaptureEnabled,
-        Action? checkUpdates = null)
+        Func<Task>? checkUpdates = null)
     {
         InitializeComponent();
         WindowChrome.Apply(this);
+        // v143：XAML 里的 1320x860 是按 1440x960 调的。1366x768 或 1920x1080@150%
+        // 的笔记本工作区只有约 1280x672 DIP，窗口底部（侧栏开关、设置保存条）会直接落在屏幕外。
+        // 启动时只缩不放：小屏适配到工作区，大屏保持设计尺寸。
+        var work = SystemParameters.WorkArea;
+        Width = Math.Min(Width, Math.Max(MinWidth, work.Width - 24));
+        Height = Math.Min(Height, Math.Max(MinHeight, work.Height - 24));
         _translation = translation;
         _account = account;
         _settings = settings;
@@ -137,9 +143,9 @@ public partial class MainWindow : Window
     /// <summary>显示在侧边栏底部，这样不打开任何界面也能看到登录状态。</summary>
     public void RefreshAccountStatus(string? email, string? planDisplay)
     {
-        AccountStatus.Text = email is null
-            ? "账号:未登录"
-            : "账号:" + email + (string.IsNullOrEmpty(planDisplay) ? string.Empty : "(" + planDisplay + ")");
+        // v143：这里只放邮箱。套餐名已经显示在「套餐」那一行的 PlanLabel 上，重复一遍
+        // 会把 200px 宽的侧栏挤到截断（全角括号比半角更宽，长邮箱直接变成「（Lit…」）。
+        AccountStatus.Text = email is null ? "账号：未登录" : "账号：" + email;
         PlanLabel.Text = email is null || string.IsNullOrEmpty(planDisplay) ? string.Empty : planDisplay;
     }
 

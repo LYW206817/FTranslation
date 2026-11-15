@@ -82,7 +82,7 @@
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource BrandBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrandTextBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -152,9 +152,9 @@
                 <TextBlock Text="模型" Style="{StaticResource SKey}"/>
                 <local:FtComboBox x:Name="ModelCombo" Grid.Column="1" Width="210" Margin="0,0,4,0"
                                   AutomationProperties.Name="模型">
-                  <ComboBoxItem Content="Flash(快速,默认)" Tag="qwen-mt-flash"/>
-                  <ComboBoxItem Content="Plus(更高质量,消耗 2.7 倍额度)" Tag="qwen-mt-plus"/>
-                  <ComboBoxItem Content="Lite(最省额度,消耗 0.85 倍额度)" Tag="qwen-mt-lite"/>
+                  <ComboBoxItem Content="Flash（快速，默认）" Tag="qwen-mt-flash"/>
+                  <ComboBoxItem Content="Plus（更高质量，消耗 2.7 倍额度）" Tag="qwen-mt-plus"/>
+                  <ComboBoxItem Content="Lite（最省额度，消耗 0.85 倍额度）" Tag="qwen-mt-lite"/>
                 </local:FtComboBox>
               </Grid>
             </Border>
@@ -241,7 +241,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                   <TextBlock Text="API Key" Style="{StaticResource SKey}"/>
-                  <TextBlock Text="留空表示不修改;已保存的 Key 使用 Windows DPAPI 加密在本机存储。"
+                  <TextBlock Text="留空表示不修改；已保存的 Key 使用 Windows DPAPI 加密在本机存储。"
                              Style="{StaticResource SDesc}"/>
                 </StackPanel>
                 <PasswordBox x:Name="KeyBox" Grid.Column="1" Width="300" Margin="0,0,4,0"
@@ -272,7 +272,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                   <TextBlock Text="账号服务地址" Style="{StaticResource SKey}"/>
-                  <TextBlock Text="留空使用内置账号服务器;自建或测试服务器可在此填写。"
+                  <TextBlock Text="留空使用内置账号服务器；自建或测试服务器可在此填写。"
                              Style="{StaticResource SDesc}"/>
                 </StackPanel>
                 <TextBox x:Name="AccountUrlBox" Grid.Column="1" Width="300" Margin="0,0,4,0"
@@ -303,7 +303,7 @@
                   </Grid.ColumnDefinitions>
                   <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                     <TextBlock Text="取词" Style="{StaticResource SKey}"/>
-                    <TextBlock Text="取词失败时使用剪贴板兜底(Ctrl+C)。" Style="{StaticResource SDesc}"/>
+                    <TextBlock Text="取词失败时使用剪贴板兜底（Ctrl+C）。" Style="{StaticResource SDesc}"/>
                   </StackPanel>
                   <CheckBox x:Name="ClipboardFallbackCheck" Grid.Column="1" VerticalAlignment="Center"
                             AutomationProperties.Name="取词失败时使用剪贴板兜底"/>
@@ -333,7 +333,7 @@
                   </Grid.ColumnDefinitions>
                   <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                     <TextBlock Text="排除应用" Style="{StaticResource SKey}"/>
-                    <TextBlock Text="按进程名匹配(如 chrome、Code)，不区分大小写;这些应用里的划词与写回都不触发。"
+                    <TextBlock Text="按进程名匹配（如 chrome、Code），不区分大小写；这些应用里的划词与写回都不触发。"
                                Style="{StaticResource SDesc}"/>
                   </StackPanel>
                   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -456,7 +456,7 @@
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <TextBlock Grid.Column="0" Text="这些设置只存在这台机器上,不随账号同步。"
+        <TextBlock Grid.Column="0" Text="这些设置只存在这台机器上，不随账号同步。"
                    FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"
                    Foreground="{DynamicResource TextMutedBrush}"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal">

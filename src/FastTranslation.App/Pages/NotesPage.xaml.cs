@@ -143,7 +143,7 @@ public partial class NotesPage : UserControl
         {
             System.Diagnostics.Debug.WriteLine("notes load: " + ex);
             _total = 0;
-            EmptyText.Text = "加载失败,稍后再试一次。";
+            EmptyText.Text = "加载失败，稍后再试一次。";
         }
         finally
         {
@@ -164,7 +164,7 @@ public partial class NotesPage : UserControl
         if (_loading && _items.Count == 0) EmptyText.Text = "正在加载…";
         if (!_account.IsSignedIn && !_demo)
         {
-            EmptyText.Text = "先登录账号,保存的单词就能跨设备同步。";
+            EmptyText.Text = "先登录账号，保存的单词就能跨设备同步。";
             EmptyText.Visibility = Visibility.Visible;
         }
 
@@ -253,8 +253,12 @@ public partial class NotesPage : UserControl
             }
             else
             {
-                GradeLine.Text = "打分没成功,稍后再试一次";
+                GradeLine.Text = "打分没成功，稍后再试一次";
             }
+        }
+        catch (Exception)
+        {
+            GradeLine.Text = "打分没成功，稍后再试一次";
         }
         finally
         {
@@ -269,19 +273,26 @@ public partial class NotesPage : UserControl
         var wire = (KindCombo.SelectedItem as ComboBoxItem)?.Tag as string;
         if (!NoteKinds.TryParse(wire, out var kind) || kind == note.Kind) return;
 
-        var result = await _account.UpdateNoteAsync(note.Id, kind, null, CancellationToken.None);
-        if (!result.Succeeded)
+        try
         {
-            DetailStatus.Text = result.Error!.Display;
-            ShowDetail(note); // 把下拉框弹回服务端仍然保留的值
-            return;
+            var result = await _account.UpdateNoteAsync(note.Id, kind, null, CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                DetailStatus.Text = result.Error!.Display;
+                ShowDetail(note); // 把下拉框弹回服务端仍然保留的值
+                return;
+            }
+            DetailStatus.Text = "已改到" + NoteKinds.Display(kind) + "本。";
+            // 改分类可能把行移出当前书架，所以这里要重载而不是就地修补
+            _selected = null;
+            await LoadAsync();
         }
-        DetailStatus.Text = "已改到" + NoteKinds.Display(kind) + "本。";
-        // 改分类可能把行移出当前书架，所以这里要重载而不是就地修补
-        _selected = null;
-        await LoadAsync();
+        catch (Exception)
+        {
+            DetailStatus.Text = "改分类没成功，稍后再试一次。";
+            ShowDetail(note);
+        }
     }
-
     private async void SaveNote_Click(object _, RoutedEventArgs e)
     {
         if (_selected is not { } note) return;
@@ -292,6 +303,10 @@ public partial class NotesPage : UserControl
             DetailStatus.Text = result.Succeeded ? "备注已保存。" : result.Error!.Display;
             if (result.Succeeded) ReplaceRow(result.Value!);
         }
+        catch (Exception)
+        {
+            DetailStatus.Text = "备注保存失败，请稍后再试。";
+        }
         finally
         {
             SaveNoteButton.IsEnabled = true;
@@ -301,6 +316,13 @@ public partial class NotesPage : UserControl
     private async void Delete_Click(object _, RoutedEventArgs e)
     {
         if (_selected is not { } note) return;
+        // v143：删除不可撤销，先确认。原文可能很长，确认框里只放前 24 个字。
+        var excerpt = note.SourceText.Length > 24 ? note.SourceText[..24] + "…" : note.SourceText;
+        if (!NoticeWindow.Confirm(Window.GetWindow(this), "删除这条记录",
+                $"删除「{excerpt}」后无法恢复，也不会再进入复习队列。"))
+        {
+            return;
+        }
         DeleteButton.IsEnabled = false;
         try
         {
@@ -314,6 +336,10 @@ public partial class NotesPage : UserControl
             _items.Remove(note);
             _total = Math.Max(0, _total - 1);
             Render();
+        }
+        catch (Exception)
+        {
+            DetailStatus.Text = "删除没成功，请稍后再试。";
         }
         finally
         {

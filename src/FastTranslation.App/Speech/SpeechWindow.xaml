@@ -31,22 +31,31 @@
               MouseLeftButtonDown="Header_MouseLeftButtonDown">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
+            <!-- v143：状态文字原来在 Auto 列里，长错误文案会把关闭按钮挤出 720 宽的窗口。
+                 左列改为 *，状态文字在自己的格子里截断，用时和关闭钮始终留在窗口内。 -->
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="0"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <StackPanel Orientation="Horizontal">
+          <Grid Grid.Column="0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
             <Ellipse x:Name="LiveDot" Width="8" Height="8" Fill="{DynamicResource BrandBrush}"
                      VerticalAlignment="Center"/>
-            <TextBlock x:Name="StateText" Text="语音翻译" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+            <TextBlock x:Name="StateText" Grid.Column="1" Text="语音翻译" Margin="8,0,0,0" FontSize="12"
+                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-            <TextBlock x:Name="ElapsedText" Margin="10,0,0,0" FontSize="12"
+            <TextBlock x:Name="ElapsedText" Grid.Column="2" Margin="10,0,0,0" FontSize="12"
                        Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
-          </StackPanel>
+          </Grid>
           <TextBlock x:Name="UsageText" Grid.Column="2" Margin="0,0,10,0" FontSize="12"
                      Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
           <Button x:Name="CloseButton" Grid.Column="3" Content="✕" Width="26" Height="26"
+                  AutomationProperties.Name="关闭字幕窗"
                   Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextMutedBrush}"
                   Click="Close_Click"/>
         </Grid>

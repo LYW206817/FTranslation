@@ -130,6 +130,10 @@ public partial class ReviewPage : UserControl
             return;
         }
 
+        // v143：请求期间先占位。原来这里什么都不写，网络慢时整块白卡看起来像页面坏了；
+        // ShowPickMessage 同时会清掉上一轮的旧提示，避免「登录后就能复习」浮在成功加载的列表上。
+        ShowPickMessage("正在加载…");
+
         // 日配额按用户本地零点重置；服务端只认这个数字，不猜时区。
         var dayStart = ReviewSchedule.StartOfLocalDay(DateTimeOffset.Now);
         var result = await _account.ReviewQueueAsync(dayStart, NewLimit, QueueLimit, CancellationToken.None);
@@ -148,6 +152,10 @@ public partial class ReviewPage : UserControl
         }
 
         ShowPick();
+        if (_picks.Count == 0)
+        {
+            ShowPickMessage("今天没有到期的内容。新存的单词和句子到期后会出现在这里。");
+        }
     }
 
     private void ShowPick()
@@ -155,6 +163,8 @@ public partial class ReviewPage : UserControl
         PickHost.Visibility = Visibility.Visible;
         SessionHost.Visibility = Visibility.Collapsed;
         DonePanel.Visibility = Visibility.Collapsed;
+        // 列表接管内容区时收起空态/错误态，否则旧文案会压在列表上方
+        PickEmpty.Visibility = Visibility.Collapsed;
         _session = null;
         UpdatePickState();
     }
@@ -174,12 +184,12 @@ public partial class ReviewPage : UserControl
         var checkedCount = _picks.Count(p => p.IsChecked);
         PickHint.Text = _picks.Count == 0
             ? string.Empty
-            : "勾选今天要看的内容,再点开始复习";
+            : "勾选今天要看的内容，再点开始复习";
         CountLabel.Text = _picks.Count == 0
             ? string.Empty
             : $"已选 {checkedCount} / {_picks.Count} 条";
         StartButton.IsEnabled = checkedCount > 0;
-        StartButton.Content = checkedCount > 0 ? $"开始复习({checkedCount})" : "开始复习";
+        StartButton.Content = checkedCount > 0 ? $"开始复习（{checkedCount}）" : "开始复习";
 
         _syncingPicks = true;
         try
@@ -291,6 +301,10 @@ public partial class ReviewPage : UserControl
         if (!_revealed || _grading || _session is null || _session.Current is not { } note) return;
         if (!ReviewSchedule.TryParseGrade(wire, out var grade)) return;
 
+        // v143：评分是网络往返。请求期间用户可能按 Esc 结束、点跳过或切走页面，
+        // 回来时 _session 已经是另一个（或 null）。记下发起时那一个，结果只作用于它。
+        var session = _session;
+
         _grading = true;
         // v61: 评分期间不能再禁用按钮，否则禁用样式会盖住选中实色。
         // 按钮保持启用，只关掉整条四档栏的命中测试；键盘则由 _grading 防重入。
@@ -299,6 +313,12 @@ public partial class ReviewPage : UserControl
         try
         {
             var result = await _account.GradeNoteAsync(note.Id, grade, CancellationToken.None);
+            if (!ReferenceEquals(_session, session))
+            {
+                // 会话已经结束或被换掉：这次评分已落库，但不能再推进当前卡。
+                if (result.Succeeded) QueueSettled?.Invoke();
+                return;
+            }
             if (!result.Succeeded)
             {
                 // 卡片留在原地：评分失败不能让用户把卡弄丢（设计 §9）。
@@ -309,8 +329,17 @@ public partial class ReviewPage : UserControl
             }
 
             QueueSettled?.Invoke();
-            if (!_session.Advance()) ShowDone();
+            if (!session.Advance()) ShowDone();
             else RenderCard();
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_session, session))
+            {
+                StatusText.Text = "打分没成功，稍后再试一次。";
+                StatusText.Visibility = Visibility.Visible;
+                SetGradeEnabled(true);
+            }
         }
         finally
         {
@@ -407,7 +436,7 @@ public partial class ReviewPage : UserControl
     private static string EmptyMessage(AccountError error) => error.Code switch
     {
         AccountErrorCode.NotSignedIn => "登录后就能复习存下来的单词和句子。",
-        AccountErrorCode.SubscriptionRequired => "复习要订阅之后才能用,去套餐页看看。",
+        AccountErrorCode.SubscriptionRequired => "复习要订阅之后才能用，去套餐页看看。",
         _ => error.Display,
     };
 }

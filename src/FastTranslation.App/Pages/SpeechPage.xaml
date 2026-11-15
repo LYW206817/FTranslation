@@ -43,6 +43,7 @@
               </Grid.RowDefinitions>
               <TextBlock Text="翻译成" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
               <local:FtComboBox x:Name="TargetCombo" Grid.Column="1" Width="200"
+                                AutomationProperties.Name="翻译成"
                                 HorizontalAlignment="Left"
                                 SelectionChanged="TargetCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Text="显示原文" Style="{StaticResource FieldLabel}"
@@ -53,6 +54,7 @@
               <TextBlock Grid.Row="2" Text="字幕条数" Style="{StaticResource FieldLabel}"
                          VerticalAlignment="Center"/>
               <local:FtComboBox x:Name="MaxSentencesCombo" Grid.Row="2" Grid.Column="1" Width="120"
+                                AutomationProperties.Name="字幕条数"
                                 HorizontalAlignment="Left"
                                 SelectionChanged="MaxSentences_SelectionChanged"/>
             </Grid>

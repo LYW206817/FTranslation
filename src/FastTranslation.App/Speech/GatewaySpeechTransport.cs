@@ -131,8 +131,8 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
     private static async Task<string> DescribeRefusalAsync(HttpResponseMessage response)
     {
         if (response.StatusCode == HttpStatusCode.ServiceUnavailable) return "语音服务暂未开启";
-        if (response.StatusCode == HttpStatusCode.Forbidden) return "账号状态异常,请重新登录";
-        if (response.StatusCode == HttpStatusCode.Unauthorized) return "登录已过期,请重新登录";
+        if (response.StatusCode == HttpStatusCode.Forbidden) return "账号状态异常，请重新登录";
+        if (response.StatusCode == HttpStatusCode.Unauthorized) return "登录已过期，请重新登录";
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -142,11 +142,11 @@ public sealed class GatewaySpeechTransport : ISpeechTransport
             {
                 return SpeechQuotaGate.DescribeQuotaReason(reasons.FirstOrDefault());
             }
-            if (body.Contains("speech_busy", StringComparison.Ordinal)) return "已有语音会话在进行,请稍后再试";
-            if (body.Contains("budget_exhausted", StringComparison.Ordinal)) return "今日语音服务繁忙,明天再试";
-            return "语音请求太频繁,请稍后再试";
+            if (body.Contains("speech_busy", StringComparison.Ordinal)) return "已有语音会话在进行，请稍后再试";
+            if (body.Contains("budget_exhausted", StringComparison.Ordinal)) return "今日语音服务繁忙，明天再试";
+            return "语音请求太频繁，请稍后再试";
         }
-        return "无法连接语音服务(HTTP " + (int)response.StatusCode + ")";
+        return "无法连接语音服务（HTTP " + (int)response.StatusCode + "）";
     }
 
     private async Task PumpAsync(ClientWebSocket socket)

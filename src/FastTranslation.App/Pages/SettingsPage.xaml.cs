@@ -19,11 +19,15 @@ public partial class SettingsPage : UserControl
     private readonly SettingsService _service;
     private readonly ISecretStore _secrets;
     private readonly HotkeyService _hotkey;
-    private readonly Action? _checkUpdates;
+    private readonly Func<Task>? _checkUpdates;
 
     // 强调色是「待保存」的页面状态：点保存才落盘。界面本身在点选时就预览（v84），
     // 离开本页或取消则退回已保存的外观，免得预览和 settings.json 长期不一致。
     private AccentTheme _accent = AccentTheme.Electro;
+    // v143：排除名单在页面里先改副本，点「保存」才写回设置。
+    // 原实现直接改 _settings，点取消也回不去，划走页面还会让未保存的名单继续生效。
+    private List<string> _excluded = [];
+    private bool _checkingUpdate;
 
     /// <summary>保存或取消之后触发，好让外壳回到用户来的地方。</summary>
     public event Action? Closed;
@@ -33,7 +37,7 @@ public partial class SettingsPage : UserControl
         SettingsService service,
         ISecretStore secrets,
         HotkeyService hotkey,
-        Action? checkUpdates = null)
+        Func<Task>? checkUpdates = null)
     {
         InitializeComponent();
         _settings = settings;
@@ -44,7 +48,7 @@ public partial class SettingsPage : UserControl
         CheckUpdateButton.IsEnabled = checkUpdates is not null;
 
         // 目标语言下拉框：自动 + 目录
-        TargetCombo.Items.Add(new ComboBoxItem { Content = "自动(中英互译)", Tag = "auto" });
+        TargetCombo.Items.Add(new ComboBoxItem { Content = "自动（中英互译）", Tag = "auto" });
         foreach (var lang in LanguageCatalog.Languages)
         {
             TargetCombo.Items.Add(new ComboBoxItem { Content = lang.DisplayName, Tag = lang.Code });
@@ -86,6 +90,7 @@ public partial class SettingsPage : UserControl
         KeyBox.Clear();
         HotkeyError.Visibility = Visibility.Collapsed;
         ExclusionHint.Visibility = Visibility.Collapsed;
+        _excluded = [.. _settings.ExcludedProcesses];
         RefreshExcludedList();
     }
 
@@ -106,17 +111,34 @@ public partial class SettingsPage : UserControl
         return $"Fast Translation {version}\n构建日期 {build}\n未签名测试版 — 请仅从可信来源获取安装包";
     }
 
-    private void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        // 检查是异步的，而且可能弹出它自己的对话框；本页保持可用
+        // v143：原来是 fire-and-forget，提示永远停在「正在检查更新…」。检查本身是异步的，
+        // 必须等它回来再把按钮和提示复原；重复点击也在这里挡住，避免叠出两个结果弹窗。
+        if (_checkUpdates is null || _checkingUpdate) return;
+        _checkingUpdate = true;
+        CheckUpdateButton.IsEnabled = false;
         UpdateHint.Text = "正在检查更新…";
-        _checkUpdates?.Invoke();
+        try
+        {
+            await _checkUpdates();
+        }
+        catch (Exception)
+        {
+            // UpdateCoordinator 内部已把失败转成提示窗；这里只兜住意外，事件处理器不能崩进程
+        }
+        finally
+        {
+            _checkingUpdate = false;
+            CheckUpdateButton.IsEnabled = true;
+            UpdateHint.Text = "检查完了，有新版本会弹出下载提示。";
+        }
     }
 
     private void RefreshExcludedList()
     {
         ExcludedList.Items.Clear();
-        foreach (var name in _settings.ExcludedProcesses.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        foreach (var name in _excluded.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
         {
             ExcludedList.Items.Add(name);
         }
@@ -163,7 +185,7 @@ public partial class SettingsPage : UserControl
         //（用户必须切到别的窗口才能选另一个应用）
         if (string.IsNullOrEmpty(name) || string.Equals(name, "FastTranslation", StringComparison.OrdinalIgnoreCase))
         {
-            ShowHint("当前前台是本程序,请切到目标应用后再点「填入前台应用」,或直接输入进程名。");
+            ShowHint("当前前台是本程序，请切到目标应用后再点「填入前台应用」，或直接输入进程名。");
             return;
         }
         ExclusionInput.Text = name;
@@ -173,13 +195,13 @@ public partial class SettingsPage : UserControl
     private void AddExclusion_Click(object sender, RoutedEventArgs e)
     {
         var name = ExclusionInput.Text.Trim();
-        if (name.Length == 0) { ShowHint("请输入进程名,例如 chrome。"); return; }
-        if (_settings.ExcludedProcesses.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
+        if (name.Length == 0) { ShowHint("请输入进程名，例如 chrome。"); return; }
+        if (_excluded.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
         {
             ShowHint($"「{name}」已在列表里。");
             return;
         }
-        _settings.ExcludedProcesses.Add(name);
+        _excluded.Add(name);
         ExclusionInput.Text = string.Empty;
         RefreshExcludedList();
         ShowHint($"已加入「{name}」,点保存生效。");
@@ -194,7 +216,7 @@ public partial class SettingsPage : UserControl
     private void RemoveExclusion_Click(object sender, RoutedEventArgs e)
     {
         if (ExcludedList.SelectedItem is not string name) return;
-        _settings.ExcludedProcesses.RemoveAll(
+        _excluded.RemoveAll(
             n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         RefreshExcludedList();
         ExclusionHint.Visibility = Visibility.Collapsed;
@@ -234,7 +256,7 @@ public partial class SettingsPage : UserControl
             {
                 // 内联的非模态错误（在这里用 MessageBox 会阻塞整个应用的托盘流程）
                 HotkeyBox.Text = _settings.Hotkey;
-                HotkeyError.Text = "热键注册失败(可能被其他程序占用),已保留原热键。";
+                HotkeyError.Text = "热键注册失败（可能被其他程序占用），已保留原热键。";
                 HotkeyError.Visibility = Visibility.Visible;
                 return;
             }
@@ -246,6 +268,8 @@ public partial class SettingsPage : UserControl
         _settings.SoftwareRendering = SoftwareRenderingCheck.IsChecked == true;
         _settings.OverrideBaseUrl = BaseUrlBox.Text.Trim();
         _settings.AccountBaseUrl = AccountUrlBox.Text.Trim();
+        _settings.ExcludedProcesses.Clear();
+        _settings.ExcludedProcesses.AddRange(_excluded);
 
         var key = new string(KeyBox.Password.Where(c => !char.IsWhiteSpace(c)).ToArray());
         if (key.Length > 0)
@@ -259,7 +283,7 @@ public partial class SettingsPage : UserControl
         var wantAutoStart = AutoStartCheck.IsChecked == true;
         if (StartupRegistration.IsEnabled() != wantAutoStart && !StartupRegistration.SetEnabled(wantAutoStart))
         {
-            HotkeyError.Text = "开机启动设置失败(注册表不可写),其他设置已保存。";
+            HotkeyError.Text = "开机启动设置失败（注册表不可写），其他设置已保存。";
             HotkeyError.Visibility = Visibility.Visible;
             _settings.FirstRunCompleted = true;
             _service.Save(_settings);

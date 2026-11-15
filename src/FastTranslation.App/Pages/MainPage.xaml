@@ -16,7 +16,7 @@
         <StackPanel Orientation="Horizontal">
           <Ellipse Style="{StaticResource PillDot}"/>
           <!-- 下拉框自己的底与描边都关掉，让药丸当它的外壳 -->
-          <local:FtComboBox x:Name="TargetCombo" Width="150" Background="Transparent"
+          <local:FtComboBox x:Name="TargetCombo" Width="150" AutomationProperties.Name="目标语言" Background="Transparent"
                             BorderThickness="0" Padding="0" FontSize="12"
                             SelectionChanged="TargetCombo_SelectionChanged"/>
         </StackPanel>
@@ -72,7 +72,7 @@
             <TextBlock x:Name="InputHint" IsHitTestVisible="False" FontSize="15.5" LineHeight="26"
                        TextWrapping="Wrap" VerticalAlignment="Top"
                        Foreground="{DynamicResource TextMutedBrush}"
-                       Text="输入或粘贴要翻译的文本,Ctrl + Enter 快速翻译"/>
+                       Text="输入或粘贴要翻译的文本，Ctrl + Enter 快速翻译"/>
           </Grid>
         </DockPanel>
       </Border>
@@ -100,7 +100,7 @@
                          VerticalAlignment="Stretch"/>
               <TextBlock Grid.Column="1" x:Name="ResultBlock" TextWrapping="Wrap" FontSize="16.5"
                          LineHeight="31" Foreground="{DynamicResource TextPrimaryBrush}"
-                         Text="输入或粘贴文本,点击翻译;或在任意应用里划词使用小工具条。"/>
+                         Text="输入或粘贴文本，点击翻译；或在任意应用里划词使用小工具条。"/>
             </Grid>
           </ScrollViewer>
         </DockPanel>
