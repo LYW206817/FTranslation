@@ -104,26 +104,36 @@ public sealed class WasapiLoopbackCapture : IDisposable
         // 在 C 里因 4 字节对齐要在 18 后垫 2 字节（SubFormat 落在偏移 24、总长 40，cbSize=22 说的就是它）。
         // .NET 结构体无论 Pack=2 还是默认都复现不出这套嵌套对齐，显式偏移是唯一不踩坑的读法。
         Check(client.GetMixFormat(out IntPtr mixFormat), "GetMixFormat");
-        short tag = Marshal.ReadInt16(mixFormat, 0);
-        short channels = Marshal.ReadInt16(mixFormat, 2);
-        int sampleRate = Marshal.ReadInt32(mixFormat, 4);
-        short blockAlign = Marshal.ReadInt16(mixFormat, 12);
-        short bits = Marshal.ReadInt16(mixFormat, 14);
-        bool isFloat = tag == NativeMethodsAudio.WAVE_FORMAT_IEEE_FLOAT;
-        if (tag == NativeMethodsAudio.WAVE_FORMAT_EXTENSIBLE)
+        // 包对齐后面取包循环还要用，所以声明在 try 外；值在 try 内从混音格式读出。
+        short blockAlign = 0;
+        try
         {
-            var subFormat = Marshal.PtrToStructure<Guid>(mixFormat + 24);
-            isFloat = subFormat == NativeMethodsAudio.KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-        }
-        Format = new CaptureFormat(sampleRate, channels, bits, isFloat);
+            short tag = Marshal.ReadInt16(mixFormat, 0);
+            short channels = Marshal.ReadInt16(mixFormat, 2);
+            int sampleRate = Marshal.ReadInt32(mixFormat, 4);
+            blockAlign = Marshal.ReadInt16(mixFormat, 12);
+            short bits = Marshal.ReadInt16(mixFormat, 14);
+            bool isFloat = tag == NativeMethodsAudio.WAVE_FORMAT_IEEE_FLOAT;
+            if (tag == NativeMethodsAudio.WAVE_FORMAT_EXTENSIBLE)
+            {
+                var subFormat = Marshal.PtrToStructure<Guid>(mixFormat + 24);
+                isFloat = subFormat == NativeMethodsAudio.KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+            }
+            Format = new CaptureFormat(sampleRate, channels, bits, isFloat);
 
-        // v76: 事件驱动共享模式要求 bufferDuration 与 periodicity 都是 0——periodicity 传正值
-        // 在共享模式必拿 AUDCLNT_E_INVALID_DEVICE_PERIOD，时长 0 让 WASAPI 自己挑设备周期两倍的缓冲。
-        Check(client.Initialize(
-            NativeMethodsAudio.AUDCLNT_SHAREMODE_SHARED,
-            NativeMethodsAudio.AUDCLNT_STREAMFLAGS_LOOPBACK | NativeMethodsAudio.AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-            0, 0, mixFormat, IntPtr.Zero), "IAudioClient.Initialize");
-        Marshal.FreeCoTaskMem(mixFormat);
+            // v76: 事件驱动共享模式要求 bufferDuration 与 periodicity 都是 0——periodicity 传正值
+            // 在共享模式必拿 AUDCLNT_E_INVALID_DEVICE_PERIOD，时长 0 让 WASAPI 自己挑设备周期两倍的缓冲。
+            Check(client.Initialize(
+                NativeMethodsAudio.AUDCLNT_SHAREMODE_SHARED,
+                NativeMethodsAudio.AUDCLNT_STREAMFLAGS_LOOPBACK | NativeMethodsAudio.AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                0, 0, mixFormat, IntPtr.Zero), "IAudioClient.Initialize");
+        }
+        finally
+        {
+            // v143：GetMixFormat 返回的是 CoTaskMem 块。原写法只在 Initialize 成功后才释放，
+            // 设备被占用或格式不支持时每次开语音都漏一块。读取字段也必须在这之前完成。
+            Marshal.FreeCoTaskMem(mixFormat);
+        }
 
         using var bufferReady = new AutoResetEvent(false);
         Check(client.SetEventHandle(bufferReady.SafeWaitHandle.DangerousGetHandle()), "SetEventHandle");

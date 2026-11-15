@@ -218,22 +218,29 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         // 会毁掉图片/文件内容，bugbot P1)，然后同步发出 Ctrl+C
         var backup = ClipboardService.SnapshotClipboard();
         var beforeSeq = ClipboardService.GetSequence();
-        if (!ClipboardService.SendCtrlC())
+        try
         {
-            ClipboardService.RestoreClipboard(backup);
-            return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
+            if (!ClipboardService.SendCtrlC())
+            {
+                return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
+            }
+            // 用 Win32 在工作线程上轮询(不需要 STA)——以前的 Thread.Sleep 循环
+            // 跑在 UI 线程上，每次点击都把它冻住最多 1.5 秒(bugbot P1)
+            var text = await Task.Run(() => ClipboardService.PollNewTextWin32(1500, beforeSeq), cancellationToken);
+            return string.IsNullOrEmpty(text)
+                ? CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle)
+                : new CapturedSelection(
+                    // Ctrl+C 成功 => 源是一个编辑器；在那里用粘贴做替换/插入是可行的
+                    // (VSCode/Monaco 不暴露 UIA 选区，校验降级为仅前台)。
+                    text!, Array.Empty<ScreenRect>(), anchor, CaptureMethod.ClipboardFallback,
+                    GetProcessName(sourceWindowHandle), sourceWindowHandle, null, IsWritable: true);
         }
-        // 用 Win32 在工作线程上轮询(不需要 STA)——以前的 Thread.Sleep 循环
-        // 跑在 UI 线程上，每次点击都把它冻住最多 1.5 秒(bugbot P1)
-        var text = await Task.Run(() => ClipboardService.PollNewTextWin32(1500, beforeSeq), cancellationToken);
-        ClipboardService.RestoreClipboard(backup);
-        return string.IsNullOrEmpty(text)
-            ? CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle)
-            : new CapturedSelection(
-                // Ctrl+C 成功 => 源是一个编辑器；在那里用粘贴做替换/插入是可行的
-                // (VSCode/Monaco 不暴露 UIA 选区，校验降级为仅前台)。
-                text!, Array.Empty<ScreenRect>(), anchor, CaptureMethod.ClipboardFallback,
-                GetProcessName(sourceWindowHandle), sourceWindowHandle, null, IsWritable: true);
+        finally
+        {
+            // v143：轮询被取消或 COM 抛异常时也要还原。原写法在 await 之后才还原，
+            // 取消一次取词就把用户的剪贴板永久换成了 Ctrl+C 抓到的文字。
+            ClipboardService.RestoreClipboard(backup);
+        }
     }
 
     /// <summary>最近一次鼠标抬起时捕获的选区(在此之前为空)。</summary>

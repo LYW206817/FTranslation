@@ -435,7 +435,6 @@ public sealed class ResultCardWindow : IDisposable
             Foreground = FtTheme.TextPrimary,
             FontSize = 14,
             LineHeight = 22,
-            MaxHeight = 220,
         };
         _statusBlock = new TextBlock
         {
@@ -466,7 +465,7 @@ public sealed class ResultCardWindow : IDisposable
             Height = 14,
             StrokeThickness = 2,
             Stroke = FtTheme.Brand,
-            StrokeDashArray = new DoubleCollection { 34, 10 },
+            StrokeDashArray = new DoubleCollection { 6, 2.5 },
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = Visibility.Collapsed,
             Margin = new Thickness(0, 1, 8, 0),
@@ -512,6 +511,19 @@ public sealed class ResultCardWindow : IDisposable
         body.Children.Add(_targetBlock);
         Grid.SetColumn(_targetBlock, 1);
 
+        // v143：长译文/多义项原来会被 MaxHeight 硬切掉，卡片还能长到屏幕外。
+        // 正文与词典共用一个有上限的滚动区，头尾操作保持可见。
+        var bodyScroll = new ScrollViewer
+        {
+            Content = body,
+            MaxHeight = 300,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Focusable = false,
+            Padding = new Thickness(0, 0, 6, 0),
+        };
+        var middle = new StackPanel { Children = { bodyScroll, _dictionaryPanel } };
+
         // 底部：操作 + token 消耗；方向已单独放头部，两者分开不互相挤宽度（v117）。
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         actions.Children.Add(_saveButton);
@@ -522,7 +534,7 @@ public sealed class ResultCardWindow : IDisposable
         footer.Children.Add(actions);
         footer.Children.Add(_statusBlock);
 
-        var content = new StackPanel { Children = { header, body, _dictionaryPanel, footer } };
+        var content = new StackPanel { Children = { header, middle, footer } };
 
         var root = new Border
         {
@@ -720,6 +732,16 @@ public sealed class ResultCardWindow : IDisposable
         _window.Top = y / monitor.ScaleY;
         if (!_window.IsVisible) _window.Show();
         MonitorWorkArea.SetPhysicalPosition(_window, x, y);
+        // v143：y 的夹取用的是 160/180 的假定高度；长译文把卡片撑高后仍可能探出工作区。
+        // 等布局完成后按真实高度再夹一次，只上移、不横向移动。
+        _window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            var handle = new WindowInteropHelper(_window).Handle;
+            if (handle == IntPtr.Zero || !NativeMethods.GetWindowRect(handle, out var rect)) return;
+            var bottomOverflow = rect.Bottom - (work.Y + work.Height);
+            if (bottomOverflow <= 0) return;
+            MonitorWorkArea.SetPhysicalPosition(_window, x, Math.Max(work.Y, y - bottomOverflow));
+        });
         _window.Topmost = true;
     }
 
