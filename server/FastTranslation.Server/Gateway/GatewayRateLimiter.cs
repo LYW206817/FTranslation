@@ -11,12 +11,20 @@ public sealed class GatewayRateLimiter(TimeProvider? time = null)
 {
     private readonly ConcurrentDictionary<Guid, Window> _windows = new();
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private long _calls;
 
     public bool TryAcquire(Guid userId, int permitPerMinute)
     {
         if (permitPerMinute <= 0)
         {
             return true;
+        }
+
+        // v143：Prune 原来没有任何调用点，账号换得越多字典越大（长期进程不回收）。
+        // 每 1024 次请求清一次过期窗口，频率远低于请求量，不会成为热点。
+        if ((Interlocked.Increment(ref _calls) & 1023) == 0)
+        {
+            Prune();
         }
 
         var now = _time.GetUtcNow().ToUnixTimeSeconds();

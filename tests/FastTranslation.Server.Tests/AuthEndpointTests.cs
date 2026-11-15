@@ -3,7 +3,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FastTranslation.Server.Api;
+using FastTranslation.Server.Auth;
 using FastTranslation.Server.Domain;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FastTranslation.Server.Tests;
@@ -246,6 +250,57 @@ public class AuthEndpointTests : IClassFixture<ServerFactory>
 
         response.EnsureSuccessStatusCode();
         Assert.Equal("verification_disabled", (await response.Content.ReadFromJsonAsync<MessageResponse>())!.Message);
+    }
+
+    [Fact]
+    public async Task RequestCode_Returns503WhenSmtpIsMissingOutsideDevelopment()
+    {
+        // 生产环境没有 SMTP 时，验证码只会写进日志（v143 起不再写码）。接口必须在发码前
+        // 就拒绝，而不是让用户等一封永远不来的邮件。
+        using var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Server:RequireEmailVerification"] = "true" }));
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/code",
+            new VerificationCodeRequest(UniqueEmail()));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("mail_unavailable", (await response.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
+    }
+
+    [Fact]
+    public async Task Register_DuplicateEmailDoesNotConsumeTheVerificationCode()
+    {
+        using var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Server:RequireEmailVerification"] = "true" }));
+        });
+        using var client = factory.CreateClient();
+        var codes = factory.Services.GetRequiredService<VerificationCodeService>();
+        var email = UniqueEmail();
+
+        var first = codes.Issue(email, VerificationCodeService.RegisterPurpose);
+        Assert.True(first.Sent);
+        (await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email, "password123", first.Code, "fp-dup-order", "pc")))
+            .EnsureSuccessStatusCode();
+
+        var second = codes.Issue(email, VerificationCodeService.RegisterPurpose);
+        Assert.True(second.Sent);
+        var duplicate = await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email, "password123", second.Code, "fp-dup-order", "pc"));
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+
+        // 码仍在：同一邮箱立刻重发应命中节流，而不是拿到一封新码。
+        var resend = await client.PostAsJsonAsync("/api/v1/auth/code", new VerificationCodeRequest(email));
+        Assert.Equal(HttpStatusCode.TooManyRequests, resend.StatusCode);
+        Assert.Equal("code_recently_sent", (await resend.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
     }
 
     [Fact]

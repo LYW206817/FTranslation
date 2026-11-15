@@ -494,7 +494,8 @@ public static class GatewayEndpoints
             {
                 if (document.RootElement.TryGetProperty(name, out var value)
                     && value.ValueKind == JsonValueKind.Number
-                    && value.TryGetInt32(out var tokens))
+                    && value.TryGetInt32(out var tokens)
+                    && tokens > 0)
                 {
                     return tokens;
                 }

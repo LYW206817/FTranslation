@@ -72,6 +72,21 @@ public class AccountDeviceTests : IClassFixture<ServerFactory>
     }
 
     [Fact]
+    public async Task Devices_BlankNameOnLoginKeepsTheExistingName()
+    {
+        // 网关转发时 RegisterDevice 拿到的名字是空串；登录也不能把客户端设置过的名字抹掉。
+        var email = UniqueEmail();
+        var client = _factory.CreateClient();
+        await RegisterAsync(client, email, "fp-current");
+
+        (await LoginAsync(email, "fp-current", "")).EnsureSuccessStatusCode();
+
+        var list = await GetDevicesAsync(client, "fp-current");
+        var current = Assert.Single(list.Devices, device => device.IsCurrent);
+        Assert.Equal("test-pc", current.Name);
+    }
+
+    [Fact]
     public async Task Devices_CannotRemoveTheCallingDevice()
     {
         var client = _factory.CreateClient();

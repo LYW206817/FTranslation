@@ -95,6 +95,12 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
             var text = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             return new GatewayResponse((int)response.StatusCode, text);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 调用方主动取消（客户端断开）不是上游故障：继续抛出，让上层按取消处理，
+            // 不要记成 502 污染网关健康统计。
+            throw;
+        }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             // 上游不可达：按网关故障上报，绝不能当成额度事件。

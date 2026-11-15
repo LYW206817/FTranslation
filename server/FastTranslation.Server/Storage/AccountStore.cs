@@ -260,7 +260,13 @@ public sealed class AccountStore(ServerDatabase database)
                 var existing = ReadDevice(reader);
                 reader.Close();
 
-                var updated = existing with { Name = Shorten(name, 64), LastSeenAt = database.NowUnix };
+                // v143：网关侧每次调用 RegisterDevice 都不带客户端名（传空串）；
+                // 无条件覆盖会把用户在客户端设置过的设备名抹掉，这里只在有新名字时更新。
+                var updated = existing with
+                {
+                    Name = string.IsNullOrWhiteSpace(name) ? existing.Name : Shorten(name, 64),
+                    LastSeenAt = database.NowUnix,
+                };
 
                 using var touch = connection.CreateCommand();
                 touch.Transaction = transaction;

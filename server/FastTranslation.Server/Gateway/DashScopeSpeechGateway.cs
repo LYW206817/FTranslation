@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -20,29 +20,29 @@ public sealed class DashScopeSpeechGateway
     /// <summary>DashScope 一帧 result-generated 里报的用量(会话累计)。</summary>
     private readonly record struct AsrUsage(int DurationSeconds, long InputTokens, long OutputTokens);
 
-    private readonly SpeechOptions options;
-    private readonly string apiKey;
-    private readonly Func<CancellationToken, Task<WebSocket>> connectUpstream;
-    private string runTaskId = string.Empty;
+    private readonly SpeechOptions _options;
+    private readonly string _apiKey;
+    private readonly Func<CancellationToken, Task<WebSocket>> _connectUpstream;
+    private string _runTaskId = string.Empty;
 
     public DashScopeSpeechGateway(SpeechOptions options, string apiKey,
         Func<CancellationToken, Task<WebSocket>>? connectUpstream = null)
     {
-        this.options = options;
-        this.apiKey = apiKey;
-        this.connectUpstream = connectUpstream ?? ConnectDashScopeAsync;
+        _options = options;
+        _apiKey = apiKey;
+        _connectUpstream = connectUpstream ?? ConnectDashScopeAsync;
     }
 
     /// <summary>默认上游:DashScope WebSocket。Key 是网关自己的,永远不发给客户端。</summary>
     private async Task<WebSocket> ConnectDashScopeAsync(CancellationToken ct)
     {
         var ws = new ClientWebSocket();
-        ws.Options.SetRequestHeader("Authorization", "Bearer " + apiKey);
-        if (options.WorkspaceId.Length > 0)
+        ws.Options.SetRequestHeader("Authorization", "Bearer " + _apiKey);
+        if (_options.WorkspaceId.Length > 0)
         {
-            ws.Options.SetRequestHeader("X-DashScope-Workspace", options.WorkspaceId);
+            ws.Options.SetRequestHeader("X-DashScope-Workspace", _options.WorkspaceId);
         }
-        await ws.ConnectAsync(new Uri(options.WsUrl), ct);
+        await ws.ConnectAsync(new Uri(_options.WsUrl), ct);
         return ws;
     }
 
@@ -84,9 +84,9 @@ public sealed class DashScopeSpeechGateway
                     return;
                 }
 
-                var chars = (long)deltaSeconds * options.QuotaCharsPerSecond;
-                var cost = Pricing.TextCostMicros(options.Model, deltaIn, deltaOut);
-                store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), options.Model,
+                var chars = (long)deltaSeconds * _options.QuotaCharsPerSecond;
+                var cost = Pricing.TextCostMicros(_options.Model, deltaIn, deltaOut);
+                store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), _options.Model,
                     (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
                     cost, database.NowUnix, source: "speech");
                 billedSeconds = seconds;
@@ -111,7 +111,7 @@ public sealed class DashScopeSpeechGateway
                     var text = Encoding.UTF8.GetString(buffer, 0, received.Count);
                     if (TryParseStart(text, out var sampleRate, out var language) && upstream is null)
                     {
-                        upstream = await connectUpstream(timeout.Token);
+                        upstream = await _connectUpstream(timeout.Token);
                         await SendRunTaskAsync(upstream, sampleRate, language, timeout.Token);
                         upstreamPump = PumpUpstreamAsync(client, upstream, timeout.Token, usage =>
                         {
@@ -149,7 +149,7 @@ public sealed class DashScopeSpeechGateway
             if (timeout.IsCancellationRequested && !requestAborted.IsCancellationRequested)
             {
                 await TrySendErrorAsync(client, "session_timeout",
-                    "本次语音已达时长上限(按剩余额度计算),请稍后重新开始").ConfigureAwait(false);
+                    "本次语音已达时长上限（按剩余额度计算），请稍后重新开始").ConfigureAwait(false);
             }
         }
         finally
@@ -184,7 +184,7 @@ public sealed class DashScopeSpeechGateway
                 {
                     // 补足最短计费秒数(讲半秒也按 MinSeconds 记);增量部分已在每帧记过,不会重复。
                     // 额度是产品语言(按秒折字符),成本是财务语言(按 token 算钱),分开记(设计 §5.5)。
-                    Bill(Math.Max(usage.DurationSeconds, options.MinSeconds), usage.InputTokens, usage.OutputTokens);
+                    Bill(Math.Max(usage.DurationSeconds, _options.MinSeconds), usage.InputTokens, usage.OutputTokens);
                     result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, usage.DurationSeconds);
                 }
                 else
@@ -193,7 +193,7 @@ public sealed class DashScopeSpeechGateway
                     // 不这么做的话「连上就砍」可以白嫖上游 ASR 算力——预检已经放行,不能不计账(v81)。
                     var wall = Math.Min(Math.Max(0, (int)(DateTimeOffset.UtcNow - startedAtUtc).TotalSeconds),
                         sessionSeconds);
-                    Bill(Math.Max(wall, options.MinSeconds), 0, 0);
+                    Bill(Math.Max(wall, _options.MinSeconds), 0, 0);
                     result = new SpeechRelayResult(billedChars > 0, billedChars, billedCost, wall);
                 }
             }
@@ -316,7 +316,7 @@ public sealed class DashScopeSpeechGateway
 
     private async Task SendRunTaskAsync(WebSocket upstream, int sampleRate, string language, CancellationToken ct)
     {
-        runTaskId = Guid.NewGuid().ToString("D");
+        _runTaskId = Guid.NewGuid().ToString("D");
         // language=auto 时不带 language_hints(DashScope 会自己判断);POC 只实证过显式语种,
         // auto 的行为留到真实联调确认(残留风险已记 IMPL)。
         // 拼接进上游 JSON 的值必须转义：language 来自客户端 start 帧，否则能破坏
@@ -324,9 +324,9 @@ public sealed class DashScopeSpeechGateway
         var hints = string.Equals(language, "auto", StringComparison.Ordinal)
             ? string.Empty
             : ",\"language_hints\":[" + JsonSerializer.Serialize(language) + "]";
-        var frame = "{\"header\":{\"action\":\"run-task\",\"task_id\":\"" + runTaskId
+        var frame = "{\"header\":{\"action\":\"run-task\",\"task_id\":\"" + _runTaskId
             + "\",\"streaming\":\"duplex\"},\"payload\":{\"task_group\":\"audio\",\"task\":\"asr\","
-            + "\"function\":\"recognition\",\"model\":\"" + options.Model
+            + "\"function\":\"recognition\",\"model\":\"" + _options.Model
             + "\",\"parameters\":{\"format\":\"pcm\",\"sample_rate\":"
             + sampleRate.ToString(CultureInfo.InvariantCulture) + hints + "},\"input\":{}}}";
         await upstream.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(frame)),
@@ -335,7 +335,7 @@ public sealed class DashScopeSpeechGateway
 
     private async Task SendFinishTaskAsync(WebSocket upstream, CancellationToken ct)
     {
-        var frame = "{\"header\":{\"action\":\"finish-task\",\"task_id\":\"" + runTaskId
+        var frame = "{\"header\":{\"action\":\"finish-task\",\"task_id\":\"" + _runTaskId
             + "\",\"streaming\":\"duplex\"},\"payload\":{\"input\":{}}}";
         await upstream.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(frame)),
             WebSocketMessageType.Text, true, ct);

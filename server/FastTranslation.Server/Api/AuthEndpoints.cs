@@ -33,6 +33,7 @@ public static class AuthEndpoints
         VerificationCodeService codes,
         IVerificationMailSender mail,
         ServerOptions options,
+        IHostEnvironment environment,
         CancellationToken ct)
     {
         if (CredentialRules.ValidateEmail(request.Email) is { } emailError)
@@ -43,6 +44,14 @@ public static class AuthEndpoints
         if (!options.RequireEmailVerification)
         {
             return Results.Ok(new MessageResponse("verification_disabled"));
+        }
+
+        // 与重置密码发码同一道闸：非开发环境没有 SMTP 时验证码只会写进日志，
+        // 不能让用户对着永远收不到的验证码等十分钟。
+        if (!options.Smtp.IsConfigured && !environment.IsDevelopment())
+        {
+            return Results.Json(new ErrorResponse("mail_unavailable"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
         var email = AccountStore.NormalizeEmail(request.Email);
@@ -157,15 +166,17 @@ public static class AuthEndpoints
 
         var email = AccountStore.NormalizeEmail(request.Email);
 
+        // v143：先查邮箱是否已注册，再消费验证码。反过来会让一次「邮箱已占用」的
+        // 失败注册白白烧掉刚发来的验证码，用户得再等一分钟才能重试。
+        if (store.FindUserByEmail(email) is not null)
+        {
+            return Results.Conflict(new ErrorResponse("email_taken"));
+        }
+
         if (options.RequireEmailVerification
             && codes.Consume(email, request.Code, VerificationCodeService.RegisterPurpose) is { } codeError)
         {
             return Results.BadRequest(new ErrorResponse(codeError));
-        }
-
-        if (store.FindUserByEmail(email) is not null)
-        {
-            return Results.Conflict(new ErrorResponse("email_taken"));
         }
 
         var user = store.CreateUser(email, PasswordHasher.Hash(request.Password), PlanTier.Free);

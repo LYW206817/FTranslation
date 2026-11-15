@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
@@ -211,10 +211,10 @@ internal static class SpeechSocketExtensions
 /// 接收队列一起收掉,模拟真实的连接骤断。</summary>
 public sealed class FakeWebSocket : WebSocket
 {
-    private readonly Channel<(byte[] Payload, WebSocketMessageType Type, bool EndOfMessage)> incoming =
+    private readonly Channel<(byte[] Payload, WebSocketMessageType Type, bool EndOfMessage)> _incoming =
         Channel.CreateUnbounded<(byte[], WebSocketMessageType, bool)>();
-    private FakeWebSocket peer = null!;
-    private WebSocketState state = WebSocketState.Open;
+    private FakeWebSocket _peer = null!;
+    private WebSocketState _state = WebSocketState.Open;
 
     private FakeWebSocket()
     {
@@ -224,12 +224,12 @@ public sealed class FakeWebSocket : WebSocket
     {
         var testSide = new FakeWebSocket();
         var relaySide = new FakeWebSocket();
-        testSide.peer = relaySide;
-        relaySide.peer = testSide;
+        testSide._peer = relaySide;
+        relaySide._peer = testSide;
         return (testSide, relaySide);
     }
 
-    public override WebSocketState State => state;
+    public override WebSocketState State => _state;
 
     public override string? SubProtocol => null;
 
@@ -240,7 +240,7 @@ public sealed class FakeWebSocket : WebSocket
     public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType,
         bool endOfMessage, CancellationToken cancellationToken)
     {
-        if (state != WebSocketState.Open)
+        if (_state != WebSocketState.Open)
         {
             throw new WebSocketException(WebSocketError.InvalidState);
         }
@@ -248,7 +248,7 @@ public sealed class FakeWebSocket : WebSocket
         Array.Copy(buffer.Array!, buffer.Offset, copy, 0, buffer.Count);
         try
         {
-            await peer.incoming.Writer.WriteAsync((copy, messageType, endOfMessage), cancellationToken);
+            await _peer._incoming.Writer.WriteAsync((copy, messageType, endOfMessage), cancellationToken);
         }
         catch (ChannelClosedException)
         {
@@ -262,7 +262,7 @@ public sealed class FakeWebSocket : WebSocket
         (byte[] Payload, WebSocketMessageType Type, bool EndOfMessage) frame;
         try
         {
-            frame = await incoming.Reader.ReadAsync(cancellationToken);
+            frame = await _incoming.Reader.ReadAsync(cancellationToken);
         }
         catch (ChannelClosedException)
         {
@@ -271,7 +271,7 @@ public sealed class FakeWebSocket : WebSocket
         }
         if (frame.Type == WebSocketMessageType.Close)
         {
-            state = WebSocketState.CloseReceived;
+            _state = WebSocketState.CloseReceived;
         }
         var count = Math.Min(frame.Payload.Length, buffer.Count);
         if (count > 0)
@@ -284,32 +284,32 @@ public sealed class FakeWebSocket : WebSocket
     public override async Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription,
         CancellationToken cancellationToken)
     {
-        if (state != WebSocketState.Open)
+        if (_state != WebSocketState.Open)
         {
             return;
         }
-        state = WebSocketState.CloseSent;
-        await peer.incoming.Writer.WriteAsync(([], WebSocketMessageType.Close, true), cancellationToken);
+        _state = WebSocketState.CloseSent;
+        await _peer._incoming.Writer.WriteAsync(([], WebSocketMessageType.Close, true), cancellationToken);
     }
 
     public override async Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription,
         CancellationToken cancellationToken)
     {
-        state = WebSocketState.CloseSent;
-        await peer.incoming.Writer.WriteAsync(([], WebSocketMessageType.Close, true), cancellationToken);
+        _state = WebSocketState.CloseSent;
+        await _peer._incoming.Writer.WriteAsync(([], WebSocketMessageType.Close, true), cancellationToken);
     }
 
     public override void Abort()
     {
         // 骤断两端都收:relay 正 ReadAsync 的那一头拿到 ChannelClosedException → WebSocketException。
-        state = WebSocketState.Aborted;
-        incoming.Writer.TryComplete();
-        peer.incoming.Writer.TryComplete();
+        _state = WebSocketState.Aborted;
+        _incoming.Writer.TryComplete();
+        _peer._incoming.Writer.TryComplete();
     }
 
     public override void Dispose()
     {
-        incoming.Writer.TryComplete();
+        _incoming.Writer.TryComplete();
     }
 }
 

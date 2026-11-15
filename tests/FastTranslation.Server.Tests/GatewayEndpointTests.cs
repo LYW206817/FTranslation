@@ -347,6 +347,26 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
     }
 
     [Fact]
+    public async Task Chat_TreatsZeroMaxTokensAsUnspecified()
+    {
+        // 有些 OpenAI 客户端把「不指定」序列化成 0；0 不能当成真实上限传给上游或估算成本。
+        var client = await SignedInClientAsync(PlanTier.Free);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = "qwen-mt-flash",
+                messages = new[] { new { role = "user", content = "hello" } },
+                max_tokens = 0,
+            }),
+        };
+
+        using var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Chat_RejectsMaxTokensAboveTheCap()
     {
         var client = await SignedInClientAsync(PlanTier.Free);
