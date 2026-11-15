@@ -142,7 +142,7 @@ dotnet format style FastTranslation.slnx --diagnostics IDE1006 --severity info -
 - 资源:`IDisposable` 用 `using` 声明;`CancellationToken` 放参数末尾并向下传;WPF 资源在 `Unloaded` / `Closing` 释放,事件订阅成对退订。
 - 字符串与数字:比较用 `StringComparison.Ordinal` / `OrdinalIgnoreCase`(路径、协议、键名);数字与日期的格式化/解析传 `CultureInfo.InvariantCulture`;中文只出现在用户可见文案。
 - 集合:返回 `IReadOnlyList<T>` / `IReadOnlyCollection<T>`,参数收 `IEnumerable<T>` 且循环外先 `Count()`;不要返回 `null` 集合,返回空集合。
-- 文件与结构:文件名概括内容,相关小类型可以同文件(`OverlayWindows.cs` 就是);成员顺序 字段 → 构造 → 公共成员 → 私有方法;优先 guard clause 提前返回,嵌套不超过 3 层;单方法超过约 50 行就拆私有方法,文件超过约 700 行按职责拆页或拆文件。现状例外:`src/FastTranslation.App/App.xaml.cs` 1291 行、`src/FastTranslation.Platform.Windows/OverlayWindows.cs` 742 行——拆它们要连带搬大量实例字段,排在专门的重构里做,不要顺手拆。
+- 文件与结构:文件名概括内容,相关小类型可以同文件(`OverlayWindows.cs` 就是);成员顺序 字段 → 构造 → 公共成员 → 私有方法;优先 guard clause 提前返回,嵌套不超过 3 层;单方法超过约 50 行就拆私有方法,文件超过约 700 行按职责拆页或拆文件。现状例外:`src/FastTranslation.App/App.xaml.cs`(v143 时约 2200 行)、`src/FastTranslation.Platform.Windows/OverlayWindows.cs`(约 890 行)——拆它们要连带搬大量实例字段,排在专门的重构里做,不要顺手拆。
 - 魔法值:协议常量、超时、重试次数、限流窗口提成命名常量或 options,不要散落裸数字。
 - 界面:颜色与字体只从 `ThemePalette` / `FtTheme` 取,不在 XAML 或代码里写裸色值;新控件沿用现有的圆角、内边距、虚线 token。
 - 测试:命名用可读英文短语(仓库现状,如 `Login_sends_the_error_code_the_server_returned`);xunit `[Fact]` / `[Theory]`,一个测试一个主题;新增行为必须带测试。
@@ -213,8 +213,8 @@ Start-Process 'src\FastTranslation.App\bin\Release\net10.0-windows\FastTranslati
 
 ## 踩过的坑(省时间用)
 
-- **改代码前先看实现记录**(`docs/impl/`,入口是 `docs/IMPL.md` 的索引):同一个坑可能已经踩过并写在那里。已按每 20 版一册拆开(2026-11-03 拆,单册 300–850 行,最新一册 `IMPL-v81-100.md`),按关键词 `grep -rn '剪贴板' docs/impl/` 定位,再看最近几节,不要从头读。
-- 往分册追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/impl/IMPL-v81-100.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
+- **改代码前先看实现记录**(`docs/impl/`,入口是 `docs/IMPL.md` 的索引):同一个坑可能已经踩过并写在那里。已按每 20 版一册拆开(2026-11-03 拆,最新一册 `IMPL-v141-160.md`),按关键词 `grep -rn '剪贴板' docs/impl/` 定位,再看最近几节,不要从头读。
+- 往分册追加中文:若 bash heredoc 里带中文报错,改用写文件工具落到 `publish/*.md` 再 `cat >> docs/impl/IMPL-v141-160.md`(本机 MSYS2 bash 三种 heredoc 写法实测都能跑通,`Unexpected character` 其实是 Node 解析器的报错文案,不是 bash 的)。
 - PowerShell 5.1 读**无 BOM** 的 UTF-8 脚本 + 中文注释 → 按 GBK 解码报错;新脚本存成带 BOM 的 UTF-8,或干脆 ASCII-only(`tools/qa` 现状 69 个 `.ps1` 里 34 带 BOM、35 不带,唯一「无 BOM 且含中文」的是 `shot-image-window.ps1`——坑是真的,只是历史脚本没全守)。输出中文前设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`。
 - `cmd /c powershell -Command` 里的 `$_` 会被 cmd 的引号处理吃掉(MSYS2 bash 里单引号内联是正常的) → 先写 `.ps1` 再 `-File`。
 - `Add-Type` 的 P/Invoke 结构体大小必须精确(x64 `INPUT` = 40 字节,多两个 `int pad` 会让 `SendInput` 返回 0);`Add-Type` 用 `-Namespace '' -Name 'X'`。
