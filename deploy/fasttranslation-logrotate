@@ -1,0 +1,11 @@
+# 由 install.sh 安装到 /etc/logrotate.d/fasttranslation。
+# ft-backup 每天一行、ft-monitor 每 15 分钟一次探测，长期不轮转会占满 /var/log。
+/var/log/ft-backup.log /var/log/ft-monitor.log {
+	weekly
+	rotate 8
+	compress
+	delaycompress
+	missingok
+	notifempty
+	create 0640 root adm
+}

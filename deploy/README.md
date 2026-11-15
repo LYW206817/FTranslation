@@ -22,6 +22,7 @@
 | `appsettings.Production.json.example` | → `/opt/fasttranslation/appsettings.Production.json` 后填空 |
 | `backup.sh` | → `/usr/local/bin/ft-backup.sh` |
 | `fasttranslation-backup.cron` | → `/etc/cron.d/fasttranslation-backup` |
+| `fasttranslation-logrotate` | → `/etc/logrotate.d/fasttranslation`(每周轮转备份与监控日志,保留 8 份) |
 | `ft-alert.sh` | → `/usr/local/lib/ft-alert.sh`（飞书发送与告警去重，被下面两个脚本 source） |
 | `ft-probe.sh` | → `/usr/local/bin/ft-probe.sh`（合成翻译探测） |
 | `ft-monitor.sh` | → `/usr/local/bin/ft-monitor.sh`（资源检查与每日摘要） |
@@ -40,7 +41,7 @@ bash deploy/build-server.sh
 rm -rf publish/ftdeploy
 mkdir -p publish/ftdeploy
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
-   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron \
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron deploy/fasttranslation-logrotate \
    deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
    deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
    deploy/monitor.env.example publish/ftdeploy/
@@ -178,9 +179,13 @@ ls -lh /var/backups/fasttranslation
 
 ```bash
 systemctl stop fasttranslation
+# WAL/SHM 是旧库的旁路文件；留着会被 SQLite 当成新库的一部分重放，恢复出来的数据是两份混在一起。
+rm -f /var/lib/fasttranslation/fasttranslation.db-wal \
+	/var/lib/fasttranslation/fasttranslation.db-shm
 gunzip -c /var/backups/fasttranslation/fasttranslation-<stamp>.db.gz \
 	> /var/lib/fasttranslation/fasttranslation.db
 chown ftserver:ftserver /var/lib/fasttranslation/fasttranslation.db
+chmod 600 /var/lib/fasttranslation/fasttranslation.db
 systemctl start fasttranslation
 ```
 
@@ -246,7 +251,7 @@ Caddy 对后台额外加了 `Cache-Control: no-store`、`Content-Security-Policy
 bash deploy/build-server.sh
 rm -rf /root/ftup && mkdir -p /root/ftup
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
-   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron \
+   deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron deploy/fasttranslation-logrotate \
    deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
    deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
    deploy/monitor.env.example /root/ftup/

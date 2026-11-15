@@ -187,16 +187,22 @@ if command -v openssl >/dev/null 2>&1; then
 fi
 
 PAGE=$(curl -sS --max-time 10 "https://$DOMAIN/" || true)
-case "$PAGE" in
-	*'__ICP_NUMBER__'*) fail "the served page still shows __ICP_NUMBER__ (stale file or wrong web dir)" ;;
-	*'beian.miit.gov.cn'*) ok "the served page links to beian.miit.gov.cn" ;;
-	*) fail "the served page has no filing link" ;;
-esac
-if [ -n "$ICP_NUMBER" ]; then
+if [ "$SKIP_ICP" = 1 ]; then
+	# --skip-icp 的语义就是「页脚暂时留占位符」；这时再断言页面不含占位符
+	# 必然失败，会把一次显式选择变成上线失败。改成告警，其余断言照跑。
+	warn "filing-number assertions skipped by --skip-icp; the footer still shows __ICP_NUMBER__"
+else
 	case "$PAGE" in
-		*"$ICP_NUMBER"*) ok "the served page shows $ICP_NUMBER" ;;
-		*) fail "the served page does not contain $ICP_NUMBER" ;;
+		*'__ICP_NUMBER__'*) fail "the served page still shows __ICP_NUMBER__ (stale file or wrong web dir)" ;;
+		*'beian.miit.gov.cn'*) ok "the served page links to beian.miit.gov.cn" ;;
+		*) fail "the served page has no filing link" ;;
 	esac
+	if [ -n "$ICP_NUMBER" ]; then
+		case "$PAGE" in
+			*"$ICP_NUMBER"*) ok "the served page shows $ICP_NUMBER" ;;
+			*) fail "the served page does not contain $ICP_NUMBER" ;;
+		esac
+	fi
 fi
 
 say "state"
