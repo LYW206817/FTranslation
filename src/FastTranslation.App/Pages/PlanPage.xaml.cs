@@ -25,6 +25,7 @@ public partial class PlanPage : UserControl
     private string _cycle = "monthly";
     private bool _canSubscribe = true;
     private bool _redeemHintIsError;
+    private bool _selecting;
     private bool _subscribed;
 
     // 价格文案与服务端 OrderPricing.PricesCents 同批改；四个值依次是月价、季价、
@@ -266,36 +267,53 @@ public partial class PlanPage : UserControl
             isError ? "DangerBrush" : "TextMutedBrush");
     }
 
-    private void Tier_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    // v144：卡片是 RadioButton，Checked 在鼠标、空格、方向键三种路径下都会发；
+    // 程序性同步也会发，所以用 _selecting 挡住回环。
+    private void Tier_Checked(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string tier }) SelectTier(tier);
+        if (_selecting || sender is not RadioButton { Tag: string tier }) return;
+        SelectTier(tier);
     }
 
-    /// <summary>三张卡只选一张：移动的是边框和填充，别的一概不变。</summary>
+    /// <summary>三张卡只选一张：选中态由模板的 IsChecked 触发器画。</summary>
     private void SelectTier(string tier)
     {
         _tier = tier;
-        Select(LiteCard, tier == "light");
-        Select(ProCard, tier == "standard");
-        Select(MaxCard, tier == "max");
+        _selecting = true;
+        try
+        {
+            Select(LiteCard, tier == "light");
+            Select(ProCard, tier == "standard");
+            Select(MaxCard, tier == "max");
+        }
+        finally
+        {
+            _selecting = false;
+        }
         UpdateSubscribeState();
     }
 
-    private void Cycle_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void Cycle_Checked(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string cycle })
-        {
-            _cycle = cycle;
-            SelectCycle();
-            UpdateSubscribeState();
-        }
+        if (_selecting || sender is not RadioButton { Tag: string cycle }) return;
+        _cycle = cycle;
+        SelectCycle();
+        UpdateSubscribeState();
     }
 
     private void SelectCycle()
     {
         UpdatePrices();
-        Select(MonthlyCycleCard, _cycle == "monthly");
-        Select(QuarterlyCycleCard, _cycle == "quarterly");
+        _selecting = true;
+        try
+        {
+            Select(MonthlyCycleCard, _cycle == "monthly");
+            Select(QuarterlyCycleCard, _cycle == "quarterly");
+        }
+        finally
+        {
+            _selecting = false;
+        }
     }
 
     /// <summary>
@@ -381,15 +399,7 @@ public partial class PlanPage : UserControl
         SubscribeButton.IsEnabled = !_busy && _canSubscribe;
     }
 
-    private void Select(Border card, bool selected)
-    {
-        card.BorderThickness = new Thickness(selected ? 1.5 : 1);
-        card.BorderBrush = (System.Windows.Media.Brush)FindResource(
-            selected ? "BrandBrush" : "HairBrush");
-        card.Background = selected
-            ? (System.Windows.Media.Brush)FindResource("BrandFillBrush")
-            : System.Windows.Media.Brushes.Transparent;
-    }
+    private static void Select(RadioButton card, bool selected) => card.IsChecked = selected;
 
     private async void Subscribe_Click(object sender, RoutedEventArgs e)
     {

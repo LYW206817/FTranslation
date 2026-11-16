@@ -58,11 +58,94 @@
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
     </Style>
+    <!-- v144：档位卡从 Border+MouseUp 改成 RadioButton。原来 Tab 根本落不到卡片上，
+         键盘用户无法选套餐；RadioButton 自带方向键/空格语义和 UIA 选中态，模板保持原视觉。 -->
+    <Style x:Key="TierCard" TargetType="RadioButton">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="20,18"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="14" Margin="-3"/>
+              <Border x:Name="card" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="12" Padding="{TemplateBinding Padding}">
+                <ContentPresenter/>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                  <Condition Property="IsChecked" Value="False"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="card" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </MultiTrigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="card" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+                <Setter TargetName="card" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <Setter TargetName="card" Property="BorderThickness" Value="1.5"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 周期分段里的两项也是 RadioButton：同样的键盘理由，尺寸比档位卡小一档。 -->
+    <Style x:Key="CycleCard" TargetType="RadioButton">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="15,8"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="12" Margin="-3"/>
+              <Border x:Name="card" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="10" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                  <Condition Property="IsChecked" Value="False"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="card" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </MultiTrigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="card" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
+                <Setter TargetName="card" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </UserControl.Resources>
 
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                HorizontalContentAlignment="Stretch" Focusable="False">
-    <StackPanel MaxWidth="1440" Margin="28,22,28,26" HorizontalAlignment="Center">
+                HorizontalContentAlignment="Stretch" Focusable="False" FocusVisualStyle="{x:Null}">
+    <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
       <Grid Margin="0,0,0,18">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
@@ -204,28 +287,22 @@
                     BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="3"
                     VerticalAlignment="Center">
               <StackPanel Orientation="Horizontal">
-                <Border x:Name="MonthlyCycleCard" Tag="monthly" BorderThickness="1" CornerRadius="8"
-                        BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
-                        Padding="15,8" Cursor="Hand" MouseLeftButtonUp="Cycle_Click"
-                        AutomationProperties.Name="月付 30 天" AutomationProperties.AutomationId="MonthlyCycleCard">
+                <RadioButton x:Name="MonthlyCycleCard" GroupName="Cycle" Tag="monthly" Style="{StaticResource CycleCard}" Checked="Cycle_Checked" AutomationProperties.Name="月付 30 天" AutomationProperties.AutomationId="MonthlyCycleCard">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="月付" FontSize="13.5" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                     <TextBlock Text="30 天" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextMutedBrush}"/>
                   </StackPanel>
-                </Border>
-                <Border x:Name="QuarterlyCycleCard" Tag="quarterly" BorderThickness="1" CornerRadius="8"
-                        BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                        Padding="15,8" Margin="4,0,0,0" Cursor="Hand" MouseLeftButtonUp="Cycle_Click"
-                        AutomationProperties.Name="季付 90 天" AutomationProperties.AutomationId="QuarterlyCycleCard">
+                </RadioButton>
+                <RadioButton x:Name="QuarterlyCycleCard" GroupName="Cycle" Tag="quarterly" Style="{StaticResource CycleCard}" Checked="Cycle_Checked" AutomationProperties.Name="季付 90 天" AutomationProperties.AutomationId="QuarterlyCycleCard">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="季付" FontSize="13.5" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                     <TextBlock Text="90 天" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextMutedBrush}"/>
                   </StackPanel>
-                </Border>
+                </RadioButton>
               </StackPanel>
             </Border>
           </Grid>
@@ -239,9 +316,7 @@
               <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="LiteCard" Tag="light" BorderThickness="1" CornerRadius="16"
-                    BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                    Padding="20,18" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+            <RadioButton x:Name="LiteCard" GroupName="Tier" Tag="light" Style="{StaticResource TierCard}" Checked="Tier_Checked" AutomationProperties.Name="Lite 套餐">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
@@ -325,11 +400,9 @@
                   </Grid>
                 </StackPanel>
               </Grid>
-            </Border>
+            </RadioButton>
 
-            <Border x:Name="ProCard" Tag="standard" Grid.Column="2" BorderThickness="1.5" CornerRadius="16"
-                    BorderBrush="{DynamicResource BrandBrush}" Background="{DynamicResource BrandFillBrush}"
-                    Padding="20,18" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+            <RadioButton x:Name="ProCard" Grid.Column="2" GroupName="Tier" Tag="standard" Style="{StaticResource TierCard}" Checked="Tier_Checked" AutomationProperties.Name="Pro 套餐">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
@@ -419,11 +492,9 @@
                   </Grid>
                 </StackPanel>
               </Grid>
-            </Border>
+            </RadioButton>
 
-            <Border x:Name="MaxCard" Tag="max" Grid.Column="4" BorderThickness="1" CornerRadius="16"
-                    BorderBrush="{DynamicResource HairBrush}" Background="Transparent"
-                    Padding="20,18" Cursor="Hand" MouseLeftButtonUp="Tier_Click">
+            <RadioButton x:Name="MaxCard" Grid.Column="4" GroupName="Tier" Tag="max" Style="{StaticResource TierCard}" Checked="Tier_Checked" AutomationProperties.Name="Max 套餐">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
@@ -506,7 +577,7 @@
                   </Grid>
                 </StackPanel>
               </Grid>
-            </Border>
+            </RadioButton>
           </Grid>
 
           <Grid Margin="0,18,0,0">
