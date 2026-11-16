@@ -594,5 +594,8 @@ public sealed class ImageResultWindow : IDisposable
         _window.Hide();
     }
 
+    /// <summary>主题/强调色在设置里改掉后立即重刷。</summary>
+    public void RefreshTheme() => FtTheme.Refresh();
+
     public void Dispose() => _window.Close();
 }

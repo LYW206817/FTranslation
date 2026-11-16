@@ -18,39 +18,74 @@ namespace FastTranslation.Platform.Windows;
 internal static class FtTheme
 {
     // 浮层界面是用代码建的，所以用不了 App.xaml 里的 XAML 画刷。
-    // 改为从 ThemePalette 读同一组十六进制色值(整个应用只有一套配色)，
-    // 并按需延迟解析，这样启动时选定的配色会应用到每个界面。
-    private static readonly Dictionary<string, SolidColorBrush> Cache = new(StringComparer.Ordinal);
-
-    internal static SolidColorBrush Brand => Freeze(ThemePalette.Active.Brand);
-    internal static SolidColorBrush BrandHover => Freeze(ThemePalette.Active.BrandHover);
-    internal static SolidColorBrush BrandPressed => Freeze(ThemePalette.Active.BrandPressed);
-    internal static SolidColorBrush BrandFill => Freeze(ThemePalette.Active.BrandFill);
-    internal static SolidColorBrush OnBrandText => Freeze(ThemePalette.Active.OnBrandText);
-    internal static SolidColorBrush Accent => Freeze(ThemePalette.Active.Accent);
-    internal static SolidColorBrush Bg => Freeze(ThemePalette.Active.WindowBg);
-    internal static SolidColorBrush Surface => Freeze(ThemePalette.Active.Surface);
-    internal static SolidColorBrush Hair => Freeze(ThemePalette.Active.Hair);
-    internal static SolidColorBrush HairStrong => Freeze(ThemePalette.Active.HairStrong);
-    internal static SolidColorBrush BorderStrong => Freeze(ThemePalette.Active.BorderStrong);
-    internal static SolidColorBrush Hover => Freeze(ThemePalette.Active.Hover);
-    internal static SolidColorBrush TextPrimary => Freeze(ThemePalette.Active.TextPrimary);
-    internal static SolidColorBrush TextSecondary => Freeze(ThemePalette.Active.TextSecondary);
-    internal static SolidColorBrush TextMuted => Freeze(ThemePalette.Active.TextMuted);
-    internal static SolidColorBrush Danger => Freeze(ThemePalette.Active.Danger);
-    internal static SolidColorBrush Notice => Freeze(ThemePalette.Active.Notice);
+    // v144：画刷改成每角色一个可变实例，并随 ThemePalette 就地改色。原来按色值缓存且
+    // Freeze，切主题后常驻的浮层窗口仍然握着旧画刷，只有重启才变色。
+    private static readonly SolidColorBrush BrandBrush = Create(ThemePalette.Active.Brand);
+    private static readonly SolidColorBrush BrandHoverBrush = Create(ThemePalette.Active.BrandHover);
+    private static readonly SolidColorBrush BrandPressedBrush = Create(ThemePalette.Active.BrandPressed);
+    private static readonly SolidColorBrush BrandFillBrush = Create(ThemePalette.Active.BrandFill);
+    private static readonly SolidColorBrush OnBrandTextBrush = Create(ThemePalette.Active.OnBrandText);
+    private static readonly SolidColorBrush AccentBrush = Create(ThemePalette.Active.Accent);
+    private static readonly SolidColorBrush BgBrush = Create(ThemePalette.Active.WindowBg);
+    private static readonly SolidColorBrush SurfaceBrush = Create(ThemePalette.Active.Surface);
+    private static readonly SolidColorBrush HairBrush = Create(ThemePalette.Active.Hair);
+    private static readonly SolidColorBrush HairStrongBrush = Create(ThemePalette.Active.HairStrong);
+    private static readonly SolidColorBrush BorderStrongBrush = Create(ThemePalette.Active.BorderStrong);
+    private static readonly SolidColorBrush HoverBrush = Create(ThemePalette.Active.Hover);
+    private static readonly SolidColorBrush TextPrimaryBrush = Create(ThemePalette.Active.TextPrimary);
+    private static readonly SolidColorBrush TextSecondaryBrush = Create(ThemePalette.Active.TextSecondary);
+    private static readonly SolidColorBrush TextMutedBrush = Create(ThemePalette.Active.TextMuted);
+    private static readonly SolidColorBrush DangerBrush = Create(ThemePalette.Active.Danger);
+    private static readonly SolidColorBrush NoticeBrush = Create(ThemePalette.Active.Notice);
     internal static readonly FontFamily UiFont = new("Segoe UI, Microsoft YaHei UI");
 
-    private static SolidColorBrush Freeze(string hex)
+    internal static SolidColorBrush Brand => BrandBrush;
+    internal static SolidColorBrush BrandHover => BrandHoverBrush;
+    internal static SolidColorBrush BrandPressed => BrandPressedBrush;
+    internal static SolidColorBrush BrandFill => BrandFillBrush;
+    internal static SolidColorBrush OnBrandText => OnBrandTextBrush;
+    internal static SolidColorBrush Accent => AccentBrush;
+    internal static SolidColorBrush Bg => BgBrush;
+    internal static SolidColorBrush Surface => SurfaceBrush;
+    internal static SolidColorBrush Hair => HairBrush;
+    internal static SolidColorBrush HairStrong => HairStrongBrush;
+    internal static SolidColorBrush BorderStrong => BorderStrongBrush;
+    internal static SolidColorBrush Hover => HoverBrush;
+    internal static SolidColorBrush TextPrimary => TextPrimaryBrush;
+    internal static SolidColorBrush TextSecondary => TextSecondaryBrush;
+    internal static SolidColorBrush TextMuted => TextMutedBrush;
+    internal static SolidColorBrush Danger => DangerBrush;
+    internal static SolidColorBrush Notice => NoticeBrush;
+
+    /// <summary>主题或强调色切换后，把浮层已经持有的画刷就地改色。</summary>
+    internal static void Refresh()
     {
-        lock (Cache)
-        {
-            if (Cache.TryGetValue(hex, out var cached)) return cached;
-            var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-            b.Freeze();
-            Cache[hex] = b;
-            return b;
-        }
+        Recolor(BrandBrush, ThemePalette.Active.Brand);
+        Recolor(BrandHoverBrush, ThemePalette.Active.BrandHover);
+        Recolor(BrandPressedBrush, ThemePalette.Active.BrandPressed);
+        Recolor(BrandFillBrush, ThemePalette.Active.BrandFill);
+        Recolor(OnBrandTextBrush, ThemePalette.Active.OnBrandText);
+        Recolor(AccentBrush, ThemePalette.Active.Accent);
+        Recolor(BgBrush, ThemePalette.Active.WindowBg);
+        Recolor(SurfaceBrush, ThemePalette.Active.Surface);
+        Recolor(HairBrush, ThemePalette.Active.Hair);
+        Recolor(HairStrongBrush, ThemePalette.Active.HairStrong);
+        Recolor(BorderStrongBrush, ThemePalette.Active.BorderStrong);
+        Recolor(HoverBrush, ThemePalette.Active.Hover);
+        Recolor(TextPrimaryBrush, ThemePalette.Active.TextPrimary);
+        Recolor(TextSecondaryBrush, ThemePalette.Active.TextSecondary);
+        Recolor(TextMutedBrush, ThemePalette.Active.TextMuted);
+        Recolor(DangerBrush, ThemePalette.Active.Danger);
+        Recolor(NoticeBrush, ThemePalette.Active.Notice);
+    }
+
+    private static SolidColorBrush Create(string hex) =>
+        new((Color)ColorConverter.ConvertFromString(hex));
+
+    private static void Recolor(SolidColorBrush brush, string hex)
+    {
+        var color = (Color)ColorConverter.ConvertFromString(hex);
+        if (brush.Color != color) brush.Color = color;
     }
 
     private static ControlTemplate ButtonTemplate(CornerRadius corner)
@@ -378,6 +413,9 @@ public sealed class SelectionToolbar : IDisposable
     }
 
     /// <summary>现在就创建 HWND(应用样式 + 缓存 DPI)，让第一次真正显示瞬间完成。</summary>
+    /// <summary>主题/强调色在设置里改掉后立即重刷；画刷是可变实例，控件不需要重建。</summary>
+    public void RefreshTheme() => FtTheme.Refresh();
+
     public void Prewarm() => _ = new WindowInteropHelper(_window).EnsureHandle();
 
     public void Dispose()
@@ -884,6 +922,9 @@ public sealed class ResultCardWindow : IDisposable
 
     /// <summary>提前创建 HWND(样式与 DPI 缓存已应用)，让首次真正显示时立即出现。</summary>
     public void Prewarm() => _ = new WindowInteropHelper(_window).EnsureHandle();
+
+    /// <summary>主题/强调色在设置里改掉后立即重刷。</summary>
+    public void RefreshTheme() => FtTheme.Refresh();
 
     public void Dispose() => _window.Close();
 }

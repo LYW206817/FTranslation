@@ -1516,6 +1516,11 @@ public partial class App : Application, IResultPresenter
     {
         ThemeBridge.Apply(ThemePalette.Resolve(themeSetting), accent);
         if (Current is not App app) return;
+        // v144：浮层是启动时创建的常驻窗口，画刷不会跟着 XAML 的 DynamicResource 走，
+        // 必须显式把它们持有的可变画刷改色，否则切主题后要重启才生效。
+        app._toolbar?.RefreshTheme();
+        app._card?.RefreshTheme();
+        app._imageWindow?.RefreshTheme();
 
         // 已开的窗口都要重刷标题栏；Show() 之后才建 HWND 的窗口由 WindowChrome.Apply 兜住
         foreach (Window window in app.Windows)
