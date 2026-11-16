@@ -279,6 +279,25 @@ public sealed class ImageResultWindow : IDisposable
     }
 
     /// <summary>
+    /// 图片与 OCR 都没回来时的终态：把转圈换成错误文案，窗口留着让用户看清原因。
+    /// v146：原来失败只发托盘气泡，Win11 通知设置会把气泡吞掉，用户看到的就是窗口一直转圈。
+    /// </summary>
+    public void ShowError(string message)
+    {
+        _caption.Text = "截图翻译失败";
+        StopSpinner();
+        _loadingText.Text = message;
+        _loadingPanel.Visibility = Visibility.Visible;
+        _copy.Visibility = Visibility.Collapsed;
+        _saveAs.Visibility = Visibility.Collapsed;
+        _saveNote.Visibility = Visibility.Collapsed;
+        _recognizedLabel.Visibility = Visibility.Collapsed;
+        _recognized.Visibility = Visibility.Collapsed;
+        _noteStatus.Visibility = Visibility.Collapsed;
+        Present();
+    }
+
+    /// <summary>
     /// 展示一次截图翻译的结果。<paramref name="recognized"/> 为 null 表示 OCR 没成功，
     /// 此时隐藏文本区并禁用「保存到单词本」——存一条只有图没有原文的笔记没有意义。
     /// <paramref name="showActions"/> 为 false 时（图片翻译失败、只有文字）隐藏图片类操作。

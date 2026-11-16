@@ -289,7 +289,16 @@ public partial class App : Application, IResultPresenter
                     result.TargetLanguage,
                     result.Model),
                 result.PicturePending)),
-            message => OnUiThread(() => _tray?.ShowBalloon("截图翻译失败", message)),
+            message => OnUiThread(() =>
+            {
+                // v146：等待窗已经开着了，失败必须在这里收掉转圈；只发气泡时
+                // Win11 的通知设置会把气泡吞掉，用户看到的就是「一直正在翻译」。
+                // 网络类错误先给一句中文结论，原始 SSL/HTTP 细节留在第二行便于排查。
+                var text = message.StartsWith("网络错误:", StringComparison.Ordinal)
+                    ? "网络连接失败，请检查代理或网络后重试。" + Environment.NewLine + message
+                    : message;
+                _imageWindow?.ShowError(text);
+            }),
             // 框选一结束就把浮窗开成等待态：译图 + OCR + 文字翻译三段串起来要好几秒
             () => OnUiThread(() => _imageWindow?.ShowLoading("截图翻译 · 正在翻译")),
             // 选框结束（截到或取消）后把临时收起的语音浮窗放回来
