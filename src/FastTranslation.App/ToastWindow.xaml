@@ -11,7 +11,8 @@
        而「注册成功」这种一句话反馈不值得打断用户，所以自己 3 秒消失。
        ShowActivated=False：弹出时不抢键盘焦点，用户正在输入的内容不会被打断。 -->
   <Border CornerRadius="10" Background="{DynamicResource SurfaceBrush}"
-          BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Margin="10">
+          BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Margin="10"
+          MouseEnter="Toast_MouseEnter" MouseLeave="Toast_MouseLeave">
     <Border.Effect>
       <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.22"/>
     </Border.Effect>

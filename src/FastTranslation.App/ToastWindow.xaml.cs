@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -16,6 +17,9 @@ public sealed partial class ToastWindow : Window
 
     private static ToastWindow? _current;
     private readonly DispatcherTimer _timer;
+    private readonly TimeSpan _hold;
+    private TimeSpan _remaining;
+    private long _resumedAt;
     private Action? _onAction;
 
     private ToastWindow(string message, string? actionLabel, Action? onAction)
@@ -29,14 +33,15 @@ public sealed partial class ToastWindow : Window
             ActionButton.Visibility = Visibility.Visible;
             _onAction = onAction;
         }
-        _timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(hasAction ? WithActionHoldMs : AutoHideMs)
-        };
+        // v144：鼠标停在提示条上时暂停倒计时——带动作按钮的提示要留出点击时间，
+          // 用户读文字时也不该被计时器抢走。
+        _hold = TimeSpan.FromMilliseconds(hasAction ? WithActionHoldMs : AutoHideMs);
+        _remaining = _hold;
+        _timer = new DispatcherTimer { Interval = _hold };
         _timer.Tick += (_, _) => Close();
         // v111：这里原来只建了计时器却忘了 Start()，所以「3 秒消失」从没发生过，
         // 提示条会一直挂在右下角。用户反馈之后补上启动，并加了手动关闭按钮。
-        _timer.Start();
+        StartCountdown();
     }
 
     /// <summary>弹出一条提示；上一条还没消失会被替换掉，同一时刻只留一条。</summary>
@@ -54,8 +59,30 @@ public sealed partial class ToastWindow : Window
         toast.Show();
     }
 
+    private void StartCountdown()
+    {
+        _resumedAt = Stopwatch.GetTimestamp();
+        _timer.Interval = _remaining > TimeSpan.Zero ? _remaining : TimeSpan.FromMilliseconds(250);
+        _timer.Start();
+    }
+
+    private void Toast_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_timer.IsEnabled) return;
+        _timer.Stop();
+        _remaining -= Stopwatch.GetElapsedTime(_resumedAt);
+        if (_remaining < TimeSpan.FromMilliseconds(250)) _remaining = TimeSpan.FromMilliseconds(250);
+    }
+
+    private void Toast_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!IsVisible || _timer.IsEnabled) return;
+        StartCountdown();
+    }
+
     private void PlaceAtBottomRight()
     {
+        // 固定主屏右下角：提示是全局反馈，跟随鼠标跨屏跳动反而会打断当前操作。
         var area = SystemParameters.WorkArea;
         Left = area.Right - ActualWidth - 12;
         Top = area.Bottom - ActualHeight - 12;
