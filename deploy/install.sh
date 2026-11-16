@@ -16,6 +16,7 @@
 #   /tmp/ftdeploy/fasttranslation-monitor.cron  监控定时任务
 #   /tmp/ftdeploy/monitor.env.example   监控配置模板
 #   /tmp/ftdeploy/fasttranslation-logrotate  日志轮转配置
+#   /tmp/ftdeploy/backup.env.example          异地备份配置模板
 #   /tmp/ftdeploy/server/               发布产物（即 publish/server-linux）
 #   /tmp/ftdeploy/site/                 静态站点（即 site/）
 #   /tmp/ftdeploy/admin/                运营后台静态页（即 admin/）
@@ -87,10 +88,16 @@ else
 fi
 
 echo "==> backup job"
+install -d -m 0755 /etc/fasttranslation
 install -m 0755 "$HERE/backup.sh" /usr/local/bin/ft-backup.sh
 install -m 0644 "$HERE/fasttranslation-backup.cron" /etc/cron.d/fasttranslation-backup
 # cron 每天/每 15 分钟往 /var/log 追加；没有轮转时日志会一直长到磁盘满。
 install -m 0644 "$HERE/fasttranslation-logrotate" /etc/logrotate.d/fasttranslation
+if [ ! -f /etc/fasttranslation/backup.env ]; then
+	install -m 0600 "$HERE/backup.env.example" /etc/fasttranslation/backup.env
+	echo "    !! Created /etc/fasttranslation/backup.env from the example."
+	echo "    !! Offsite backup is OFF; fill it in and set FT_BACKUP_OFFSITE=1 to enable."
+fi
 
 echo "==> monitor jobs"
 if [ -f "$HERE/ft-probe.sh" ]; then

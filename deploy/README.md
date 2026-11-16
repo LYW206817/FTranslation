@@ -23,6 +23,7 @@
 | `backup.sh` | → `/usr/local/bin/ft-backup.sh` |
 | `fasttranslation-backup.cron` | → `/etc/cron.d/fasttranslation-backup` |
 | `fasttranslation-logrotate` | → `/etc/logrotate.d/fasttranslation`(每周轮转备份与监控日志,保留 8 份) |
+| `backup.env.example` | 首次安装复制为 `/etc/fasttranslation/backup.env`（600）；异地备份默认关闭 |
 | `ft-alert.sh` | → `/usr/local/lib/ft-alert.sh`（飞书发送与告警去重，被下面两个脚本 source） |
 | `ft-probe.sh` | → `/usr/local/bin/ft-probe.sh`（合成翻译探测） |
 | `ft-monitor.sh` | → `/usr/local/bin/ft-monitor.sh`（资源检查与每日摘要） |
@@ -42,6 +43,7 @@ rm -rf publish/ftdeploy
 mkdir -p publish/ftdeploy
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
    deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron deploy/fasttranslation-logrotate \
+   deploy/backup.env.example \
    deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
    deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
    deploy/monitor.env.example publish/ftdeploy/
@@ -189,6 +191,50 @@ chmod 600 /var/lib/fasttranslation/fasttranslation.db
 systemctl start fasttranslation
 ```
 
+### 异地加密备份（可选，默认关闭）
+
+默认的 `/var/backups/fasttranslation` 与数据库在同一台 ECS 上：整机或云盘丢失时两份一起没。启用后，`backup.sh` 会额外用 age 加密并上传到 OSS，服务器只保存公钥，OSS 上只有密文。
+
+1. 在本机生成 age 密钥（私钥不要放服务器）：
+
+   ```bash
+   age-keygen -o ft-backup-age.key
+   # stderr 会打印 age1... 公钥
+   ```
+
+2. 建一个私有 OSS Bucket（建议与 ECS 同地域），给一个 RAM 用户只授予该 Bucket 下 `FT_OSS_PREFIX/*` 的 `oss:PutObject`；建议开启版本控制与 90 天生命周期。
+
+3. 填 `/etc/fasttranslation/backup.env`（600）：
+
+   ```bash
+   FT_BACKUP_OFFSITE=1
+   FT_BACKUP_AGE_RECIPIENT=age1...
+   FT_OSS_BUCKET=your-private-bucket
+   FT_OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com
+   FT_OSS_PREFIX=fasttranslation
+   FT_OSS_ACCESS_KEY_ID=...
+   FT_OSS_ACCESS_KEY_SECRET=...
+   ```
+
+4. 先演练（只加密、不上传）：
+
+   ```bash
+   FT_BACKUP_OFFSITE_DRY_RUN=1 /usr/local/bin/ft-backup.sh
+   ```
+
+5. 正式跑一次，确认日志里出现 `offsite backup uploaded: oss://...`。
+
+从异地副本恢复：
+
+```bash
+age --decrypt -i ft-backup-age.key -o fasttranslation.db.gz fasttranslation-<stamp>.db.gz.age
+gunzip -c fasttranslation.db.gz > /var/lib/fasttranslation/fasttranslation.db
+chown ftserver:ftserver /var/lib/fasttranslation/fasttranslation.db
+chmod 600 /var/lib/fasttranslation/fasttranslation.db
+```
+
+异地失败不会删本地备份：本地仍保留 14 天，脚本以非零退出，错误留在 `/var/log/ft-backup.log`。私钥丢失则异地副本无法恢复，务必离线备份私钥。
+
 ## 监控与告警
 
 `install.sh` 安装三组任务（`/etc/cron.d/fasttranslation-monitor`）：
@@ -252,6 +298,7 @@ bash deploy/build-server.sh
 rm -rf /root/ftup && mkdir -p /root/ftup
 cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslation.service \
    deploy/Caddyfile deploy/backup.sh deploy/fasttranslation-backup.cron deploy/fasttranslation-logrotate \
+   deploy/backup.env.example \
    deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
    deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
    deploy/monitor.env.example /root/ftup/
