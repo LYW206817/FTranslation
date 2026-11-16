@@ -36,9 +36,11 @@
                 HorizontalContentAlignment="Stretch" Focusable="False"
                 FocusVisualStyle="{x:Null}">
     <!-- 账号页在效果图里是整宽单列：卡片一张压一张，只有未登录的那个表单保留左右并排 -->
-    <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
-      <TextBlock x:Name="Headline" Text="账号" FontSize="17" FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+    <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
+      <StackPanel Margin="0,0,0,14">
+        <TextBlock x:Name="Headline" Text="账号" Style="{StaticResource PageTitle}"/>
+        <TextBlock Style="{StaticResource PageSub}" Text="登录后额度、单词本与复习进度跟随账号。"/>
+      </StackPanel>
 
       <local:CardBoard Columns="1">
         <!-- ================= 未登录 ================= -->
@@ -113,7 +115,7 @@
                    不再给外层加 ClipToBounds——矩形裁切会把投影切出四块三角残影）。 -->
               <Border Grid.Column="1" Background="{DynamicResource HeroPanelBrush}"
                       BorderBrush="{DynamicResource HairBrush}" BorderThickness="1,0,0,0"
-                      CornerRadius="0,16,16,0" Padding="28,26,28,26">
+                      CornerRadius="0,12,12,0" Padding="28,26,28,26">
                 <StackPanel VerticalAlignment="Center">
                   <Border Width="42" Height="42" CornerRadius="21" HorizontalAlignment="Left"
                           Background="{DynamicResource BrandFillBrush}">

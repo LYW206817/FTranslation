@@ -102,11 +102,11 @@
          小标题与它的卡包在同一个 StackPanel 里，否则会被分列拆成两半。 ===== -->
     <ScrollViewer x:Name="Body" Grid.Row="0"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                  HorizontalContentAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch" FocusVisualStyle="{x:Null}"
                   Focusable="False" PreviewMouseWheel="Body_PreviewMouseWheel">
       <!-- v69：底边留够一行的高度。原来只留 6px，滚动到底时最后那张卡的
            脚注会被视口边缘切成半行。 -->
-      <StackPanel x:Name="BodyStack" Margin="28,22,28,26" MaxWidth="1440" HorizontalAlignment="Center">
+      <StackPanel x:Name="BodyStack" Margin="{StaticResource PagePadding}" MaxWidth="1440" HorizontalAlignment="Center">
         <Grid Margin="0,0,0,18">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>

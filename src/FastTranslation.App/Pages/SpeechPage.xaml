@@ -6,11 +6,13 @@
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <!-- 页面只负责「开始前」的设置与会话入口；会话中的字幕在 SpeechWindow 浮窗，主窗口不重复承担 -->
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                HorizontalContentAlignment="Stretch" Focusable="False">
+                HorizontalContentAlignment="Stretch" Focusable="False" FocusVisualStyle="{x:Null}">
     <!-- 标题整宽在页顶；语音页在效果图里是整宽单列，所以 Columns=1 -->
-    <StackPanel MaxWidth="1440" Margin="24,18,24,26" HorizontalAlignment="Center">
-      <TextBlock Text="语音翻译" FontSize="17" FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14"/>
+    <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
+      <StackPanel Margin="0,0,0,14">
+        <TextBlock Text="语音翻译" Style="{StaticResource PageTitle}"/>
+        <TextBlock Style="{StaticResource PageSub}" Text="把电脑里正在播放的声音实时转成双语字幕。"/>
+      </StackPanel>
       <local:CardBoard Columns="1">
 
         <Border Style="{StaticResource Card}">

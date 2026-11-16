@@ -54,18 +54,21 @@
     </Style>
   </UserControl.Resources>
 
-  <Grid Margin="22,18,22,16">
+  <Grid Margin="{StaticResource PagePadding}">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
     <DockPanel Grid.Row="0" Margin="0,0,0,14">
-      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-        <TextBlock x:Name="Headline" Text="复习" FontSize="17" FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-        <TextBlock x:Name="CountLabel" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,2"
-                   Foreground="{DynamicResource TextMutedBrush}" FontSize="12"/>
+      <StackPanel VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock x:Name="Headline" Text="复习" Style="{StaticResource PageTitle}"/>
+          <TextBlock x:Name="CountLabel" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,3"
+                     Foreground="{DynamicResource TextMutedBrush}" FontSize="12"/>
+        </StackPanel>
+        <TextBlock Style="{StaticResource PageSub}"
+                   Text="先勾选今天要练的内容，再逐张揭示答案并打分。"/>
       </StackPanel>
     </DockPanel>
 
@@ -89,7 +92,7 @@
           <TextBlock Text=" "/>
         </DockPanel>
 
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="10"
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="12"
                 BorderBrush="{DynamicResource HairBrush}" BorderThickness="1" Padding="6,8,6,6">
           <Grid>
             <ListBox x:Name="PickList" Style="{StaticResource PickList}">

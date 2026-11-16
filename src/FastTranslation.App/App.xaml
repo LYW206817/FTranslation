@@ -50,6 +50,8 @@
     </LinearGradientBrush>
 
     <!-- v91 页头：效果图里每页顶部是 21px 标题 + 一行 12.5px 说明 -->
+    <!-- v144：页面外壳统一 24px 内容边距。之前 22/24/28 混用，切页时标题会左右跳。 -->
+    <Thickness x:Key="PagePadding">24,20,24,24</Thickness>
     <Style x:Key="PageTitle" TargetType="TextBlock">
       <Setter Property="FontSize" Value="21"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -576,10 +578,13 @@
          底板上（FtCard + CardShell 两层）。实测更糟——底板会在卡片四边和四角露出一圈残影，
          圆角写死和 TemplatedParent 绑定两种写法结果一样，回退到单 Border 带 Effect。
          用量环与进度条的观感差异要另找办法，不要再走这条路。 -->
+    <!-- v144：内容卡统一 12px 圆角 + 1px Hair 描边。16px 与侧栏浮卡、按钮不是一套圆角语言，
+         无描边又让白卡在浅色背景上只剩阴影一条边界。 -->
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
       <Setter Property="Padding" Value="18,16,18,18"/>
       <Setter Property="Margin" Value="0,0,0,16"/>
@@ -605,8 +610,9 @@
          也别走「把 Effect 拆到无子元素的底板」：v98 末实测会在卡片边缘留一圈残影并已回退。 -->
     <Style x:Key="CardSurface" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
     </Style>
 

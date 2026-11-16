@@ -30,8 +30,8 @@
   </UserControl.Resources>
 
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                HorizontalContentAlignment="Stretch" Focusable="False">
-    <StackPanel MaxWidth="1440" Margin="28,22,28,26" HorizontalAlignment="Center">
+                HorizontalContentAlignment="Stretch" Focusable="False" FocusVisualStyle="{x:Null}">
+    <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
       <!-- v91：按效果图 A 换成「21px 标题 + 一行说明 + 右侧药丸」。原来的 17px 标题
            和卡片的字号一样大，页面没有主次。 -->
       <Grid Margin="0,0,0,18">
