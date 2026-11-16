@@ -100,6 +100,8 @@
     <!-- ===== 可滚动主体：每个关注点一张卡，分组按主题而不是按高度——左列是「它怎么为我
          翻译」，右列是「它在跟谁通信」；具体哪张卡进哪一列由 CardBoard 按最短列决定。
          小标题与它的卡包在同一个 StackPanel 里，否则会被分列拆成两半。 ===== -->
+<!-- v144：页面根滚动视口拿到键盘焦点时会画一圈黑框（最小尺寸截图发现）；
+     与账号页 v111 同款处理，子控件的焦点环不受影响。 -->
     <ScrollViewer x:Name="Body" Grid.Row="0"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   HorizontalContentAlignment="Stretch" FocusVisualStyle="{x:Null}"

@@ -29,6 +29,8 @@
     </Style>
   </UserControl.Resources>
 
+<!-- v144：页面根滚动视口拿到键盘焦点时会画一圈黑框（最小尺寸截图发现）；
+     与账号页 v111 同款处理，子控件的焦点环不受影响。 -->
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                 HorizontalContentAlignment="Stretch" Focusable="False" FocusVisualStyle="{x:Null}">
     <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
