@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FastTranslation.App.Pages;
 using FastTranslation.Core;
@@ -57,6 +59,7 @@ public partial class MainWindow : Window
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
+    private int _themeTransitionVersion;
 
     /// <summary>从首页转发过来，这样 App 不必伸手去拿某个页面实例。</summary>
     public event Action? SettingsRequested;
@@ -272,18 +275,85 @@ public partial class MainWindow : Window
     /// <summary>
     /// 没有匹配到的 id 会落到这里；上面每个 <see cref="MainPageId"/> 里的页面都有对应工厂。
     /// </summary>
-    private UserControl Placeholder(MainPageId page) => new()
+    private UserControl Placeholder(MainPageId page)
     {
-        Background = (Brush)FindResource("WindowBgBrush"),
-        Content = new TextBlock
+        var text = new TextBlock
         {
             Text = page + " (建设中)",
             FontSize = 14,
-            Foreground = (Brush)FindResource("TextMutedBrush"),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-        },
-    };
+        };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "TextMutedBrush");
+        var control = new UserControl { Content = text };
+        control.SetResourceReference(Control.BackgroundProperty, "WindowBgBrush");
+        return control;
+    }
+
+    internal (string? Theme, string? Accent) ActiveAppearanceSettings(AppSettings saved) =>
+        _settingsPage is { IsLoaded: true } settings
+            ? (settings.PreviewThemeSetting, settings.PreviewAccentSetting)
+            : (saved.Theme, saved.Accent);
+
+    internal void RefreshSettingsAppearance() => _settingsPage?.RefreshAccentChips();
+
+    /// <summary>
+    /// 用当前窗体视觉树截一张同 DPI 快照覆盖在顶层做 220ms 交叉淡出，同时在底层立即换色，
+    /// 消除切换系统主题或强调色时的整屏硬跳变；窗口隐藏、最小化或软件渲染时不额外做重绘动画。
+    /// </summary>
+    internal void RunThemeTransition(Action applyTheme)
+    {
+        if (!IsVisible
+            || WindowState == WindowState.Minimized
+            || RenderOptions.ProcessRenderMode == System.Windows.Interop.RenderMode.SoftwareOnly
+            || TransitionHost.ActualWidth < 1
+            || TransitionHost.ActualHeight < 1)
+        {
+            applyTheme();
+            return;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var pixelWidth = Math.Max(1, (int)Math.Round(TransitionHost.ActualWidth * dpi.DpiScaleX));
+        var pixelHeight = Math.Max(1, (int)Math.Round(TransitionHost.ActualHeight * dpi.DpiScaleY));
+        var snapshot = new RenderTargetBitmap(
+            pixelWidth, pixelHeight, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        // 渲染 TransitionHost 本身：若上一轮淡出仍在进行，会把此刻混合中的画面直接接过来。
+        snapshot.Render(TransitionHost);
+        snapshot.Freeze();
+
+        var version = ++_themeTransitionVersion;
+        ThemeTransitionOverlay.BeginAnimation(OpacityProperty, null);
+        ThemeTransitionOverlay.Source = snapshot;
+        ThemeTransitionOverlay.Opacity = 1;
+        ThemeTransitionOverlay.Visibility = Visibility.Visible;
+
+        try
+        {
+            applyTheme();
+        }
+        catch
+        {
+            // 若换色中途失败，不能把旧截图蒙版永久留在窗口最上层挡住交互
+            ThemeTransitionOverlay.BeginAnimation(OpacityProperty, null);
+            ThemeTransitionOverlay.Source = null;
+            ThemeTransitionOverlay.Visibility = Visibility.Collapsed;
+            throw;
+        }
+
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        fade.Completed += (_, _) =>
+        {
+            if (version != _themeTransitionVersion) return;
+            ThemeTransitionOverlay.BeginAnimation(OpacityProperty, null);
+            ThemeTransitionOverlay.Source = null;
+            ThemeTransitionOverlay.Visibility = Visibility.Collapsed;
+        };
+        ThemeTransitionOverlay.BeginAnimation(OpacityProperty, fade);
+    }
 
     private UserControl Home()
     {

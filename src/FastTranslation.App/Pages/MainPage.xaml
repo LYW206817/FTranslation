@@ -12,15 +12,10 @@
 
     <!-- 顶栏：白药丸里是语言与模型。药丸比卡片轻一档影子，读起来像贴在雾上的标签 -->
     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,2,14">
-      <Border Style="{StaticResource TopPill}">
-        <StackPanel Orientation="Horizontal">
-          <Ellipse Style="{StaticResource PillDot}"/>
-          <!-- 下拉框自己的底与描边都关掉，让药丸当它的外壳 -->
-          <local:FtComboBox x:Name="TargetCombo" Width="150" AutomationProperties.Name="目标语言" Background="Transparent"
-                            BorderThickness="0" Padding="0" FontSize="12"
-                            SelectionChanged="TargetCombo_SelectionChanged"/>
-        </StackPanel>
-      </Border>
+      <local:FtComboBox x:Name="TargetCombo" Style="{StaticResource PillComboBox}"
+                        DotBrush="{DynamicResource BrandBrush}"
+                        AutomationProperties.Name="目标语言"
+                        SelectionChanged="TargetCombo_SelectionChanged"/>
       <Border Style="{StaticResource TopPill}" Margin="8,0,0,0">
         <StackPanel Orientation="Horizontal">
           <Ellipse Style="{StaticResource PillDot}" Fill="{DynamicResource WarmBrush}"/>

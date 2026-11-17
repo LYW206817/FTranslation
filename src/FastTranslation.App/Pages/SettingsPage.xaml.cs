@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FastTranslation.Core;
 using FastTranslation.Platform.Windows;
 
@@ -28,8 +29,12 @@ public partial class SettingsPage : UserControl
     // 原实现直接改 _settings，点取消也回不去，划走页面还会让未保存的名单继续生效。
     private List<string> _excluded = [];
     private bool _checkingUpdate;
+    private bool _reloading;
+    // v150：保存成功的回执只在底栏停留 8 秒，避免「已保存」一直挂着、和之后未保存的改动冲突。
+    private readonly DispatcherTimer _saveHintTimer = new() { Interval = TimeSpan.FromSeconds(8) };
+    private readonly string _saveHintText;
 
-    /// <summary>保存或取消之后触发，好让外壳回到用户来的地方。</summary>
+    /// <summary>取消设置后触发，好让外壳回到用户来的地方。</summary>
     public event Action? Closed;
 
     public SettingsPage(
@@ -40,6 +45,7 @@ public partial class SettingsPage : UserControl
         Func<Task>? checkUpdates = null)
     {
         InitializeComponent();
+        _saveHintText = SaveHint.Text;
         _settings = settings;
         _service = service;
         _secrets = secrets;
@@ -57,8 +63,13 @@ public partial class SettingsPage : UserControl
         AboutText.Text = AboutLine();
         ReloadFromSettings();
 
+        _saveHintTimer.Tick += (_, _) => HideSaveHint();
         // 页面是缓存的：切页面/取消离开时把预览过的外观退回已保存的那一套
-        Unloaded += (_, _) => RevertAppearance();
+        Unloaded += (_, _) =>
+        {
+            HideSaveHint();
+            RevertAppearance();
+        };
     }
 
     /// <summary>
@@ -67,31 +78,39 @@ public partial class SettingsPage : UserControl
     /// </summary>
     public void ReloadFromSettings()
     {
-        SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
-        // 用 Tag 而不是索引：加 Lite 后索引会变，选择与落盘必须读同一个值。
-        SelectTag(ModelCombo, string.IsNullOrWhiteSpace(_settings.Model) ? "qwen-mt-flash" : _settings.Model);
-        ThemeCombo.SelectedIndex = _settings.Theme?.Trim().ToLowerInvariant() switch
+        _reloading = true;
+        try
         {
-            ThemePalette.LightSetting => 1,
-            ThemePalette.DarkSetting => 2,
-            _ => 0,
-        };
-        _accent = ThemePalette.ResolveAccent(_settings.Accent);
-        UpdateAccentChips();
-        HotkeyBox.Text = _settings.Hotkey;
-        ClipboardFallbackCheck.IsChecked = _settings.ClipboardFallbackEnabled;
-        WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
-        BaseUrlBox.Text = _settings.OverrideBaseUrl;
-        AccountUrlBox.Text = _settings.AccountBaseUrl;
-        AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
-        // 低内存模式只决定下次启动用哪种 WPF 渲染，不影响当前进程
-        SoftwareRenderingCheck.IsChecked = _settings.SoftwareRendering;
-        // Key 在磁盘上由 DPAPI 加密，且从不回显：输入框为空表示「别动它」
-        KeyBox.Clear();
-        HotkeyError.Visibility = Visibility.Collapsed;
-        ExclusionHint.Visibility = Visibility.Collapsed;
-        _excluded = [.. _settings.ExcludedProcesses];
-        RefreshExcludedList();
+            SelectTag(TargetCombo, string.IsNullOrEmpty(_settings.TargetLanguage) ? "auto" : _settings.TargetLanguage);
+            // 用 Tag 而不是索引：加 Lite 后索引会变，选择与落盘必须读同一个值。
+            SelectTag(ModelCombo, string.IsNullOrWhiteSpace(_settings.Model) ? "qwen-mt-flash" : _settings.Model);
+            ThemeCombo.SelectedIndex = _settings.Theme?.Trim().ToLowerInvariant() switch
+            {
+                ThemePalette.LightSetting => 1,
+                ThemePalette.DarkSetting => 2,
+                _ => 0,
+            };
+            _accent = ThemePalette.ResolveAccent(_settings.Accent);
+            UpdateAccentChips();
+            HotkeyBox.Text = _settings.Hotkey;
+            ClipboardFallbackCheck.IsChecked = _settings.ClipboardFallbackEnabled;
+            WriteBackCheck.IsChecked = _settings.WriteBackEnabled;
+            BaseUrlBox.Text = _settings.OverrideBaseUrl;
+            AccountUrlBox.Text = _settings.AccountBaseUrl;
+            AutoStartCheck.IsChecked = StartupRegistration.IsEnabled();
+            // 低内存模式只决定下次启动用哪种 WPF 渲染，不影响当前进程
+            SoftwareRenderingCheck.IsChecked = _settings.SoftwareRendering;
+            // Key 在磁盘上由 DPAPI 加密，且从不回显：输入框为空表示「别动它」
+            KeyBox.Clear();
+            HotkeyError.Visibility = Visibility.Collapsed;
+            ExclusionHint.Visibility = Visibility.Collapsed;
+            _excluded = [.. _settings.ExcludedProcesses];
+            RefreshExcludedList();
+        }
+        finally
+        {
+            _reloading = false;
+        }
     }
 
     private static string AboutLine()
@@ -242,6 +261,8 @@ public partial class SettingsPage : UserControl
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        // 上一次的回执先收起：这次若失败，不能还挂着「已保存」。
+        HideSaveHint();
         _settings.TargetLanguage = (TargetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
         // Tag 是设置里的真实模型名；不能用 SelectedIndex，Lite 插进来后索引不再固定。
         _settings.Model = (ModelCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "qwen-mt-flash";
@@ -287,19 +308,54 @@ public partial class SettingsPage : UserControl
             HotkeyError.Visibility = Visibility.Visible;
             _settings.FirstRunCompleted = true;
             _service.Save(_settings);
+            App.ApplyAppearance(_settings.Theme, _settings.Accent);
             return;
         }
 
         _settings.FirstRunCompleted = true;
         _service.Save(_settings);
-        Closed?.Invoke();
+        // v149：保存后留在设置页，不再触发 Closed 跳回首页；先应用外观再回填控件，
+        // 确保主题、强调色立即生效，且页内各输入值/提示与落盘后的设置完全一致。
+        App.ApplyAppearance(_settings.Theme, _settings.Accent);
+        ReloadFromSettings();
+        // 回填之后才显示：ReloadFromSettings 会清掉各条临时提示，先显示会被一并清掉。
+        ShowSaveHint();
+    }
+
+    /// <summary>
+    /// v150：保存成功后给一条完整回执——哪些改动已立即生效、哪些要等下次启动。
+    /// 停留 8 秒自动收起，免得「已保存」和之后未保存的改动同时挂在页面上。
+    /// </summary>
+    private void ShowSaveHint()
+    {
+        SaveHint.Text = _saveHintText;
+        SaveHint.Visibility = Visibility.Visible;
+        _saveHintTimer.Stop();
+        _saveHintTimer.Start();
+    }
+
+    private void HideSaveHint()
+    {
+        _saveHintTimer.Stop();
+        // 隐藏的同时清空文本：Visibility.Hidden 的元素仍留在 UIA 树里，
+        // 不清空的话读屏仍会念出「已保存」，脚本也无法用 Name 判断它已收起。
+        SaveHint.Text = string.Empty;
+        SaveHint.Visibility = Visibility.Hidden;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        HideSaveHint();
         ReloadFromSettings(); // 丢弃未保存的改动：页面不像窗口那样会被重建
+        RevertAppearance();
         Closed?.Invoke();
     }
+
+    internal string PreviewThemeSetting => SelectedThemeSetting;
+
+    internal string PreviewAccentSetting => ThemePalette.AccentSetting(_accent);
+
+    internal void RefreshAccentChips() => UpdateAccentChips();
 
     /// <summary>下拉框当前选项对应的设置值；预览与保存都读它，避免两处 switch 走岔。</summary>
     private string SelectedThemeSetting => ThemeCombo.SelectedIndex switch
@@ -311,8 +367,8 @@ public partial class SettingsPage : UserControl
 
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 构造与 ReloadFromSettings 里设 SelectedIndex 也会走到这里，那时还没上树，别预览
-        if (IsLoaded) PreviewAppearance();
+        // 构造与 ReloadFromSettings 里设 SelectedIndex 也会走到这里，那时还没上树或在回填，别预览
+        if (IsLoaded && !_reloading) PreviewAppearance();
     }
 
     private void AccentChip_Click(object sender, RoutedEventArgs e)
@@ -332,7 +388,7 @@ public partial class SettingsPage : UserControl
         UpdateAccentChips();
     }
 
-    /// <summary>退回 settings.json 里那套外观：取消、切走页面、以及保存后离开都走这里。</summary>
+    /// <summary>退回 settings.json 里那套外观：取消或未保存切走页面时走这里。</summary>
     private void RevertAppearance()
         => App.ApplyAppearance(_settings.Theme, _settings.Accent);
 
@@ -353,8 +409,8 @@ public partial class SettingsPage : UserControl
         {
             dot.Background = Swatch(ThemePalette.BrandOf(ThemePalette.Current, accent));
             var selected = accent == _accent;
-            chip.BorderBrush = (Brush)FindResource(selected ? "BrandBrush" : "BorderStrongBrush");
-            chip.Background = (Brush)FindResource(selected ? "BrandFillBrush" : "SurfaceBrush");
+            chip.SetResourceReference(BorderBrushProperty, selected ? "BrandBrush" : "BorderStrongBrush");
+            chip.SetResourceReference(BackgroundProperty, selected ? "BrandFillBrush" : "SurfaceBrush");
             chip.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
         }
     }

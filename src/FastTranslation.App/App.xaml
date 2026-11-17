@@ -636,6 +636,129 @@
       <Setter Property="Fill" Value="{DynamicResource BrandBrush}"/>
     </Style>
 
+    <!-- v147：顶栏药丸式下拉框（首页、文档页）。直接由 FtComboBox 承担 TopPill 外壳，
+         不再套在 Border(TopPill) 里面：否则 FtComboBox 自带的 ring 会在白药丸内嵌一圈蓝框，
+         且固定宽 + 双重右边距让比例失衡。现在整枚药丸共用一个 12,5 内边距与外圈焦点环，
+         宽度随所选语言自适应，与右侧模型药丸/其他页头药丸保持同一高度与比例。 -->
+    <Style x:Key="PillComboBox" TargetType="{x:Type local:FtComboBox}"
+           BasedOn="{StaticResource {x:Type local:FtComboBox}}">
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="12,5"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type local:FtComboBox}">
+            <Grid>
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      CornerRadius="10" Effect="{DynamicResource GlassShadowEffect}"/>
+              <!-- 悬停描边叠在底板之上不占布局，避免把药丸撑高 2px 后与兄弟 TopPill 不齐 -->
+              <Border x:Name="outline" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="10" IsHitTestVisible="False"/>
+              <!-- 焦点环放在 bd 之后：bd 自带向下投影，放在前面会把环的底边压暗成深蓝 -->
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="12" Margin="-2" IsHitTestVisible="False"/>
+              <ToggleButton x:Name="PART_Toggle" Focusable="False" ClickMode="Press"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                            Background="Transparent" Cursor="Hand">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="Transparent"/>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <Grid Margin="{TemplateBinding Padding}" IsHitTestVisible="False">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Ellipse x:Name="dot" Grid.Column="0" Style="{StaticResource PillDot}"
+                         Fill="{TemplateBinding DotBrush}"/>
+                <TextBlock x:Name="prefix" Grid.Column="1"
+                           Text="{TemplateBinding PrefixText}"
+                           FontSize="{TemplateBinding FontSize}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ContentPresenter Grid.Column="2"
+                                  HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  Content="{TemplateBinding SelectionBoxItem}"
+                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                <Path x:Name="chevron" Grid.Column="3"
+                      Data="M 0,0 L 3.8,3.8 L 7.6,0" Stroke="{DynamicResource TextSecondaryBrush}"
+                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round" VerticalAlignment="Center"
+                      Margin="7,1,0,0" RenderTransformOrigin="0.5,0.5">
+                  <Path.RenderTransform>
+                    <RotateTransform Angle="0"/>
+                  </Path.RenderTransform>
+                </Path>
+              </Grid>
+              <!-- Popup 的 DropShadowEffect 向上晕开会吃掉 Border 的 Margin(0,5,0,0)，
+                   直接顶到药丸下缘并压住 Margin="-2" 的蓝色焦点环底边；补 VerticalOffset 让出呼吸空隙 -->
+              <Popup x:Name="PART_Popup" Placement="Bottom" VerticalOffset="6"
+                     AllowsTransparency="True" PopupAnimation="Fade" Focusable="False">
+                <Border MinWidth="{TemplateBinding ActualWidth}"
+                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource HairBrush}" BorderThickness="1"
+                        CornerRadius="9" Margin="0,5,0,0" Padding="4">
+                  <Border.Effect>
+                    <DropShadowEffect Color="#1B2536" BlurRadius="20" ShadowDepth="4"
+                                      Direction="270" Opacity="0.14"/>
+                  </Border.Effect>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsPresenter/>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="DotBrush" Value="{x:Null}">
+                <Setter TargetName="dot" Property="Visibility" Value="Collapsed"/>
+              </Trigger>
+              <Trigger Property="PrefixText" Value="{x:Null}">
+                <Setter TargetName="prefix" Property="Visibility" Value="Collapsed"/>
+              </Trigger>
+              <Trigger Property="PrefixText" Value="">
+                <Setter TargetName="prefix" Property="Visibility" Value="Collapsed"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                <Setter TargetName="outline" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+              </Trigger>
+              <Trigger Property="IsDropDownOpen" Value="True">
+                <Setter TargetName="PART_Popup" Property="IsOpen" Value="True"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                <Setter TargetName="outline" Property="BorderBrush" Value="Transparent"/>
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+                <Setter TargetName="chevron" Property="RenderTransform">
+                  <Setter.Value>
+                    <RotateTransform Angle="180"/>
+                  </Setter.Value>
+                </Setter>
+                <Setter TargetName="chevron" Property="Stroke" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
+                <Setter Property="Opacity" Value="0.55"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                <Setter TargetName="outline" Property="BorderBrush" Value="Transparent"/>
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- 快捷键帽：Ctrl / Enter 各一枚，读起来像键盘上的键 -->
     <Style x:Key="Kbd" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource BrandFillBrush}"/>

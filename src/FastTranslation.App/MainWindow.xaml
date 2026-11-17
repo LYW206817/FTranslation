@@ -7,17 +7,20 @@
         Background="{DynamicResource PageGradientBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType">
-  <Grid>
-    <!-- v85 雾光：两团光画在整扇窗的最底层。它们只是底色的一层雾，必须
-         IsHitTestVisible=False，否则会挡住底下所有按钮。 -->
-    <Ellipse Width="380" Height="380" HorizontalAlignment="Right" VerticalAlignment="Top"
-             Margin="0,-120,-90,0" Fill="{DynamicResource GlowBrandBrush}"
-             IsHitTestVisible="False"/>
-    <Ellipse Width="320" Height="320" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-             Margin="120,0,0,-160" Fill="{DynamicResource GlowWarmBrush}"
-             IsHitTestVisible="False"/>
+  <Grid x:Name="TransitionHost">
+    <!-- v148：把整窗内容（含 PageGradientBrush 底色）包进 ThemeContent，切主题/强调色时先截成
+         RenderTargetBitmap 叠在 ThemeTransitionOverlay 上做 220ms 淡出，避免整屏瞬间硬闪。 -->
+    <Grid x:Name="ThemeContent" Background="{DynamicResource PageGradientBrush}">
+      <!-- v85 雾光：两团光画在整扇窗的最底层。它们只是底色的一层雾，必须
+           IsHitTestVisible=False，否则会挡住底下所有按钮。 -->
+      <Ellipse Width="380" Height="380" HorizontalAlignment="Right" VerticalAlignment="Top"
+               Margin="0,-120,-90,0" Fill="{DynamicResource GlowBrandBrush}"
+               IsHitTestVisible="False"/>
+      <Ellipse Width="320" Height="320" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+               Margin="120,0,0,-160" Fill="{DynamicResource GlowWarmBrush}"
+               IsHitTestVisible="False"/>
 
-    <Grid Margin="14">
+      <Grid Margin="14">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="200"/>
         <ColumnDefinition Width="*"/>
@@ -191,9 +194,13 @@
         </DockPanel>
       </Border>
 
-      <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
-           页面自己不带底色（Transparent），底下的雾色由窗口提供——换页时整块渐变不闪。 -->
-      <ContentControl Grid.Column="1" x:Name="PageHost" Background="Transparent" Margin="20,0,0,0"/>
+        <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
+             页面自己不带底色（Transparent），底下的雾色由窗口提供——换页时整块渐变不闪。 -->
+        <ContentControl Grid.Column="1" x:Name="PageHost" Background="Transparent" Margin="20,0,0,0"/>
+      </Grid>
     </Grid>
+    <Image x:Name="ThemeTransitionOverlay" Stretch="Fill"
+           IsHitTestVisible="False" Visibility="Collapsed"
+           RenderOptions.BitmapScalingMode="NearestNeighbor"/>
   </Grid>
 </Window>

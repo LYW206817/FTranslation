@@ -92,11 +92,10 @@ public sealed class ImageResultWindow : IDisposable
     {
         _caption = new TextBlock
         {
-            Foreground = FtTheme.TextPrimary,
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary);
         _image = new Image { Stretch = Stretch.Uniform, Visibility = Visibility.Collapsed };
 
         _spinner = new Ellipse
@@ -104,7 +103,6 @@ public sealed class ImageResultWindow : IDisposable
             Width = 18,
             Height = 18,
             StrokeThickness = 2,
-            Stroke = FtTheme.Brand,
             // 虚线单位是线宽的倍数：{34,10} 等于「68 虚线 + 20 空隙」，而 18px 圆的周长只有 56，
             // 整圈画满没有空隙，转起来看像素几乎不变（实测四帧只差 4 个像素）。改成三段短弧才看得见转。
             StrokeDashArray = new DoubleCollection { 6, 2.5 },
@@ -113,14 +111,13 @@ public sealed class ImageResultWindow : IDisposable
             RenderTransform = _spinnerRotate,
             RenderTransformOrigin = new Point(0.5, 0.5),
             Visibility = Visibility.Collapsed,
-        };
+        }.Bind(Shape.StrokeProperty, FtTheme.Keys.Brand);
         _loadingText = new TextBlock
         {
             Text = LoadingText,
-            Foreground = FtTheme.TextSecondary,
             FontSize = 13,
             HorizontalAlignment = HorizontalAlignment.Center,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextSecondary);
         _loadingPanel = new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -144,10 +141,9 @@ public sealed class ImageResultWindow : IDisposable
         {
             // OCR 偶尔把 l/1、O/0 认错，而这条文本会直接进单词本，所以保存前必须能修
             Text = "识别到的原文（可修改后保存）",
-            Foreground = FtTheme.TextSecondary,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Bottom,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextSecondary);
         _recognized = new TextBox
         {
             AcceptsReturn = true,
@@ -207,12 +203,11 @@ public sealed class ImageResultWindow : IDisposable
 
         var root = new Border
         {
-            Background = FtTheme.Surface,
-            BorderBrush = FtTheme.Hair,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Child = outer,
-        };
+        }.Bind(Border.BackgroundProperty, FtTheme.Keys.Surface)
+         .Bind(Border.BorderBrushProperty, FtTheme.Keys.Hair);
 
         _window = new Window
         {
@@ -228,6 +223,7 @@ public sealed class ImageResultWindow : IDisposable
             MinHeight = 360,
             Content = root,
         };
+        FtTheme.Attach(_window);
         SizeToDefault();
 
         // 无边框窗口没有标题栏可抓：标题条和图片区的空白都用来拖动。
@@ -390,16 +386,16 @@ public sealed class ImageResultWindow : IDisposable
         _saved = true;
         _saveNote.Content = "已保存";
         _saveNote.IsEnabled = false;
-        ShowSaveStatus("已保存到" + kind + "本", FtTheme.TextSecondary);
+        ShowSaveStatus("已保存到" + kind + "本", FtTheme.Keys.TextSecondary);
     }
 
     /// <summary>保存失败（未登录、额度用尽、网络）时的窗内提示，可重试所以按钮保持可用。</summary>
-    public void ShowSaveError(string message) => ShowSaveStatus(message, FtTheme.Danger);
+    public void ShowSaveError(string message) => ShowSaveStatus(message, FtTheme.Keys.Danger);
 
-    private void ShowSaveStatus(string text, Brush brush)
+    private void ShowSaveStatus(string text, string brushKey)
     {
         _noteStatus.Text = text;
-        _noteStatus.Foreground = brush;
+        _noteStatus.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
         _noteStatus.Visibility = Visibility.Visible;
     }
 
@@ -522,14 +518,13 @@ public sealed class ImageResultWindow : IDisposable
         var glyph = new ShapesPath
         {
             Data = Geometry.Parse("M 0,10 L 10,0 M 5,15 L 15,5"),
-            Stroke = FtTheme.TextMuted,
             StrokeThickness = 1,
             StrokeEndLineCap = PenLineCap.Round,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(0, 0, 4, 4),
             IsHitTestVisible = false,
-        };
+        }.Bind(Shape.StrokeProperty, FtTheme.Keys.TextMuted);
 
         outer.Children.Add(right);
         outer.Children.Add(bottom);

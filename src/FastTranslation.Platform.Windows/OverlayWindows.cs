@@ -17,75 +17,86 @@ namespace FastTranslation.Platform.Windows;
 /// <summary>浮层各界面共用的设计 token(与 App.xaml 的配色一致)。</summary>
 internal static class FtTheme
 {
-    // 浮层界面是用代码建的，所以用不了 App.xaml 里的 XAML 画刷。
-    // v144：画刷改成每角色一个可变实例，并随 ThemePalette 就地改色。原来按色值缓存且
-    // Freeze，切主题后常驻的浮层窗口仍然握着旧画刷，只有重启才变色。
-    private static readonly SolidColorBrush BrandBrush = Create(ThemePalette.Active.Brand);
-    private static readonly SolidColorBrush BrandHoverBrush = Create(ThemePalette.Active.BrandHover);
-    private static readonly SolidColorBrush BrandPressedBrush = Create(ThemePalette.Active.BrandPressed);
-    private static readonly SolidColorBrush BrandFillBrush = Create(ThemePalette.Active.BrandFill);
-    private static readonly SolidColorBrush OnBrandTextBrush = Create(ThemePalette.Active.OnBrandText);
-    private static readonly SolidColorBrush AccentBrush = Create(ThemePalette.Active.Accent);
-    private static readonly SolidColorBrush BgBrush = Create(ThemePalette.Active.WindowBg);
-    private static readonly SolidColorBrush SurfaceBrush = Create(ThemePalette.Active.Surface);
-    private static readonly SolidColorBrush HairBrush = Create(ThemePalette.Active.Hair);
-    private static readonly SolidColorBrush HairStrongBrush = Create(ThemePalette.Active.HairStrong);
-    private static readonly SolidColorBrush BorderStrongBrush = Create(ThemePalette.Active.BorderStrong);
-    private static readonly SolidColorBrush HoverBrush = Create(ThemePalette.Active.Hover);
-    private static readonly SolidColorBrush TextPrimaryBrush = Create(ThemePalette.Active.TextPrimary);
-    private static readonly SolidColorBrush TextSecondaryBrush = Create(ThemePalette.Active.TextSecondary);
-    private static readonly SolidColorBrush TextMutedBrush = Create(ThemePalette.Active.TextMuted);
-    private static readonly SolidColorBrush DangerBrush = Create(ThemePalette.Active.Danger);
-    private static readonly SolidColorBrush NoticeBrush = Create(ThemePalette.Active.Notice);
-    internal static readonly FontFamily UiFont = new("Segoe UI, Microsoft YaHei UI");
-
-    internal static SolidColorBrush Brand => BrandBrush;
-    internal static SolidColorBrush BrandHover => BrandHoverBrush;
-    internal static SolidColorBrush BrandPressed => BrandPressedBrush;
-    internal static SolidColorBrush BrandFill => BrandFillBrush;
-    internal static SolidColorBrush OnBrandText => OnBrandTextBrush;
-    internal static SolidColorBrush Accent => AccentBrush;
-    internal static SolidColorBrush Bg => BgBrush;
-    internal static SolidColorBrush Surface => SurfaceBrush;
-    internal static SolidColorBrush Hair => HairBrush;
-    internal static SolidColorBrush HairStrong => HairStrongBrush;
-    internal static SolidColorBrush BorderStrong => BorderStrongBrush;
-    internal static SolidColorBrush Hover => HoverBrush;
-    internal static SolidColorBrush TextPrimary => TextPrimaryBrush;
-    internal static SolidColorBrush TextSecondary => TextSecondaryBrush;
-    internal static SolidColorBrush TextMuted => TextMutedBrush;
-    internal static SolidColorBrush Danger => DangerBrush;
-    internal static SolidColorBrush Notice => NoticeBrush;
-
-    /// <summary>主题或强调色切换后，把浮层已经持有的画刷就地改色。</summary>
-    internal static void Refresh()
+    internal static class Keys
     {
-        Recolor(BrandBrush, ThemePalette.Active.Brand);
-        Recolor(BrandHoverBrush, ThemePalette.Active.BrandHover);
-        Recolor(BrandPressedBrush, ThemePalette.Active.BrandPressed);
-        Recolor(BrandFillBrush, ThemePalette.Active.BrandFill);
-        Recolor(OnBrandTextBrush, ThemePalette.Active.OnBrandText);
-        Recolor(AccentBrush, ThemePalette.Active.Accent);
-        Recolor(BgBrush, ThemePalette.Active.WindowBg);
-        Recolor(SurfaceBrush, ThemePalette.Active.Surface);
-        Recolor(HairBrush, ThemePalette.Active.Hair);
-        Recolor(HairStrongBrush, ThemePalette.Active.HairStrong);
-        Recolor(BorderStrongBrush, ThemePalette.Active.BorderStrong);
-        Recolor(HoverBrush, ThemePalette.Active.Hover);
-        Recolor(TextPrimaryBrush, ThemePalette.Active.TextPrimary);
-        Recolor(TextSecondaryBrush, ThemePalette.Active.TextSecondary);
-        Recolor(TextMutedBrush, ThemePalette.Active.TextMuted);
-        Recolor(DangerBrush, ThemePalette.Active.Danger);
-        Recolor(NoticeBrush, ThemePalette.Active.Notice);
+        internal const string Brand = "FtBrandBrush";
+        internal const string BrandHover = "FtBrandHoverBrush";
+        internal const string BrandPressed = "FtBrandPressedBrush";
+        internal const string BrandFill = "FtBrandFillBrush";
+        internal const string OnBrandText = "FtOnBrandTextBrush";
+        internal const string Accent = "FtAccentBrush";
+        internal const string WindowBg = "FtWindowBgBrush";
+        internal const string Surface = "FtSurfaceBrush";
+        internal const string Hair = "FtHairBrush";
+        internal const string HairStrong = "FtHairStrongBrush";
+        internal const string BorderStrong = "FtBorderStrongBrush";
+        internal const string Hover = "FtHoverBrush";
+        internal const string TextPrimary = "FtTextPrimaryBrush";
+        internal const string TextSecondary = "FtTextSecondaryBrush";
+        internal const string TextMuted = "FtTextMutedBrush";
+        internal const string Danger = "FtDangerBrush";
+        internal const string Notice = "FtNoticeBrush";
     }
 
-    private static SolidColorBrush Create(string hex) =>
-        new((Color)ColorConverter.ConvertFromString(hex));
+    // v148：v144 把可变 SolidColorBrush 直接塞进 Button Style 的 Setter/Trigger；WPF 首次
+    // 封口（Seal）Style 时会自动 Freeze 其中的 Freezable，导致首次切主题时 FtTheme.Refresh
+    // 就地改色直接抛 InvalidOperationException，进而打断 App.ApplyAppearance（标题栏和强调色
+    // 芯片卡死在旧主题）。改为共享 ResourceDictionary 放冻结画刷，模板和元素统一走 DynamicResource。
+    internal static readonly ResourceDictionary Resources = CreateResources();
+    internal static readonly FontFamily UiFont = new("Segoe UI, Microsoft YaHei UI");
 
-    private static void Recolor(SolidColorBrush brush, string hex)
+    private static ResourceDictionary CreateResources()
+    {
+        var resources = new ResourceDictionary();
+        ApplyPalette(resources);
+        return resources;
+    }
+
+    internal static void Attach(Window window)
+    {
+        if (!window.Resources.MergedDictionaries.Contains(Resources))
+            window.Resources.MergedDictionaries.Add(Resources);
+    }
+
+    internal static T Bind<T>(this T element, DependencyProperty property, string resourceKey)
+        where T : FrameworkElement
+    {
+        element.SetResourceReference(property, resourceKey);
+        return element;
+    }
+
+    /// <summary>主题或强调色切换后，把浮层资源字典里的冻结画刷整支替换，由 DynamicResource 自动重解析。</summary>
+    internal static void Refresh() => ApplyPalette(Resources);
+
+    private static void ApplyPalette(ResourceDictionary resources)
+    {
+        var p = ThemePalette.Active;
+        Set(resources, Keys.Brand, p.Brand);
+        Set(resources, Keys.BrandHover, p.BrandHover);
+        Set(resources, Keys.BrandPressed, p.BrandPressed);
+        Set(resources, Keys.BrandFill, p.BrandFill);
+        Set(resources, Keys.OnBrandText, p.OnBrandText);
+        Set(resources, Keys.Accent, p.Accent);
+        Set(resources, Keys.WindowBg, p.WindowBg);
+        Set(resources, Keys.Surface, p.Surface);
+        Set(resources, Keys.Hair, p.Hair);
+        Set(resources, Keys.HairStrong, p.HairStrong);
+        Set(resources, Keys.BorderStrong, p.BorderStrong);
+        Set(resources, Keys.Hover, p.Hover);
+        Set(resources, Keys.TextPrimary, p.TextPrimary);
+        Set(resources, Keys.TextSecondary, p.TextSecondary);
+        Set(resources, Keys.TextMuted, p.TextMuted);
+        Set(resources, Keys.Danger, p.Danger);
+        Set(resources, Keys.Notice, p.Notice);
+    }
+
+    private static void Set(ResourceDictionary resources, string key, string hex)
     {
         var color = (Color)ColorConverter.ConvertFromString(hex);
-        if (brush.Color != color) brush.Color = color;
+        if (resources[key] is SolidColorBrush existing && existing.Color == color) return;
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        resources[key] = brush;
     }
 
     private static ControlTemplate ButtonTemplate(CornerRadius corner)
@@ -105,45 +116,46 @@ internal static class FtTheme
 
     /// <summary>安静的胶囊按钮：透明，悬停时填色。用在工具条内部。</summary>
     internal static Style PillGhost() => TemplateStyle(
-        bg: null, fg: TextPrimary, border: null, corner: new CornerRadius(6),
-        hoverBg: Hover, hoverBorder: null, pressedBg: BrandFill);
+        bgKey: null, fgKey: Keys.TextPrimary, borderKey: null, corner: new CornerRadius(6),
+        hoverBgKey: Keys.Hover, hoverBorderKey: null, pressedBgKey: Keys.BrandFill);
 
     /// <summary>标准次要按钮(白底，强细线边框)。</summary>
     internal static Style Ghost() => TemplateStyle(
-        bg: Surface, fg: TextPrimary, border: BorderStrong, corner: new CornerRadius(6),
-        hoverBg: Hover, hoverBorder: Accent, pressedBg: BrandFill);
+        bgKey: Keys.Surface, fgKey: Keys.TextPrimary, borderKey: Keys.BorderStrong, corner: new CornerRadius(6),
+        hoverBgKey: Keys.Hover, hoverBorderKey: Keys.Accent, pressedBgKey: Keys.BrandFill);
 
     /// <summary>品牌主按钮。</summary>
     internal static Style Primary() => TemplateStyle(
-        bg: Brand, fg: OnBrandText, border: Brand, corner: new CornerRadius(6),
-        hoverBg: BrandHover, hoverBorder: null, pressedBg: BrandPressed,
+        bgKey: Keys.Brand, fgKey: Keys.OnBrandText, borderKey: Keys.Brand, corner: new CornerRadius(6),
+        hoverBgKey: Keys.BrandHover, hoverBorderKey: null, pressedBgKey: Keys.BrandPressed,
         // v68：禁用态跟 XAML 主按钮对齐(HairStrong 底 + TextSecondary 字)，
         // 旧的 #A9C0F2/#E9EEFB 在深色主题下是一块突兀的浅蓝。
-        disabledBg: HairStrong, disabledFg: TextSecondary);
+        disabledBgKey: Keys.HairStrong, disabledFgKey: Keys.TextSecondary);
 
     /// <summary>圆形安静按钮(卡片的 ✕)。</summary>
     internal static Style RoundGhost() => TemplateStyle(
-        bg: null, fg: TextSecondary, border: null, corner: new CornerRadius(12),
-        hoverBg: Hover, hoverBorder: null, pressedBg: BrandFill,
-        hoverFg: TextPrimary);
+        bgKey: null, fgKey: Keys.TextSecondary, borderKey: null, corner: new CornerRadius(12),
+        hoverBgKey: Keys.Hover, hoverBorderKey: null, pressedBgKey: Keys.BrandFill,
+        hoverFgKey: Keys.TextPrimary);
 
     private static Style TemplateStyle(
-        Brush? bg, Brush fg, Brush? border, CornerRadius corner,
-        Brush hoverBg, Brush? hoverBorder, Brush pressedBg,
-        Brush? hoverFg = null, Brush? disabledBg = null, Brush? disabledFg = null)
+        string? bgKey, string fgKey, string? borderKey, CornerRadius corner,
+        string hoverBgKey, string? hoverBorderKey, string pressedBgKey,
+        string? hoverFgKey = null, string? disabledBgKey = null, string? disabledFgKey = null)
     {
         var s = new Style(typeof(Button));
-        s.Setters.Add(new Setter(Button.ForegroundProperty, fg));
+        s.Setters.Add(new Setter(Button.ForegroundProperty, new DynamicResourceExtension(fgKey)));
         s.Setters.Add(new Setter(Button.FontSizeProperty, 12.0));
         s.Setters.Add(new Setter(Button.CursorProperty, Cursors.Hand));
         s.Setters.Add(new Setter(Button.FocusableProperty, false));
         s.Setters.Add(new Setter(Button.TemplateProperty, ButtonTemplate(corner)));
         // 必须总是设置 Background(透明也算)：不设的话，Fluent 主题的
         // 灰色按钮底会透过 TemplateBinding 渗出来(v18 的「灰块」bug)
-        s.Setters.Add(new Setter(Button.BackgroundProperty, bg ?? Brushes.Transparent));
-        if (border is not null)
+        s.Setters.Add(new Setter(Button.BackgroundProperty,
+            bgKey is null ? Brushes.Transparent : new DynamicResourceExtension(bgKey)));
+        if (borderKey is not null)
         {
-            s.Setters.Add(new Setter(Button.BorderBrushProperty, border));
+            s.Setters.Add(new Setter(Button.BorderBrushProperty, new DynamicResourceExtension(borderKey)));
             s.Setters.Add(new Setter(Button.BorderThicknessProperty, new Thickness(1)));
         }
         else
@@ -152,21 +164,21 @@ internal static class FtTheme
         }
 
         var hover = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Button.BackgroundProperty, hoverBg));
-        if (hoverBorder is not null) hover.Setters.Add(new Setter(Button.BorderBrushProperty, hoverBorder));
-        if (hoverFg is not null) hover.Setters.Add(new Setter(Button.ForegroundProperty, hoverFg));
+        hover.Setters.Add(new Setter(Button.BackgroundProperty, new DynamicResourceExtension(hoverBgKey)));
+        if (hoverBorderKey is not null) hover.Setters.Add(new Setter(Button.BorderBrushProperty, new DynamicResourceExtension(hoverBorderKey)));
+        if (hoverFgKey is not null) hover.Setters.Add(new Setter(Button.ForegroundProperty, new DynamicResourceExtension(hoverFgKey)));
         s.Triggers.Add(hover);
 
         var pressed = new Trigger { Property = Button.IsPressedProperty, Value = true };
-        pressed.Setters.Add(new Setter(Button.BackgroundProperty, pressedBg));
+        pressed.Setters.Add(new Setter(Button.BackgroundProperty, new DynamicResourceExtension(pressedBgKey)));
         s.Triggers.Add(pressed);
 
         var disabled = new Trigger { Property = Button.IsEnabledProperty, Value = false };
-        if (disabledBg is not null) disabled.Setters.Add(new Setter(Button.BackgroundProperty, disabledBg));
-        if (disabledFg is not null) disabled.Setters.Add(new Setter(Button.ForegroundProperty, disabledFg));
+        if (disabledBgKey is not null) disabled.Setters.Add(new Setter(Button.BackgroundProperty, new DynamicResourceExtension(disabledBgKey)));
+        if (disabledFgKey is not null) disabled.Setters.Add(new Setter(Button.ForegroundProperty, new DynamicResourceExtension(disabledFgKey)));
         else disabled.Setters.Add(new Setter(Button.OpacityProperty, 0.45));
-        if (disabledBg is not null && border is not null)
-            disabled.Setters.Add(new Setter(Button.BorderBrushProperty, disabledBg));
+        if (disabledBgKey is not null && borderKey is not null)
+            disabled.Setters.Add(new Setter(Button.BorderBrushProperty, new DynamicResourceExtension(disabledBgKey)));
         s.Triggers.Add(disabled);
         return s;
     }
@@ -189,10 +201,9 @@ internal static class FtTheme
             "M 10.4,8 A 2.4,2.4 0 1 1 5.6,8 A 2.4,2.4 0 1 1 10.4,8 Z";
     }
 
-    internal static Path Icon(string data, Brush stroke) => new()
+    internal static Path Icon(string data, string strokeKey) => new Path
     {
         Data = Geometry.Parse(data),
-        Stroke = stroke,
         StrokeThickness = 1.5,
         StrokeStartLineCap = PenLineCap.Round,
         StrokeEndLineCap = PenLineCap.Round,
@@ -201,7 +212,7 @@ internal static class FtTheme
         Height = 14,
         Stretch = Stretch.Uniform,
         VerticalAlignment = VerticalAlignment.Center,
-    };
+    }.Bind(Shape.StrokeProperty, strokeKey);
 
 }
 
@@ -229,8 +240,9 @@ public sealed class SelectionToolbar : IDisposable
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    FtTheme.Icon(FtTheme.Icons.Copy, FtTheme.TextSecondary),
-                    new TextBlock { Text = "复制", FontSize = 12, Foreground = FtTheme.TextPrimary, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) },
+                    FtTheme.Icon(FtTheme.Icons.Copy, FtTheme.Keys.TextSecondary),
+                    new TextBlock { Text = "复制", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) }
+                        .Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary),
                 },
             },
             Style = FtTheme.PillGhost(),
@@ -245,8 +257,9 @@ public sealed class SelectionToolbar : IDisposable
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    FtTheme.Icon(FtTheme.Icons.Bolt, FtTheme.Brand),
-                    new TextBlock { Text = "翻译", FontSize = 12, Foreground = FtTheme.TextPrimary, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) },
+                    FtTheme.Icon(FtTheme.Icons.Bolt, FtTheme.Keys.Brand),
+                    new TextBlock { Text = "翻译", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) }
+                        .Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary),
                 },
             },
             Style = FtTheme.PillGhost(),
@@ -261,8 +274,9 @@ public sealed class SelectionToolbar : IDisposable
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    FtTheme.Icon(FtTheme.Icons.Viewfinder, FtTheme.TextSecondary),
-                    new TextBlock { Text = "截图翻译", FontSize = 12, Foreground = FtTheme.TextPrimary, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) },
+                    FtTheme.Icon(FtTheme.Icons.Viewfinder, FtTheme.Keys.TextSecondary),
+                    new TextBlock { Text = "截图翻译", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) }
+                        .Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary),
                 },
             },
             Style = FtTheme.PillGhost(),
@@ -281,10 +295,9 @@ public sealed class SelectionToolbar : IDisposable
         {
             Width = 1,
             Height = 16,
-            Fill = FtTheme.Hair,
             Margin = new Thickness(2, 0, 2, 0),
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        }.Bind(Shape.FillProperty, FtTheme.Keys.Hair);
 
         _window = new Window
         {
@@ -298,8 +311,6 @@ public sealed class SelectionToolbar : IDisposable
             FontFamily = FtTheme.UiFont,
             Content = new Border
             {
-                Background = FtTheme.Surface,
-                BorderBrush = FtTheme.Hair,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(4),
@@ -309,8 +320,10 @@ public sealed class SelectionToolbar : IDisposable
                     Orientation = Orientation.Horizontal,
                     Children = { copy, divider, translate, screenshot },
                 },
-            },
+            }.Bind(Border.BackgroundProperty, FtTheme.Keys.Surface)
+             .Bind(Border.BorderBrushProperty, FtTheme.Keys.Hair),
         };
+        FtTheme.Attach(_window);
         _window.SourceInitialized += (_, _) =>
         {
             var hwnd = new WindowInteropHelper(_window).Handle;
@@ -461,38 +474,34 @@ public sealed class ResultCardWindow : IDisposable
         _sourceBlock = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = FtTheme.TextSecondary,
             FontSize = 12,
             MaxHeight = 54,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Top,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextSecondary);
         _targetBlock = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = FtTheme.TextPrimary,
             FontSize = 14,
             LineHeight = 22,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary);
         _statusBlock = new TextBlock
         {
-            Foreground = FtTheme.TextMuted,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
             // 网关回落时会在这里多一句“这次用了你自己的 Key”，420 宽度下必须换行才不截断
             TextWrapping = TextWrapping.Wrap,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextMuted);
         // 方向单独放头部原文右侧（v117）：与底部 token 消耗分开，短文本一行不撑高卡片。
         _directionBlock = new TextBlock
         {
-            Foreground = FtTheme.TextMuted,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
             TextAlignment = TextAlignment.Right,
             MaxWidth = 220,
             Margin = new Thickness(0, 0, 8, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextMuted);
         DockPanel.SetDock(_directionBlock, Dock.Right);
         // 词典块替代译文行显示：两者同时出现时同一个词会重复一遍，卡片也过高。
         _dictionaryPanel = new StackPanel { Visibility = Visibility.Collapsed };
@@ -502,14 +511,13 @@ public sealed class ResultCardWindow : IDisposable
             Width = 14,
             Height = 14,
             StrokeThickness = 2,
-            Stroke = FtTheme.Brand,
             StrokeDashArray = new DoubleCollection { 6, 2.5 },
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = Visibility.Collapsed,
             Margin = new Thickness(0, 1, 8, 0),
             RenderTransform = _spinnerRotate,
             RenderTransformOrigin = new Point(0.5, 0.5),
-        };
+        }.Bind(Shape.StrokeProperty, FtTheme.Keys.Brand);
 
         _copyButton = ActionButton("复制", FtTheme.Primary());
         _copyButton.Click += (_, _) => CopyRequested?.Invoke();
@@ -576,13 +584,12 @@ public sealed class ResultCardWindow : IDisposable
 
         var root = new Border
         {
-            Background = FtTheme.Surface,
-            BorderBrush = FtTheme.HairStrong,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(18, 16, 18, 16),
             Child = content,
-        };
+        }.Bind(Border.BackgroundProperty, FtTheme.Keys.Surface)
+         .Bind(Border.BorderBrushProperty, FtTheme.Keys.HairStrong);
         root.MouseLeftButtonDown += (_, e) =>
         {
             if (e.ButtonState == MouseButtonState.Pressed && _window is not null) _window.DragMove();
@@ -602,6 +609,7 @@ public sealed class ResultCardWindow : IDisposable
             FontFamily = FtTheme.UiFont,
             Content = root,
         };
+        FtTheme.Attach(_window);
         _window.SourceInitialized += (_, _) =>
         {
             var hwnd = new WindowInteropHelper(_window).Handle;
@@ -666,7 +674,7 @@ public sealed class ResultCardWindow : IDisposable
         _targetBlock.Visibility = Visibility.Visible;
         _sourceBlock.Text = TrimForDisplay(previewText, 120);
         _targetBlock.Text = "正在翻译…";
-        _targetBlock.Foreground = FtTheme.TextSecondary;
+        _targetBlock.SetResourceReference(TextBlock.ForegroundProperty, FtTheme.Keys.TextSecondary);
         _directionBlock.Text = string.Empty;
         _statusBlock.Text = string.Empty;
         _replaceButton.Visibility = Visibility.Collapsed;
@@ -695,7 +703,7 @@ public sealed class ResultCardWindow : IDisposable
         _targetBlock.Visibility = Visibility.Visible;
         if (result.Succeeded)
         {
-            _targetBlock.Foreground = FtTheme.TextPrimary;
+            _targetBlock.SetResourceReference(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary);
             if (result.Dictionary is { Senses.Count: > 0 } dictionary)
             {
                 RenderDictionary(dictionary);
@@ -714,7 +722,7 @@ public sealed class ResultCardWindow : IDisposable
         }
         else
         {
-            _targetBlock.Foreground = FtTheme.Danger;
+            _targetBlock.SetResourceReference(TextBlock.ForegroundProperty, FtTheme.Keys.Danger);
             _targetBlock.Text = result.Error?.Message ?? "翻译失败";
             _directionBlock.Text = string.Empty;
             _statusBlock.Text = string.Empty;
@@ -806,7 +814,7 @@ public sealed class ResultCardWindow : IDisposable
         _footer.Margin = new Thickness(0);
         _dictionaryPanel.Visibility = Visibility.Collapsed;
         _targetBlock.Visibility = Visibility.Visible;
-        _targetBlock.Foreground = FtTheme.Notice;
+        _targetBlock.SetResourceReference(TextBlock.ForegroundProperty, FtTheme.Keys.Notice);
         _targetBlock.Text = message;
         _directionBlock.Text = string.Empty;
         _statusBlock.Text = string.Empty;
@@ -858,9 +866,8 @@ public sealed class ResultCardWindow : IDisposable
             {
                 Text = entry.Phonetic,
                 FontSize = 12,
-                Foreground = FtTheme.TextSecondary,
                 Margin = new Thickness(0, -2, 0, 6),
-            });
+            }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextSecondary));
         }
 
         foreach (var sense in entry.Senses.Take(4))
@@ -874,18 +881,16 @@ public sealed class ResultCardWindow : IDisposable
                 Text = sense.PartOfSpeech.Length == 0 ? "·" : sense.PartOfSpeech,
                 FontSize = 12,
                 FontStyle = FontStyles.Italic,
-                Foreground = FtTheme.Brand,
                 Margin = new Thickness(0, 2, 8, 0),
                 VerticalAlignment = VerticalAlignment.Top,
-            };
+            }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.Brand);
             var definitions = new TextBlock
             {
                 Text = string.Join("；", sense.Definitions.Take(6)),
                 FontSize = 13,
-                Foreground = FtTheme.TextPrimary,
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = 20,
-            };
+            }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextPrimary);
             Grid.SetColumn(definitions, 1);
             row.Children.Add(pos);
             row.Children.Add(definitions);
@@ -901,10 +906,9 @@ public sealed class ResultCardWindow : IDisposable
             {
                 Text = string.Join("    ", meta),
                 FontSize = 11,
-                Foreground = FtTheme.TextMuted,
                 Margin = new Thickness(0, 4, 0, 0),
                 TextWrapping = TextWrapping.Wrap,
-            });
+            }.Bind(TextBlock.ForegroundProperty, FtTheme.Keys.TextMuted));
         }
     }
 

@@ -14,6 +14,11 @@ public static class WindowChrome
     // 先试 20、失败再回退到 19，无需版本判断即可让两者都可用。
     private const int UseImmersiveDarkMode = 20;
     private const int UseImmersiveDarkModePre2004 = 19;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
 
     /// <summary>
     /// 在窗口构造函数里调用。窗口显示之前 HWND 并不存在，所以该特性在 SourceInitialized
@@ -26,6 +31,14 @@ public static class WindowChrome
             try { SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
             catch { /* 只是外观问题：不值得为一个系统默认标题栏把窗口弄挂 */ }
         };
+        // v148：主窗口关到托盘（Hide）期间若系统深浅色切换，恢复显示（Show）时重推一次特性与
+        // SWP_FRAMECHANGED，确保隐藏期间没重算的非客户区标题栏立即与当前主题同步。
+        window.IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is not true) return;
+            try { SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
+            catch { /* 同上：标题栏外观失败不应阻断窗口显示 */ }
+        };
     }
 
     /// <summary>把边框设为深色(true)或浅色(false)。DWM 拒绝该请求时返回 false。</summary>
@@ -36,12 +49,27 @@ public static class WindowChrome
 
         // 强制浅色主题时也必须清掉深色的系统边框，因此两种取值都要写一遍
         var value = dark ? 1 : 0;
-        if (DwmSetWindowAttribute(hwnd, UseImmersiveDarkMode, ref value, sizeof(int)) == 0) return true;
-
-        value = dark ? 1 : 0;
-        return DwmSetWindowAttribute(hwnd, UseImmersiveDarkModePre2004, ref value, sizeof(int)) == 0;
+        var applied = DwmSetWindowAttribute(hwnd, UseImmersiveDarkMode, ref value, sizeof(int)) == 0;
+        if (!applied)
+        {
+            value = dark ? 1 : 0;
+            applied = DwmSetWindowAttribute(hwnd, UseImmersiveDarkModePre2004, ref value, sizeof(int)) == 0;
+        }
+        if (applied && IsWindowVisible(hwnd))
+        {
+            // 通知 DWM/非客户区立即重算边框，防止运行中深浅切换后标题栏延迟或未刷新
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+        }
+        return applied;
     }
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 }

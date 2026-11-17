@@ -51,6 +51,8 @@ public partial class App : Application, IResultPresenter
     private TranslationService? _translation;
     private SettingsService _settingsService = new();
     private AppSettings _settings = new();
+    private bool _appearanceApplied;
+    private bool _systemEventsSubscribed;
     // v138：取词为空的提示 24 小时最多一次（规格 §6.6）。只记在进程内——重启后最多再提示一次，
     // 不值得为一条提示改 settings.json 的存储结构。
     private readonly CaptureEmptyHintThrottle _captureEmptyHint = new();
@@ -128,9 +130,14 @@ public partial class App : Application, IResultPresenter
             ? System.Windows.Interop.RenderMode.SoftwareOnly
             : System.Windows.Interop.RenderMode.Default;
 
-        // 调色板要在任何窗口存在之前就位：XAML 画刷是可变的（po:Freeze="False"），
-        // ThemeBridge 就地给它们换色，于是每个样式和模板都能拿到主题（v24）
+        // 调色板要在任何窗口存在之前就位：XAML 画刷是冻结替换的，
+        // ThemeBridge 写入后每个样式和模板都能拿到当前主题（v24/v89）
         ApplyAppearance(_settings.Theme, _settings.Accent);
+
+        // v148：系统深浅色切换后若当前仍选「跟随系统」（含设置页未保存预览态），
+        // 同步重刷界面、浮层与原生标题栏，不再必须重启才跟上系统配色。
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        _systemEventsSubscribed = true;
 
         // 账号服务：整个进程共用一个 HttpClient，超时 20 秒，这样主机挂了会表现为
         // 网络错误，而不是一个永远回不来的按钮
@@ -1516,27 +1523,68 @@ public partial class App : Application, IResultPresenter
     }
 
     /// <summary>
-    /// 应用外观（v84）：设置里换主题或强调色时立刻重刷，不必重启。
-    /// 画刷是 po:Freeze="False" 的可变实例，ThemeBridge 就地改色，所有 DynamicResource 引用
-    /// 跟着变；只有原生标题栏要单独再推一次 DWM——它只在 SourceInitialized 里设过一次（v38）。
-    /// 参数用「设置值」而不是解析结果，好让调用方原样传 _settings.Theme。
+    /// 应用外观（v84/v148）：设置页预览或系统配色变化时立刻重刷，不必重启。
+    /// 主窗口可见时通过快照叠加做 220ms 交叉淡出，同时把浮层共享资源与各窗口原生标题栏一并更新。
     /// </summary>
     internal static void ApplyAppearance(string? themeSetting, string? accent)
     {
-        ThemeBridge.Apply(ThemePalette.Resolve(themeSetting), accent);
-        if (Current is not App app) return;
-        // v144：浮层是启动时创建的常驻窗口，画刷不会跟着 XAML 的 DynamicResource 走，
-        // 必须显式把它们持有的可变画刷改色，否则切主题后要重启才生效。
-        app._toolbar?.RefreshTheme();
-        app._card?.RefreshTheme();
-        app._imageWindow?.RefreshTheme();
-
-        // 已开的窗口都要重刷标题栏；Show() 之后才建 HWND 的窗口由 WindowChrome.Apply 兜住
-        foreach (Window window in app.Windows)
+        var nextTheme = ThemePalette.Resolve(themeSetting);
+        var nextAccent = ThemePalette.ResolveAccent(accent);
+        var app = Current as App;
+        // v148：实际解析出的主题与强调色都没变时跳过（比如只是把「浅色」切到当前也是浅色的
+        // 「跟随系统」，或离开设置页时 Unloaded 重复触发 RevertAppearance），避免无意义整窗淡出。
+        if (app is { _appearanceApplied: true }
+            && nextTheme == ThemePalette.Current
+            && nextAccent == ThemePalette.CurrentAccent)
         {
-            try { WindowChrome.SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
-            catch { /* 只是外观：DWM 拒绝就保留系统默认标题栏 */ }
+            return;
         }
+
+        void ApplyCore()
+        {
+            ThemeBridge.Apply(nextTheme, accent);
+            if (app is null) return;
+            app._appearanceApplied = true;
+            // v144/v148：浮层是启动时创建的常驻窗口，通过共享 ResourceDictionary 放冻结画刷；
+            // 这里整支替换字典条目后，DynamicResource 会把工具条/结果卡/译图窗一起重绘。
+            app._toolbar?.RefreshTheme();
+            app._card?.RefreshTheme();
+            app._imageWindow?.RefreshTheme();
+            app._mainWindow?.RefreshSettingsAppearance();
+
+            // 已开的非无边框窗口都要重刷标题栏；Show() 之后才建 HWND 的窗口由 WindowChrome.Apply 兜住
+            foreach (Window window in app.Windows)
+            {
+                if (window.WindowStyle == WindowStyle.None) continue;
+                try { WindowChrome.SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
+                catch { /* 只是外观：DWM 拒绝就保留系统默认标题栏 */ }
+            }
+        }
+
+        if (app?._mainWindow is { } mainWindow && app._appearanceApplied)
+            mainWindow.RunThemeTransition(ApplyCore);
+        else
+            ApplyCore();
+    }
+
+    private void OnUserPreferenceChanged(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (_reallyExiting) return;
+        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.General
+            or Microsoft.Win32.UserPreferenceCategory.Color
+            or Microsoft.Win32.UserPreferenceCategory.VisualStyle))
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (_reallyExiting) return;
+            var (themeSetting, accent) = _mainWindow is not null
+                ? _mainWindow.ActiveAppearanceSettings(_settings)
+                : (_settings.Theme, _settings.Accent);
+            ApplyAppearance(themeSetting, accent);
+        });
     }
 
     private void ShowMainWindow()
@@ -2143,6 +2191,11 @@ public partial class App : Application, IResultPresenter
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_systemEventsSubscribed)
+        {
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            _systemEventsSubscribed = false;
+        }
         // 第二实例没有加载过设置，不能拿默认值覆盖用户在用的 settings.json。
         if (_settingsLoaded) _settingsService.Save(_settings);
         base.OnExit(e);

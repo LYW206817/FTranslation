@@ -41,15 +41,28 @@
       <Setter Property="Padding" Value="10,6"/>
       <Setter Property="Margin" Value="0,0,8,0"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-              <ContentPresenter VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="ring" BorderBrush="Transparent" BorderThickness="2"
+                      CornerRadius="8" Margin="-2" IsHitTestVisible="False"/>
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="6" Padding="{TemplateBinding Padding}">
+                <ContentPresenter VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ring" Property="BorderBrush" Value="{DynamicResource BrandBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -117,7 +130,7 @@
           <StackPanel>
             <TextBlock Style="{StaticResource PageTitle}" Text="设置"/>
             <TextBlock Style="{StaticResource PageSub}"
-                       Text="主题与强调色选完立即生效；热键在下次启动后生效。"/>
+                       Text="主题与强调色选完立即预览；点保存后保存到本机。"/>
           </StackPanel>
           <Border Grid.Column="1" Style="{StaticResource TopPill}" VerticalAlignment="Top">
             <TextBlock Text="本机设置 · 不随账号同步" FontSize="12.5"
@@ -457,11 +470,19 @@
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <TextBlock Grid.Column="0" Text="这些设置只存在这台机器上，不随账号同步。"
                    FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"
                    Foreground="{DynamicResource TextMutedBrush}"/>
-        <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <!-- v150：保存成功的完整回执。宽度写死而不是随内容收缩：
+             提示出现/收起时，右侧按钮不能跟着横移。 -->
+        <TextBlock x:Name="SaveHint" Grid.Column="1" Width="520" Margin="16,0,16,0"
+                   FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                   TextWrapping="Wrap" Visibility="Hidden"
+                   Foreground="{DynamicResource BrandTextBrush}"
+                   Text="设置已保存：模型、目标语言、主题与强调色、热键、取词与写回、开机自启、API Key 已立即生效；服务地址与低内存模式下次启动生效。"/>
+        <StackPanel Grid.Column="2" Orientation="Horizontal">
           <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click"/>
           <Button x:Name="SaveButton" Content="保存" Style="{StaticResource PrimaryButton}" Margin="0" Click="Save_Click"/>
         </StackPanel>
