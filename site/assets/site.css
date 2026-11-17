@@ -326,17 +326,14 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .download-intro > img { border-radius: 13px; margin-bottom: 23px; }
 .download-intro h2 { font-size: 33px; }
 .download-intro > p { font-size: 12px; color: var(--secondary); margin-top: 16px; }
-.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 21px 24px; border: 1px solid var(--stage-line); border-radius: 10px; background: var(--page); transition: border-color .18s, box-shadow .18s; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 28px 24px; border: 1px solid var(--stage-line); border-radius: 10px; background: var(--page); transition: border-color .18s, box-shadow .18s; }
 .download-option:hover { border-color: var(--brand); box-shadow: var(--card-shadow); }
 .download-option > div { min-width: 0; }
 .download-label { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--secondary); }
-.download-label > span { background: var(--brand-soft); color: var(--brand-ink); padding: 1px 5px; border-radius: 3px; font-size: 9px; }
 .download-option strong { display: block; font-size: 17px; margin-top: 7px; font-weight: 600; }
 .download-filename { display: block; font-size: 10px; color: var(--secondary); margin-top: 4px; overflow-wrap: anywhere; }
 .download-description { display: block; color: var(--muted); font-size: 10px; margin-top: 7px; }
 .download-icon { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 9px; background: var(--brand); color: var(--white); }
-.portable { margin-top: 12px; }
-.portable .download-icon { background: var(--canvas); color: var(--secondary); }
 .download-help { font-size: 10px; color: var(--secondary); margin-top: 12px; text-align: center; }
 .footer { display: flex; justify-content: space-between; align-items: flex-end; padding-block: 48px 35px; margin-top: 24px; }
 .footer .brand { font-size: 16px; }

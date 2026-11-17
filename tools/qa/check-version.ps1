@@ -40,8 +40,7 @@ $checks = @(
     @{ File = 'README.md'; Text = $readme; Need = $zip; Label = 'portable name' },
     @{ File = 'site/index.html'; Text = $site; Need = "v$version"; Label = 'badge' },
     @{ File = 'site/index.html'; Text = $site; Need = "$version ·"; Label = 'hero size line' },
-    @{ File = 'site/index.html'; Text = $site; Need = $setup; Label = 'setup name' },
-    @{ File = 'site/index.html'; Text = $site; Need = $zip; Label = 'portable name' }
+    @{ File = 'site/index.html'; Text = $site; Need = $setup; Label = 'setup name' }
 )
 
 $bad = @()

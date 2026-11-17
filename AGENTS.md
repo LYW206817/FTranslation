@@ -83,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1
 2. `installer/FastTranslation.iss` 的 `#define AppVersion`
 3. `docs/portable-readme.txt` 的标题、安装包名,并在「更新记录」顶部加一节
 4. `README.md` 安装段的两处包名(最近就漏改过:1.3.7 发布后 README 与 site 都还停在 1.2.2,发布前必须逐处核对)
-5. `site/index.html` 的四处硬编码:版本徽标、hero 说明(含包体积)、两张安装卡的文件名
+5. `site/index.html` 的三处硬编码:版本徽标、hero 说明(含包体积)、安装版下载卡的文件名
 
 产品版本号与 `docs/IMPL.md` 里的 `vN` 是两套编号:`vN` 是变更序号,一直累加,不等于版本号。
 
