@@ -14,7 +14,7 @@
 | [impl/IMPL-v81-100.md](impl/IMPL-v81-100.md) | v81–v100 | 782 |
 | [impl/IMPL-v101-120.md](impl/IMPL-v101-120.md) | v101–v120 | 821 |
 | [impl/IMPL-v121-140.md](impl/IMPL-v121-140.md) | v121–v140 | 764 |
-| [impl/IMPL-v141-160.md](impl/IMPL-v141-160.md) | v141–v160（当前最新一册） | 649 |
+| [impl/IMPL-v141-160.md](impl/IMPL-v141-160.md) | v141–v160（当前最新一册） | 697 |
 
 ## 怎么找东西
 
@@ -24,6 +24,6 @@
 
 ## 新条目写到哪一册
 
-1. 落在编号区间包含新 `vN` 的那一册——现在 v141 写进 `impl/IMPL-v141-160.md`；v161 起新开 `impl/IMPL-v161-180.md`。
+1. 落在编号区间包含新 `vN` 的那一册——当前分册已记录至 v160；下一条 v161 新开 `impl/IMPL-v161-180.md`。
 2. 一册写满 20 个版本就新开下一册(下一个是 `IMPL-v161-180.md`),并在上面的表里加一行。
 3. 追加中文的踩坑照旧:若 bash heredoc 带中文报错,先用写文件工具落到 `publish/*.md`,再 `cat >> docs/impl/IMPL-v141-160.md`。

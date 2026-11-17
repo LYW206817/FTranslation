@@ -1,435 +1,135 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fast Translation — 划词即译的 Windows 桌面工具</title>
-<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口;选中单个英文单词还会给出音标、词性、义项与考试标签,本地词典离线查询。还能把整份 docx / txt / md 译成另一种语言,版式不动;电脑里正在播的声音,可以实时出双语字幕。Windows 10/11,免安装运行时。">
-<link rel="icon" href="assets/img/icon.png">
-<link rel="canonical" href="https://ftranslation.cn/">
-<meta property="og:type" content="website">
-<meta property="og:title" content="Fast Translation — 划词即译的 Windows 桌面工具">
-<meta property="og:description" content="选中文字,工具条浮出来;点翻译,译文贴回原文旁边。单个英文单词直接出词典卡,531 毫秒,不用切窗口。">
-<meta property="og:image" content="https://ftranslation.cn/assets/img/og.png">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="assets/site.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fast Translation — 读到哪里，译到哪里</title>
+  <meta name="description" content="为 Windows 打造的桌面翻译工具。选中文字，点一下翻译，在原处继续阅读。支持截图翻译、文档翻译、实时双语字幕、本地词典与单词复习。">
+  <link rel="icon" href="assets/img/icon.png">
+  <link rel="canonical" href="https://ftranslation.cn/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Fast Translation — 读到哪里，译到哪里">
+  <meta property="og:description" content="划词、截图、文档、语音，把翻译放回正在做的事里。为 Windows 打造，免费下载。">
+  <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#F7F9FC">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-windows" viewBox="0 0 24 24"><path d="M2 4.5 11 3.3v8H2zm11-1.4L22 2v9.3h-9zM2 13h9v8l-9-1.2zm11 0h9v9.3L13 21z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M15 8V4H4v11h4"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5M7 12h10"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1zm0 0v15"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 10v4m4-8v12m5-16v20m5-16v12m4-8v4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1-.3-2-1-2.5 4-.5 6-2 6-5.5 0-1.5-.5-2.5-1.5-3.5.3-1 .3-2-.2-3.5-1.3 0-2.5.5-3.5 1.3a13 13 0 0 0-7.6 0C6.2 3.5 5 3 3.7 3c-.5 1.5-.5 2.5-.2 3.5C2.5 7.5 2 8.5 2 10c0 3.5 2 5 6 5.5-.7.5-1 1.5-1 2.5v4"/></symbol>
+  </svg>
 
-<header class="nav">
-  <div class="nav-inner">
-    <div class="brand">
-      <img src="assets/img/icon.png" alt="">
-      <span>Fast Translation</span>
-      <span class="mark">v1.5.1</span>
-    </div>
-    <nav aria-label="页面导航">
-      <a href="#how">怎么用</a>
-      <a href="#look">界面</a>
-      <a href="#words">单词</a>
-      <a href="#doc">文档</a>
-      <a href="#speech">语音</a>
-      <a href="#numbers">实测</a>
-      <a href="#plans">套餐</a>
-      <a href="#download">下载</a>
-    </nav>
-  </div>
-</header>
+  <header class="nav"><div class="wrap nav-inner">
+    <a class="brand" href="#" aria-label="Fast Translation 首页"><img src="assets/img/icon.png" alt="" width="32" height="32"><span>Fast Translation</span></a>
+    <nav aria-label="页面导航"><a href="#how">使用体验</a><a href="#features">功能</a><a href="#words">单词与复习</a><a href="#look">软件界面</a><a href="#plans">套餐</a></nav>
+    <a class="nav-download" href="#download">免费下载<svg class="icon"><use href="#i-down"/></svg></a>
+  </div></header>
 
-<main>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <a class="release-pill" href="#download"><span class="release-dot"></span>为 Windows 打造<span class="release-version">v1.5.1<svg class="icon"><use href="#i-arrow"/></svg></span></a>
+      <h1 id="hero-title">读到哪里，译到哪里。</h1>
+      <p class="hero-lede">选中文字，点一下翻译，在原处继续阅读。<br>让外语少一点距离，让思路多一点连贯。</p>
+      <div class="hero-actions"><a class="button primary" href="#download"><svg class="icon"><use href="#i-windows"/></svg>免费下载 Windows 版</a><a class="button secondary" href="#how">看看如何使用<svg class="icon"><use href="#i-arrow"/></svg></a></div>
+      <p class="hero-meta">1.5.1 · 约 45 MB · Windows 10 / 11 · 无需另装运行时</p>
+    </section>
 
-<div class="wrap hero">
-  <div>
-    <p class="eyebrow">Windows 10 / 11 · 桌面划词翻译</p>
-    <h1>选中,<br><mark>就已经译好了</mark>。</h1>
-    <p class="lede">
-      在任意程序里选中一段文字,鼠标旁边浮出一个小工具条。点「翻译」,译文出现在原句下方——不用切窗口,不用复制粘贴,不用等一个网页加载完。选中单个英文单词、且译成中文时,结果卡会换成词典样式:音标、词性、多义项与考试标签都在,查词离线完成。
-    </p>
-    <div class="cta">
-      <a class="btn btn-primary" href="#download">下载安装 <span aria-hidden="true">→</span></a>
-      <a class="btn btn-ghost" href="#how">先看它怎么工作</a>
-    </div>
-    <p class="hero-meta">1.5.1 · 约 45 MB · 运行时已内置 · 免管理员安装</p>
-  </div>
-
-  <aside class="note">
-    <dl>
-      <dt>原文</dt>
-      <dd class="en">meticulous</dd>
-      <dt>译文</dt>
-      <dd class="zh">一丝不苟的</dd>
-      <dt>耗时</dt>
-      <dd class="zh" style="font-family:var(--mono);font-size:.82rem;color:var(--muted)">531 ms · qwen-mt-flash</dd>
-    </dl>
-  </aside>
-</div>
-
-<div class="wrap stage">
-  <div class="stage-inner">
-    <figure style="margin:0">
-      <div class="paper">
-        <div class="floatbar">
-          <span><i>⧉</i>复制</span>
-          <span class="on"><i>译</i>翻译</span>
-          <span><i>▣</i>截图翻译</span>
-        </div>
-        Selected text never leaves its paragraph — it stays
-        <span class="sel-hit">highlighted in place</span>
-        while the translation opens underneath it.
+    <section class="showcase wrap" id="how" aria-label="产品交互演示">
+      <div class="demo-tabs enhanced-only" role="tablist" aria-label="选择演示场景">
+        <button id="tab-sentence" role="tab" aria-selected="true" aria-controls="demo-sentence" data-demo="sentence"><svg class="icon"><use href="#i-copy"/></svg>划词翻译</button>
+        <button id="tab-word" role="tab" aria-selected="false" aria-controls="demo-word" tabindex="-1" data-demo="word"><svg class="icon"><use href="#i-book"/></svg>离线查词</button>
+        <button id="tab-image" role="tab" aria-selected="false" aria-controls="demo-image" tabindex="-1" data-demo="image"><svg class="icon"><use href="#i-scan"/></svg>截图翻译</button>
       </div>
-
-      <div class="card-demo">
-        <p class="src">Selected text never leaves its paragraph — it stays highlighted in place</p>
-        <p class="dst">选中的文字从不离开它所在的段落——译文就开在它下面,它一直留在原地被高亮着。</p>
-        <div class="row">
-          <span class="b pri">保存</span>
-          <span class="b">复制</span>
-          <span class="b">替换</span>
-          <span class="b">插入</span>
-          <span class="status">qwen-mt-flash · 531ms</span>
+      <div class="demo-stage"><div class="stage-orbit" aria-hidden="true"></div>
+        <div class="demo-panel" id="demo-sentence" role="tabpanel" aria-labelledby="tab-sentence">
+          <div class="reader-window"><div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>留一点时间，读点好内容</span><svg class="icon"><use href="#i-book"/></svg></div>
+            <div class="reader-body"><p class="reader-category">阅读随记</p><h2>A little room for curiosity.</h2><p>There is always something new to discover.<br>Sometimes, all it takes is a different perspective.</p>
+              <p class="reader-selection"><mark>Keep your curiosity close.</mark><svg class="demo-cursor" viewBox="0 0 24 28" aria-hidden="true"><path d="m2 2 18 13-8 1-3 8Z"/></svg></p>
+              <div class="floating-toolbar"><span><svg class="icon"><use href="#i-copy"/></svg>复制</span><button class="toolbar-translate enhanced-only" type="button">译<span>翻译</span></button><span><svg class="icon"><use href="#i-scan"/></svg>截图翻译</span></div>
+              <p class="reader-bottom">A small thought can open a whole new world.</p>
+            </div>
+          </div>
+          <div class="translation-card" id="sentence-result"><div class="result-top"><span class="result-logo">译</span><span>Fast Translation</span><span class="language-pair">英语<svg class="icon"><use href="#i-arrow"/></svg>简体中文</span></div><p class="source-line">Keep your curiosity close.</p><p class="translated-line">常怀好奇之心。</p><div class="result-bottom"><span class="sample-save">保存到单词本</span><span>复制</span><span>替换</span><span>插入</span><svg class="icon"><use href="#i-check"/></svg></div></div>
+          <div class="scene-note"><span class="note-line"></span>译文就在原文旁，思路留在原地。</div>
+        </div>
+        <div class="demo-panel" id="demo-word" role="tabpanel" aria-labelledby="tab-word" hidden>
+          <div class="reader-window word-reader"><div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>遇见一个新单词</span><svg class="icon"><use href="#i-book"/></svg></div><div class="reader-body"><p class="reader-category">英语阅读</p><h2>Stay <mark>curious</mark>.</h2><p>A question is a good place to begin.<br>Leave a little space for the unexpected.</p><p class="reader-bottom">看见、查到，再慢慢记住。</p></div></div>
+          <div class="translation-card dictionary-demo"><div class="result-top"><span class="result-logo">Aa</span><span>本地词典</span><span class="offline-badge">离线可用</span></div><h3>curious <span>/ˈkjʊəriəs/</span></h3><p class="dictionary-meaning"><span>adj.</span>好奇的；求知欲强的</p><div class="dictionary-tags"><span>四级</span><span>六级</span><span>考研</span></div><div class="result-bottom"><span class="sample-save">保存词典快照</span><span>不消耗翻译额度</span></div></div>
+          <div class="scene-note"><span class="note-line"></span>单个英文单词译成中文时，优先查本地词典。</div>
+        </div>
+        <div class="demo-panel" id="demo-image" role="tabpanel" aria-labelledby="tab-image" hidden>
+          <div class="reader-window image-reader"><div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>图片里的文字，也能读懂</span><svg class="icon"><use href="#i-scan"/></svg></div><div class="sample-slide"><span class="slide-caption">IDEAS FOR A SLOWER DAY</span><h2>Make space<br>for good things.</h2><span class="slide-foot">Read. Explore. Begin again.</span><div class="capture-frame"><i></i><i></i><i></i><i></i></div></div></div>
+          <div class="translation-card image-result"><div class="result-top"><span class="result-logo"><svg class="icon"><use href="#i-scan"/></svg></span><span>截图翻译</span><span class="language-pair">英语 → 中文</span></div><span class="image-result-label">识别原文</span><p class="source-line">Make space for good things.</p><span class="image-result-label">译文</span><p class="translated-line">为美好的事物，<br>留一点空间。</p><div class="result-bottom"><span class="sample-save">译图与文字一起看</span></div></div>
+          <div class="scene-note"><span class="note-line"></span>框选屏幕区域，得到译图和可编辑的文字。</div>
         </div>
       </div>
+      <div class="demo-caption"><p><span class="caption-dot"></span><span id="demo-instruction" aria-live="polite">选中文字 → 点「翻译」→ 查看译文</span><button class="demo-reset enhanced-only" type="button">重新选词</button></p><span>交互示意 · 不发送在线翻译请求</span></div>
+    </section>
 
-      <figcaption>工具条与结果卡,按 1:1 用 CSS 重建(实际是 Win32 分层窗口)</figcaption>
-    </figure>
-  </div>
-</div>
+    <div class="contexts wrap"><p>在你熟悉的工作里，随手用起来</p><div><span>浏览网页</span><span>阅读 PDF</span><span>编写文档</span><span>查看代码</span></div></div>
 
-<section id="how">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">01 / 交互</span>一颗工具条,三个动作</h2>
-        <p class="sub">工具条只在你选中文字之后出现,离开就消失。三个按钮对应三种最常做的事,顺序按用得多少排。</p>
+    <section class="section wrap" id="features" aria-labelledby="features-title">
+      <div class="section-heading"><h2 id="features-title">不止一段文字，<br>也不止一种场景。</h2><p>能选中的，随手翻译。选不中的，截个图。<br>一份文档、一堂网课，也有顺手的打开方式。</p></div>
+      <div class="feature-grid">
+        <article class="feature-card capture-feature" id="capture"><div class="feature-copy"><div class="feature-label"><svg class="icon"><use href="#i-scan"/></svg>截图翻译<kbd>Ctrl + Alt + S</kbd></div><h3>选不中的文字，<br>框起来就好。</h3><p>图片、扫描件、视频里的文字，框选后一起看译图、原文和译文。识别到的文字还可以编辑。</p></div><div class="capture-art" aria-label="截图翻译效果示意"><div class="capture-original"><span>图片原文</span><p>A fresh perspective<br>changes everything.</p><div class="crop-corner top-left"></div><div class="crop-corner bottom-right"></div></div><div class="capture-translated"><svg class="icon"><use href="#i-scan"/></svg><p>换个视角，<br>一切焕然一新。</p><span>译图示意</span></div></div><p class="feature-footnote">适合清晰、疏朗的排版；密集小字与多栏图片可能错位。</p></article>
+        <article class="feature-card document-feature" id="doc"><div class="feature-copy"><div class="feature-label"><svg class="icon"><use href="#i-file"/></svg>文档翻译</div><h3>整份读懂，<br>原文件好好留着。</h3><p>拖入文件，译成新的那一份。保留段落、表格等结构，中途断开也能接着译。</p></div><div class="document-art" aria-label="文档翻译流程示意"><div class="document-sheet"><svg class="icon"><use href="#i-file"/></svg><span>一份阅读笔记.docx</span><i></i><i></i><i></i></div><span class="file-transfer"><svg class="icon"><use href="#i-arrow"/></svg></span><div class="document-sheet translated-sheet"><svg class="icon"><use href="#i-file"/></svg><span>一份阅读笔记.en.docx</span><i></i><i></i><i></i><span class="file-done"><svg class="icon"><use href="#i-check"/></svg>新文件已生成</span></div></div><p class="feature-footnote">支持 .docx / .txt / .md；局部加粗与超链接等格式可能合并。</p></article>
+        <article class="speech-feature" id="speech"><div class="feature-copy"><div class="feature-label"><svg class="icon"><use href="#i-wave"/></svg>实时语音字幕<kbd>Ctrl + Alt + V</kbd></div><h3>听见的，也能看懂。</h3><p>电脑播放的会议、网课和视频，变成屏幕上的双语字幕。采集系统声音，不占用麦克风。</p><span class="speech-note">需联网识别与翻译，音频经服务端转发。</span></div><div class="subtitle-art"><div class="subtitle-top"><span class="record-indicator"></span>双语字幕示意<div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><p>Every new idea begins with a little curiosity.</p><p>每一个新想法，都始于一点好奇心。</p><div class="subtitle-progress" aria-hidden="true"><span></span></div></div></article>
       </div>
-      <p class="aside-note">工具条由 Win32 分层窗口绘制,不抢焦点,所以它浮在 PDF、IDE、Office、浏览器上时,底下的选区不会消失。</p>
-    </div>
+    </section>
 
-    <div class="strip">
-      <div>
-        <div class="glyph">⧉</div>
-        <h3>复制</h3>
-        <p>只复制,不翻译。有些文本你只是想拿去别处用。</p>
+    <section class="learning-section" id="words" aria-labelledby="words-title"><div class="wrap learning-grid">
+      <div class="learning-copy"><span class="section-label"><svg class="icon"><use href="#i-book"/></svg>从读懂，到记住</span><h2 id="words-title">查过的单词，<br>不止一面之缘。</h2><p>单个英文单词译成中文时，本地词典直接给出音标、词性和多种释义。没有网络，也能查。</p><ul class="learning-points"><li><svg class="icon"><use href="#i-check"/></svg>保存时，连同词典快照一起收好</li><li><svg class="icon"><use href="#i-check"/></svg>单词、短语、语句自动归类</li><li><svg class="icon"><use href="#i-check"/></svg>按记忆情况安排下次复习，跨设备同步</li></ul><p class="entitlement-note">本地查词免费；保存、同步与复习需 Lite 或以上套餐。</p></div>
+      <div class="learning-visual"><span class="learning-visual-label">软件实际词典卡</span><img src="assets/img/word-card.png" alt="实际词典卡：charge 的音标、按词性分组的义项、词形变化与考试标签" width="735" height="341" loading="lazy"><div class="review-sample"><div><span>今天，再见一面</span><span>复习评分示意</span></div><p>这次记得怎么样？</p><div class="review-ratings"><span>忘记<small>10 分钟后</small></span><span>模糊<small>1 天后</small></span><span>熟悉<small>3 天后</small></span><span>记住<small>7 天后起</small></span></div></div></div>
+    </div></section>
+
+    <section class="section wrap interface-section" id="look" aria-labelledby="look-title">
+      <div class="section-heading"><div><span class="section-label">熟悉的 Windows，顺手的翻译</span><h2 id="look-title">轻轻打开，专心使用。</h2></div><p>平时藏在托盘，需要时就在身边。<br>集中翻译、管理单词、调整设置，都在同一个窗口。</p></div>
+      <div class="interface-toolbar"><span><span class="caption-dot"></span>软件实际界面</span><div class="theme-switch enhanced-only" role="group" aria-label="软件截图主题"><button type="button" data-theme="light" aria-pressed="true"><svg class="icon"><use href="#i-sun"/></svg>浅色</button><button type="button" data-theme="dark" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg>深色</button></div></div>
+      <figure class="app-preview"><img id="app-screenshot" src="assets/img/main-light.png" alt="Fast Translation 浅色主窗口，左侧为功能导航，右侧为原文和译文区域" width="1750" height="1085" loading="lazy"><figcaption id="theme-caption">浅色主题 · 也可在软件中跟随系统切换</figcaption></figure>
+      <div class="interface-notes"><span><svg class="icon"><use href="#i-check"/></svg>原生桌面体验</span><span><svg class="icon"><use href="#i-check"/></svg>浅色与深色主题</span><span><svg class="icon"><use href="#i-check"/></svg>全局快捷键</span><span><svg class="icon"><use href="#i-check"/></svg>支持自带 API Key</span></div>
+    </section>
+
+    <section class="plans-section" id="plans" aria-labelledby="plans-title"><div class="wrap">
+      <div class="center-heading"><h2 id="plans-title">从免费开始，按需要选择。</h2><p>注册即可获得免费额度，也可以使用自己的 API Key。<br>更常用时，再选一份合适的套餐。</p></div>
+      <div class="plans">
+        <article class="plan"><h3>免费版</h3><p class="plan-for">先体验，轻量使用</p><p class="price">¥0<span> / 月</span></p><p class="quota">10,000 字符 / 月</p><a class="button plan-button" href="#download">免费下载</a><ul><li>每日 2,000 字符</li><li>划词、截图、文档、语音翻译</li><li>本地词典离线查词</li><li>支持自带 API Key</li><li>单词本只读</li></ul></article>
+        <article class="plan"><h3>Lite</h3><p class="plan-for">日常阅读，积累新词</p><p class="price">¥6.9<span> / 月</span></p><p class="quota">880,000 字符 / 月</p><a class="button plan-button" href="#download">下载后开通</a><ul><li>免费版全部翻译功能</li><li>单词本保存与跨设备同步</li><li>四档间隔复习</li><li>无每日限额</li><li>季付 ¥20.7 / 90 天</li></ul></article>
+        <article class="plan featured-plan"><span class="plan-recommend">进阶之选</span><h3>Pro</h3><p class="plan-for">外文常读，字幕常开</p><p class="price">¥11.9<span> / 月</span></p><p class="quota">1,880,000 字符 / 月</p><a class="button primary plan-button" href="#download">下载后开通</a><ul><li>Lite 全部功能</li><li>更充足的每月额度</li><li>无每日限额</li><li>可用自带 Key 继续翻译</li><li>季付 ¥35.7 / 90 天</li></ul></article>
+        <article class="plan"><h3>Max</h3><p class="plan-for">批量文档，长期使用</p><p class="price">¥19.9<span> / 月</span></p><p class="quota">3,880,000 字符 / 月</p><a class="button plan-button" href="#download">下载后开通</a><ul><li>Pro 全部功能</li><li>更宽裕的每月额度</li><li>无每日限额</li><li>可用自带 Key 继续翻译</li><li>季付 ¥59.7 / 90 天</li></ul></article>
       </div>
-      <div>
-        <div class="glyph act">译</div>
-        <h3>翻译</h3>
-        <p>译文可复制、替换原文、插入光标处,或存进单词本。英→中翻译单个英文单词时,结果卡换成词典样式。</p>
-      </div>
-      <div>
-        <div class="glyph">▣</div>
-        <h3>截图翻译</h3>
-        <p>框一块屏幕区域,出译图;同时识别原文,得到一份可编辑的文本。用于图片、扫描件、游戏与视频字幕。</p>
-      </div>
-    </div>
+      <p class="plans-note">套餐在客户端内扫码付款，运营确认到账后开通。额度按所选模型与翻译类型折算，语音按时长折算；具体用量与权益可在客户端查看。配置自有 Key 后，文本翻译额度用尽可自动切换。</p>
+    </div></section>
 
-    <ul class="plain shortcuts">
-      <li><span class="mono">Ctrl+Alt+T</span> 直接翻译当前选区,不用先点工具条;主窗口里 <span class="mono">Ctrl+Enter</span> 翻译输入框</li>
-      <li><span class="mono">Ctrl+Alt+S</span> 截图翻译</li>
-      <li><span class="mono">Ctrl+Alt+V</span> 开始 / 结束语音翻译;三个热键都能在设置里改</li>
-      <li>「替换原文」「插入译文」写回前会核对目标窗口、锚点与选区文本,对不上就降级成「已复制」,不会写错地方</li>
-    </ul>
-  </div>
-</section>
+    <section class="section wrap faq-section" aria-labelledby="faq-title"><div><span class="section-label">开始之前</span><h2 id="faq-title">你可能还想知道。</h2><a class="text-link" href="https://github.com/LYW206817/FTranslation">查看开源项目<svg class="icon"><use href="#i-arrow"/></svg></a></div><div class="faq-list">
+      <details><summary>需要自己申请 API Key 吗？<span aria-hidden="true">+</span></summary><p>不需要。注册账号即可使用免费额度。你也可以在设置中填入自己的阿里云百炼 API Key；Key 经 Windows 本机加密保存，使用自己的 Key 时按对应服务商规则计费。</p></details>
+      <details><summary>安装版和便携版怎么选？<span aria-hidden="true">+</span></summary><p>日常使用推荐安装版，支持应用内检查与安装更新。便携版解压即可运行，不写安装注册信息，升级时需要手动下载新包。两种都已内置 .NET 运行时。</p></details>
+      <details><summary>哪些内容可以离线翻译？<span aria-hidden="true">+</span></summary><p>本地词典支持单个英文单词的英译中查询，不消耗在线额度，也不提供例句。句子、短语、截图、文档和语音翻译需要联网，相关文本、图片或音频会发送至翻译或识别服务处理。</p></details>
+      <details><summary>能在所有软件里划词和替换吗？<span aria-hidden="true">+</span></summary><p>支持浏览器、PDF 阅读器、Word 和常见编辑器等场景，实际效果取决于应用是否开放文本选区。替换、插入仅适用于可写位置；校验不通过时会改为复制译文。终端只取词、不写回，密码框不取词。图片中的文字可使用截图翻译。</p></details>
+      <details><summary>文档翻译支持 PDF 吗？<span aria-hidden="true">+</span></summary><p>整份文档翻译目前支持 .docx、.txt、.md，不支持 PDF、Excel 或 PowerPoint 文件。原文件保持不变，译文另存为新文件。Word 的段落、表格等结构会保留，段落内的局部加粗、超链接等格式可能合并。</p></details>
+      <details><summary>首次运行为什么会提示未知发布者？<span aria-hidden="true">+</span></summary><p>当前安装包尚未进行代码签名，Windows 可能显示未知发布者提示。请从本页指向的官方 GitHub Releases 下载，并核对项目来源。</p></details>
+    </div></section>
 
-<section id="look">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">02 / 界面</span>十个页面,一个托盘</h2>
-        <p class="sub">日常使用中,你看到的是工具条、结果卡和一个托盘图标。需要集中管理时,主窗口的侧栏还有十个页面:首页、单词、短语、语句、复习、文档、语音、套餐、账号、设置。</p>
-      </div>
-      <p class="aside-note">配色跟系统深浅色走。浅色 #F7F9FC / 白 / #2562FF,深色 #16191F / #1F242C / #4A82FF;强调色有电光蓝、湖蓝、雾光紫三支,选完立即生效。</p>
-    </div>
+    <section class="download-section wrap" id="download" aria-labelledby="download-title"><div class="download-intro"><img src="assets/img/icon.png" alt="" width="56" height="56" loading="lazy"><h2 id="download-title">下一次遇见外语，<br>让阅读继续。</h2><p>Windows 10 1903+ / Windows 11，64 位。<br>无需管理员权限，无需另装 .NET。</p></div><div class="download-options">
+      <a class="download-option" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest"><div><span class="download-label">安装版<span>推荐</span></span><strong>下载 Windows 安装包</strong><span class="download-filename">FastTranslation-1.5.1-Setup.exe</span><span class="download-description">约 45 MB · 支持自动更新</span></div><span class="download-icon"><svg class="icon"><use href="#i-down"/></svg></span></a>
+      <a class="download-option portable" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest"><div><span class="download-label">便携版</span><strong>解压，即可使用</strong><span class="download-filename">FastTranslation-1.5.1-portable.zip</span><span class="download-description">约 60 MB · 手动更新</span></div><span class="download-icon"><svg class="icon"><use href="#i-down"/></svg></span></a>
+      <p class="download-help">前往官方 GitHub Releases，在 Assets 中选择对应文件。</p>
+    </div></section>
+  </main>
 
-    <div class="plates">
-      <figure class="plate">
-        <img src="assets/img/main-light.png" alt="主窗口浅色主题:左侧十个页面、翻译输入区、语言与模型选择">
-        <figcaption><span>主窗口 / 浅色</span><span>Ctrl+Enter 翻译</span></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/img/main-dark.png" alt="主窗口深色主题:左侧十个页面与翻译输入区">
-        <figcaption><span>主窗口 / 深色</span><span>跟随系统</span></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/img/wordbook-dictionary.png" alt="单词本详情:原文、译文、词典快照与四档复习评分">
-        <figcaption><span>单词本 / 词典快照</span><span>单词 · 短语 · 语句</span></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/img/word-card.png" alt="结果卡:单个英文单词显示音标、词性、多义项、词形与考试标签">
-        <figcaption><span>结果卡 / 单词</span><span>ECDICT 离线词典</span></figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<section id="words">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">03 / 单词</span>查词在本地,复习有节奏</h2>
-        <p class="sub">选中单个英文单词、译成中文时,结果卡会换成词典卡:音标、按词性分组的义项、词形变化与考试标签。词库随安装包分发,离线查询,不消耗额度。</p>
-      </div>
-      <p class="aside-note">词库是 ECDICT 的裁剪子集(MIT),57,841 个常用英文词;只覆盖单个英文单词的英→中查询,不提供例句。</p>
-    </div>
-
-    <ul class="plain doc-points">
-      <li>英→中时只有单个英文单词会走词典,短语和句子仍走在线翻译;本地命中约 0.35 ms,不联网、不耗额度</li>
-      <li>词典卡可以一键存进单词本;音标、词性、义项、词形与考试标签会跟着存下来</li>
-      <li>单词本按单词 / 短语 / 语句自动归类,支持搜索、备注、改类型;登录后跨设备同步,免费版只读</li>
-      <li>复习队列每天把到期的卡排进来,另加最多 20 条当天新存的;新卡没学完会留到以后,日界线按本机时区零点算</li>
-      <li>四档评分:忘记 10 分钟后、模糊 1 天后、熟悉 3 天后、记住 7 天后;之后每次「记住」逐档升到 14 / 28 / 56 天</li>
-      <li>复习页可以只用键盘:空格看译文,1–4 评分,跳过不算评过</li>
-    </ul>
-  </div>
-</section>
-
-<section id="doc">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">04 / 文档</span>整份文件,译完还是它原来的样子</h2>
-        <p class="sub">把 <span class="mono">.docx</span> / <span class="mono">.txt</span> / <span class="mono">.md</span> 拖进「文档」页,选目标语言,点开始。产出 <span class="mono">原文件名.en.docx</span> 这样的新文件,原文件一个字节都不动。</p>
-      </div>
-      <p class="aside-note">解析、拆段、回写全在本机完成,出网的只有段落文字本身。上限:单文件 ≤10 MB、可译字符 ≤20 万、段落 ≤5,000。</p>
-    </div>
-
-    <div class="plates">
-      <figure class="plate">
-        <img src="assets/img/document-light.png" alt="文档翻译页浅色主题:拖放区、目标语言、进度与完成态">
-        <figcaption><span>文档 / 浅色</span><span>拖进去就开始</span></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/img/document-dark.png" alt="文档翻译页深色主题">
-        <figcaption><span>文档 / 深色</span><span>跟随系统</span></figcaption>
-      </figure>
-    </div>
-
-    <ul class="plain doc-points">
-      <li>段落级回写:字体、字号、颜色、段落样式、表格、页眉页脚都留住</li>
-      <li>段级断点:取消、断网、额度用完,已译段落存在本机,重开接着译</li>
-      <li>译不通的段落保留原文并标「未翻译」,给清单让你单独重试</li>
-      <li>按字符量节流,不撞上游的 token 窗口;失败按 1 / 2 / 4 秒退避</li>
-      <li>额度先预估再预扣,不够会在开始前拦下,不会译到一半卡住</li>
-      <li>段落内部的局部加粗、超链接会被合并成一种格式</li>
-    </ul>
-  </div>
-</section>
-
-<section id="speech">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">05 / 语音</span>电脑里在播什么,字幕就翻什么</h2>
-        <p class="sub">会议、网课、视频,按 <span class="mono">Ctrl+Alt+V</span> 开一场语音翻译:屏幕底部升起一块字幕条,原声说完一秒左右,中文原文和译文一起滚出来。</p>
-      </div>
-      <p class="aside-note">采集的是系统回环声音,音频会经我们的服务端转发给识别接口(不保存);按秒计费,每秒 50 字符,开始前就能看到今天 / 本月还能讲多久。</p>
-    </div>
-
-    <div class="plates">
-      <figure class="plate">
-        <img src="assets/img/speech-page.png" alt="语音翻译页浅色主题:开始卡、目标语言、显示原文与字幕条数设置">
-        <figcaption><span>语音 / 浅色</span><span>四项设置,即时生效</span></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/img/speech-window.png" alt="字幕浮窗:原文灰色小字在上,译文大字在下,头部显示状态与已用字符">
-        <figcaption><span>字幕浮窗</span><span>非终稿半透明,终稿落定</span></figcaption>
-      </figure>
-    </div>
-
-    <ul class="plain doc-points">
-      <li>回环采声:耳机里听什么就翻什么,不占麦克风,不用选窗口</li>
-      <li>说约一秒出字幕:原文与译文成对滚动,终稿前先出灰色草稿</li>
-      <li>部分结果不送翻译,只有终稿会送去翻译;字幕条数有上限,只影响显示不影响翻译</li>
-      <li>按秒计费每秒 50 字符,每轮会话最少按 5 秒计费;开始前显示「今天 / 本月剩余可讲约 N 分钟」,剩余不足 30 秒直接拦下</li>
-      <li>额度用完、服务未开、请求太频都有明确文案,不会拿「连接失败」糊弄</li>
-      <li>切换播放设备自动重接采集,字幕停顿一秒,会话不中断</li>
-    </ul>
-  </div>
-</section>
-
-<section id="numbers">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">06 / 实测</span>数字来自真实请求</h2>
-        <p class="sub">下面这些不是宣传口径,是开发机上跑真实翻译接口记录下来的值。</p>
-      </div>
-      <p class="aside-note">测量方式:客户端记录 Environment.TickCount64 差值;token 与环境来自服务端记账表 usage_events。词典耗时是本地词库查询的实测值。</p>
-    </div>
-
-    <dl class="figures">
-      <div>
-        <dt>单次翻译耗时</dt>
-        <dd>531<small>毫秒,短句 en→zh,走开发者网关 + qwen-mt-flash</small></dd>
-      </div>
-      <div>
-        <dt>本地词典查词</dt>
-        <dd>0.35<small>毫秒,57,841 词;离线查询,不消耗额度</small></dd>
-      </div>
-      <div>
-        <dt>每次请求 token</dt>
-        <dd>65<small>约 60 输入 + 5 输出,服务端按 usage 记账</small></dd>
-      </div>
-      <div>
-        <dt>单账号设备数上限</dt>
-        <dd>3<small>免费额度的日限额按设备算,避免一号多机池化</small></dd>
-      </div>
-    </dl>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">07 / 取舍</span>能做与不做</h2>
-        <p class="sub">写在这里的边界都是实测出来的,不是没做完。</p>
-      </div>
-      <p class="aside-note">划词取词顺序:先 UIA 读当前选区,读不到再退回模拟 Ctrl+C 抓剪贴板。两条路径都在你的机器上完成。</p>
-    </div>
-
-    <div class="cols">
-      <div>
-        <h3>做得好的</h3>
-        <ul class="plain">
-          <li>网页、PDF 阅读器、IDE、Word 里的划词取词</li>
-          <li>译文写回原位置,替换与插入两种方式</li>
-          <li>单个英文单词的本地词典卡,离线、不耗额度</li>
-          <li>截图翻译适合稀疏排版:网页、宽界面、PPT;结果窗还能改识别出的原文</li>
-          <li>单词本按单词 / 短语 / 语句自动归类,四档间隔复习</li>
-          <li>句子级缓存,同一句重复翻译不再发请求</li>
-          <li>整份 docx / txt / md 翻译,产出新文件,原文件不动</li>
-        </ul>
-      </div>
-      <div>
-        <h3>明确不做</h3>
-        <ul class="plain">
-          <li>Windows 终端 / cmd / PowerShell 只取词、不写回</li>
-          <li>密码框不取词</li>
-          <li>密集小字、多栏挤在一起的截图会错位</li>
-          <li>词典只覆盖单个英文单词(英→中),不提供例句;短语与句子走在线翻译</li>
-          <li>xlsx / pptx / pdf 文档尚未支持</li>
-          <li>不采集任何使用数据,不写文本日志</li>
-          <li>安装包未做代码签名,首次运行会提示未知发布者</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="plans">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">08 / 套餐</span>按字符算,不按时间算</h2>
-        <p class="sub">额度用字符衡量:一个汉字、一个字母都算一个字符。额度用完不会断你,会自动切到你自己填的 API Key 继续翻。三档权益逐档叠加,区别在每月额度;标价按 88 万字符 10 元折算,月付 / 季付同单价,季付一次付 90 天。</p>
-      </div>
-      <p class="aside-note">付费额度由开发者账号统一出,你不用自己去阿里云开 Key。也可以一直用自己的 Key,免费版即可。语音按每秒 50 字符折算,88 万 / 188 万 / 388 万字符全部用于语音时分别约 5 / 10 / 21 小时。账号页能看到本月 / 今日剩余与登录设备,单账号最多 3 台,不用的设备可以移除。</p>
-    </div>
-
-    <div class="plans">
-      <div class="plan">
-        <h3>免费版</h3>
-        <p class="quota">10,000 字符 / 月<br>每日 2,000</p>
-        <ul>
-          <li>划词翻译</li>
-          <li>截图翻译</li>
-          <li>文档翻译(docx / txt / md)</li>
-          <li>本地词典(离线,不耗额度)</li>
-          <li>语音字幕(计入额度)</li>
-          <li>自带 API Key,额度不限本工具</li>
-          <li>单词本只读</li>
-        </ul>
-        <a class="plan-cta" href="#download">下载安装</a>
-      </div>
-      <div class="plan">
-        <h3>Lite</h3>
-        <p class="pitch"><strong>日常推荐</strong>:划词、截图、文档、语音都能用。</p>
-        <p class="quota">880,000 字符 / 月<br>6.9 元 / 月</p>
-        <ul>
-          <li>免费版全部功能</li>
-          <li>单词本保存与跨设备同步</li>
-          <li>四档间隔复习</li>
-          <li>无每日限额,只有月额度</li>
-          <li>季付 20.7 元,合 6.9 元 / 月</li>
-        </ul>
-        <a class="plan-cta" href="#download">下载后在应用内扫码开通</a>
-      </div>
-      <div class="plan feature">
-        <span class="tag tag-hot">Hot</span>
-        <h3>Pro</h3>
-        <p class="pitch"><strong>进阶推荐</strong>:整天读外文、语音字幕常开,额度更从容。</p>
-        <p class="quota">1,880,000 字符 / 月<br>11.9 元 / 月</p>
-        <ul>
-          <li>Lite 全部功能</li>
-          <li>季付 35.7 元,合 11.9 元 / 月</li>
-          <li>额度用尽自动回落自带 Key</li>
-        </ul>
-        <a class="plan-cta pri" href="#download">下载后在应用内扫码开通</a>
-      </div>
-      <div class="plan">
-        <h3>Max</h3>
-        <p class="pitch"><strong>重度推荐</strong>:批量文档、长期重度使用,额度最宽。</p>
-        <p class="quota">3,880,000 字符 / 月<br>19.9 元 / 月</p>
-        <ul>
-          <li>Pro 全部功能</li>
-          <li>季付 59.7 元,合 19.9 元 / 月</li>
-          <li>额度用尽自动回落自带 Key</li>
-        </ul>
-        <a class="plan-cta" href="#download">下载后在应用内扫码开通</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="download">
-  <div class="wrap">
-    <div class="sec-head">
-      <div>
-        <h2><span class="num">09 / 下载</span>装完就能用</h2>
-        <p class="sub">安装版支持自动更新;便携版解压即用,不写注册表,但升级要手动换包。</p>
-      </div>
-      <p class="aside-note">系统要求 Windows 10 1903+ / Windows 11,64 位。.NET 运行时已内置,不需要另装。装在用户目录,不需要管理员权限。</p>
-    </div>
-
-    <div class="dl">
-      <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
-        <p class="k">安装版 · 推荐</p>
-        <p class="t">FastTranslation-1.5.1-Setup.exe</p>
-        <p class="d">约 45 MB。之后自动检查更新,点一下就能升级,不用再找安装包。</p>
-        <span class="dl-btn pri">下载安装包</span>
-      </a>
-      <a class="card" href="https://github.com/LYW206817/FTranslation-Updates/releases/latest">
-        <p class="k">便携版</p>
-        <p class="t">FastTranslation-1.5.1-portable.zip</p>
-        <p class="d">约 60 MB。解压到任意目录直接运行,不写注册表。适合放 U 盘或不想装东西的机器。</p>
-        <span class="dl-btn">下载便携包</span>
-      </a>
-    </div>
-    <p class="dl-note">先下载免费版:注册就有 10,000 字符/月,不用自己申请 API Key;本地词典与划词翻译可以直接用,单词本只读。付费套餐在客户端「套餐」页选好周期后扫码付款,运营确认到账后自动开通;激活码也可用于赠送兑换。</p>
-  </div>
-</section>
-
-</main>
-
-<footer>
-  <div class="wrap foot">
-    <div>
-      <div class="brand" style="margin-bottom:.5rem">
-        <img src="assets/img/icon.png" alt="">
-        <span>Fast Translation</span>
-      </div>
-      <div class="mono">划词翻译 · 截图翻译 · 文档翻译 · 语音翻译 · 本地词典 · 单词本与复习</div>
-    </div>
-    <div class="mono">
-      <div>翻译由阿里云百炼 qwen-mt 提供</div>
-      <div><a href="mailto:3349325206@qq.com" style="color:inherit">3349325206@qq.com</a></div>
-      <div>© 2026 Fast Translation</div>
-      <div><a href="https://beian.miit.gov.cn/" rel="nofollow" style="color:inherit">__ICP_NUMBER__</a></div>
-    </div>
-  </div>
-</footer>
-
+  <footer class="wrap footer"><div><a class="brand" href="#"><img src="assets/img/icon.png" alt="" width="28" height="28"><span>Fast Translation</span></a><p>让理解随手发生。</p><span>© 2026 Fast Translation</span></div><div class="footer-links"><a href="https://github.com/LYW206817/FTranslation"><svg class="icon"><use href="#i-github"/></svg>GitHub / AGPL-3.0</a><a href="mailto:3349325206@qq.com">联系开发者</a><span>翻译由阿里云百炼提供</span><a href="https://beian.miit.gov.cn/" rel="nofollow">__ICP_NUMBER__</a></div></footer>
 </body>
 </html>
