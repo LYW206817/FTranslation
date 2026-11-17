@@ -10,12 +10,12 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Fast Translation — 读到哪里，译到哪里">
   <meta property="og:description" content="划词、截图、文档、语音，把翻译放回正在做的事里。为 Windows 打造，免费下载。">
-  <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png?v=5c9e7d186396">
+  <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png?v=9cf55e5bc556">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#F8F7FF">
-  <!-- v165：部署将 assets 缓存一年，引用带内容摘要，确保旧访客也能加载更新后的渐变。 -->
-  <link rel="stylesheet" href="assets/site.css?v=c53f8eed85bf">
-  <script src="assets/site.js" defer></script>
+  <!-- v168：assets 缓存一年，脚本与样式都带内容摘要，避免新版页面配到旧入场逻辑。 -->
+  <link rel="stylesheet" href="assets/site.css?v=628180514285">
+  <script src="assets/site.js?v=7f10d6984b72" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -42,15 +42,17 @@
   </div></header>
 
   <main id="main">
-    <section class="hero wrap" aria-labelledby="hero-title">
+    <div class="hero-shell wrap">
+    <section class="hero" aria-labelledby="hero-title">
       <a class="release-pill" href="#download"><span class="release-dot"></span>为 Windows 打造<span class="release-version">v1.5.1<svg class="icon"><use href="#i-arrow"/></svg></span></a>
-      <h1 id="hero-title">读到哪里，译到哪里。</h1>
-      <p class="hero-lede">选中文字，点一下翻译，在原处继续阅读。<br>让外语少一点距离，让思路多一点连贯。</p>
+      <h1 id="hero-title">读到哪里，<br><span>译到哪里。</span></h1>
+      <p class="hero-lede">选中文字，译文就在眼前。<span>少一次切换，多一点专注。</span></p>
       <div class="hero-actions"><a class="button primary" href="#download"><svg class="icon"><use href="#i-windows"/></svg>免费下载 Windows 版</a><a class="button secondary" href="#how">看看如何使用<svg class="icon"><use href="#i-arrow"/></svg></a></div>
       <p class="hero-meta">1.5.1 · 约 45 MB · Windows 10 / 11 · 无需另装运行时</p>
     </section>
 
-    <section class="showcase wrap" id="how" aria-label="产品交互演示">
+    <section class="showcase" id="how" aria-label="产品交互演示">
+      <div class="demo-header"><span><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg>翻译就在当前窗口</span><span>交互演示</span></div>
       <div class="demo-tabs enhanced-only" role="tablist" aria-label="选择演示场景">
         <button id="tab-sentence" role="tab" aria-selected="true" aria-controls="demo-sentence" data-demo="sentence"><svg class="icon"><use href="#i-bolt"/></svg>划词翻译</button>
         <button id="tab-word" role="tab" aria-selected="false" aria-controls="demo-word" tabindex="-1" data-demo="word"><svg class="icon"><use href="#i-book"/></svg>离线查词</button>
@@ -82,10 +84,17 @@
       <div class="demo-caption"><p><span class="caption-dot"></span><span id="demo-instruction" aria-live="polite">选中文字 → 点「翻译」→ 查看译文</span><button class="demo-reset enhanced-only" type="button">重新选词</button></p><span>交互示意 · 不发送在线翻译请求</span></div>
     </section>
 
-    <div class="contexts wrap"><p>在你熟悉的工作里，随手用起来</p><div><span>浏览网页</span><span>阅读 PDF</span><span>编写文档</span><span>查看代码</span></div></div>
+    </div>
+
+    <nav class="contexts wrap" aria-label="探索翻译场景">
+      <a href="#how"><span class="context-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><span><strong>划词翻译</strong><small>选中即用</small></span><svg class="icon context-arrow" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      <a href="#capture"><span class="context-icon"><svg class="icon" aria-hidden="true"><use href="#i-scan"/></svg></span><span><strong>截图翻译</strong><small>所见可译</small></span><svg class="icon context-arrow" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      <a href="#doc"><span class="context-icon"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg></span><span><strong>文档翻译</strong><small>结构保留</small></span><svg class="icon context-arrow" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      <a href="#speech"><span class="context-icon"><svg class="icon" aria-hidden="true"><use href="#i-wave"/></svg></span><span><strong>实时字幕</strong><small>边听边看</small></span><svg class="icon context-arrow" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+    </nav>
 
     <section class="section wrap" id="features" aria-labelledby="features-title">
-      <div class="section-heading"><h2 id="features-title">不止一段文字，<br>也不止一种场景。</h2><p>能选中的，随手翻译。选不中的，截个图。<br>一份文档、一堂网课，也有顺手的打开方式。</p></div>
+      <div class="section-heading"><div><span class="section-label chapter-label">01 / 翻译场景</span><h2 id="features-title">不管文字在哪里，<br>都有办法读懂。</h2></div><p>能选中的，随手翻译。选不中的，截个图。<br>一份文档、一堂网课，也有顺手的打开方式。</p></div>
       <div class="feature-grid">
         <article class="feature-card capture-feature" id="capture"><div class="feature-copy"><div class="feature-label"><svg class="icon"><use href="#i-scan"/></svg>截图翻译<kbd>Ctrl + Alt + S</kbd></div><h3>选不中的文字，<br>框起来就好。</h3><p>图片、扫描件、视频里的文字，框选后一起看译图、原文和译文。识别到的文字还可以编辑。</p></div><div class="capture-art" aria-label="截图翻译效果示意"><div class="capture-original"><span>图片原文</span><p>A fresh perspective<br>changes everything.</p><div class="crop-corner top-left"></div><div class="crop-corner bottom-right"></div></div><div class="capture-translated"><svg class="icon"><use href="#i-scan"/></svg><p>换个视角，<br>一切焕然一新。</p><span>译图示意</span></div></div><p class="feature-footnote">适合清晰、疏朗的排版；密集小字与多栏图片可能错位。</p></article>
         <article class="feature-card document-feature" id="doc"><div class="feature-copy"><div class="feature-label"><svg class="icon"><use href="#i-file"/></svg>文档翻译</div><h3>整份读懂，<br>原文件好好留着。</h3><p>拖入文件，译成新的那一份。保留段落、表格等结构，中途断开也能接着译。</p></div><div class="document-art" aria-label="文档翻译流程示意"><div class="document-sheet"><svg class="icon"><use href="#i-file"/></svg><span>一份阅读笔记.docx</span><i></i><i></i><i></i></div><span class="file-transfer"><svg class="icon"><use href="#i-arrow"/></svg></span><div class="document-sheet translated-sheet"><svg class="icon"><use href="#i-file"/></svg><span>一份阅读笔记.en.docx</span><i></i><i></i><i></i><span class="file-done"><svg class="icon"><use href="#i-check"/></svg>新文件已生成</span></div></div><p class="feature-footnote">支持 .docx / .txt / .md；局部加粗与超链接等格式可能合并。</p></article>
@@ -94,12 +103,12 @@
     </section>
 
     <section class="learning-section" id="words" aria-labelledby="words-title"><div class="wrap learning-grid">
-      <div class="learning-copy"><span class="section-label"><svg class="icon"><use href="#i-book"/></svg>从读懂，到记住</span><h2 id="words-title">查过的单词，<br>不止一面之缘。</h2><p>单个英文单词译成中文时，本地词典直接给出音标、词性和多种释义。没有网络，也能查。</p><ul class="learning-points"><li><svg class="icon"><use href="#i-check"/></svg>保存时，连同词典快照一起收好</li><li><svg class="icon"><use href="#i-check"/></svg>单词、短语、语句自动归类</li><li><svg class="icon"><use href="#i-check"/></svg>按记忆情况安排下次复习，跨设备同步</li></ul><p class="entitlement-note">本地查词免费；保存、同步与复习需 Lite 或以上套餐。</p></div>
+      <div class="learning-copy"><span class="section-label chapter-label">02 / 单词与复习</span><h2 id="words-title">查过的单词，<br>不止一面之缘。</h2><p>单个英文单词译成中文时，本地词典直接给出音标、词性和多种释义。没有网络，也能查。</p><ul class="learning-points"><li><svg class="icon"><use href="#i-check"/></svg>保存时，连同词典快照一起收好</li><li><svg class="icon"><use href="#i-check"/></svg>单词、短语、语句自动归类</li><li><svg class="icon"><use href="#i-check"/></svg>按记忆情况安排下次复习，跨设备同步</li></ul><p class="entitlement-note">本地查词免费；保存、同步与复习需 Lite 或以上套餐。</p></div>
       <div class="learning-visual"><span class="learning-visual-label">软件实际词典卡</span><img src="assets/img/word-card.png" alt="实际词典卡：charge 的音标、按词性分组的义项、词形变化与考试标签" width="735" height="341" loading="lazy"><div class="review-sample"><div><span>今天，再见一面</span><span>复习评分示意</span></div><p>这次记得怎么样？</p><div class="review-ratings"><span>忘记<small>10 分钟后</small></span><span>模糊<small>1 天后</small></span><span>熟悉<small>3 天后</small></span><span>记住<small>7 天后起</small></span></div></div></div>
     </div></section>
 
     <section class="section wrap interface-section" id="look" aria-labelledby="look-title">
-      <div class="section-heading"><div><span class="section-label">熟悉的 Windows，顺手的翻译</span><h2 id="look-title">轻轻打开，专心使用。</h2></div><p>平时藏在托盘，需要时就在身边。<br>集中翻译、管理单词、调整设置，都在同一个窗口。</p></div>
+      <div class="section-heading"><div><span class="section-label chapter-label">03 / Windows 原生体验</span><h2 id="look-title">需要时一键打开，<br>用完就回到手头的事。</h2></div><p>平时藏在托盘，需要时就在身边。<br>集中翻译、管理单词、调整设置，都在同一个窗口。</p></div>
       <div class="interface-toolbar"><span><span class="caption-dot"></span>软件实际界面</span><div class="theme-switch enhanced-only" role="group" aria-label="软件截图主题"><button type="button" data-theme="light" aria-pressed="true"><svg class="icon"><use href="#i-sun"/></svg>浅色</button><button type="button" data-theme="dark" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg>深色</button></div></div>
       <figure class="app-preview"><img id="app-screenshot" src="assets/img/main-light.png" alt="Fast Translation 浅色主窗口，左侧为功能导航，右侧为原文和译文区域" width="1750" height="1085" loading="lazy"><figcaption id="theme-caption">浅色主题 · 也可在软件中跟随系统切换</figcaption></figure>
       <div class="interface-notes"><span><svg class="icon"><use href="#i-check"/></svg>原生桌面体验</span><span><svg class="icon"><use href="#i-check"/></svg>浅色与深色主题</span><span><svg class="icon"><use href="#i-check"/></svg>全局快捷键</span><span><svg class="icon"><use href="#i-check"/></svg>支持自带 API Key</span></div>

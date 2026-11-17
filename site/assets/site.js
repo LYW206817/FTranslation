@@ -70,28 +70,37 @@
   const setupScrollReveal = () => {
     if (!('IntersectionObserver' in window)) return;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
-    const targets = [...document.querySelectorAll(
-      '.contexts, .section-heading > *, .feature-card, .speech-feature, .learning-copy, ' +
-      '.learning-visual, .interface-toolbar, .app-preview, .interface-notes, .center-heading, ' +
-      '.plan, .plans-note, .faq-section > div:first-child, .faq-list details, .download-intro, .download-option'
-    )];
-    // v163：出现与复位分用两个区域，卡片的入场位移不会在视口边缘触发隐藏/出现循环。
+    // v168：主题开关和问答按钮保持位置，避免入场位移让刚滚到这里的第一次点击落空。
+    const scenes = {
+      rise: '.contexts a, .section-heading > *, .speech-feature, .interface-toolbar > span, .interface-notes, ' +
+            '.center-heading, .plan, .plans-note, .download-option',
+      left: '.capture-feature, .learning-copy, .faq-section > div:first-child, .download-intro',
+      right: '.document-feature, .learning-visual',
+      iris: '.app-preview img',
+      fade: '.faq-list details'
+    };
+    const targets = Object.entries(scenes).flatMap(([effect, selector]) =>
+      [...document.querySelectorAll(selector)].map((target) => {
+        target.dataset.reveal = effect;
+        return target;
+      })
+    );
+    // v168：进入时越过粘性导航和底边才播放；离开更大的缓冲区才复位，来回滚动时不会闪烁。
     const entrance = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.16) entry.target.classList.add('is-visible');
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.1) entry.target.classList.add('is-visible');
       });
-    }, { threshold: 0.16, rootMargin: '0px 0px -32px 0px' });
+    }, { threshold: 0.1, rootMargin: '-100px 0px -26px 0px' });
     const departure = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) entry.target.classList.remove('is-visible');
       });
-    }, { rootMargin: '96px 0px' });
+    }, { rootMargin: '120px 0px' });
     targets.forEach((target) => {
       target.classList.add('scroll-reveal');
       const siblings = [...target.parentElement.children];
-      const staggered = target.parentElement.matches('.plans, .feature-grid, .learning-grid, .section-heading, .faq-list');
+      const staggered = target.parentElement.matches('.contexts, .plans, .feature-grid, .learning-grid, .section-heading, .faq-list');
       target.style.setProperty('--reveal-delay', `${staggered ? Math.min(siblings.indexOf(target), 3) * 80 : 0}ms`);
-      target.style.setProperty('--reveal-distance', `${Math.min(24, target.offsetHeight * 0.1)}px`);
     });
     const syncMotion = () => {
       entrance.disconnect();
