@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName PresentationCore
-$dir = 'D:\FTranslation\assets\icon'
+$dir = $PSScriptRoot
 
 # --- 第 1 步：读入 1280 的 jpg，用抗锯齿圆角矩形 alpha 蒙版（r=252）切出母版 ---
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'

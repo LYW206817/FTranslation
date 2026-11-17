@@ -72,7 +72,7 @@ curl -H @"$HDR" https://api.github.com/user
 
 ## 发版前自检清单
 
-- [ ] 五处版本号一致:`Directory.Build.props` / `installer/FastTranslation.iss` / `docs/portable-readme.txt` / `README.md` / `site/index.html`
+- [ ] `powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1` 通过（五处版本号、安装包与便携包名）
 - [ ] `dotnet build` 0 警告 0 错误;`dotnet test` 全绿(当前基线 704 个用例:Core 302 / Platform.Windows 97 / Providers.QwenMt 95 / Server 210;用例数会变,以本机输出为准,别拿旧数字当门)
 - [ ] 安装包与便携包都在 `publish/dist/`,文件名含新版本
 - [ ] 两个 Release 的资产 `state: uploaded`,digest 与本地 hash 一致

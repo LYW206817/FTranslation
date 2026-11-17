@@ -59,6 +59,9 @@ dotnet run --project server/FastTranslation.Server   # 本地起服务;Developme
 # dotnet build 不跑 IDE1006 —— 实测 EnforceCodeStyleInBuild 打开后一条都不出。
 # 它也不会自动修这些命名,只报位置;要收就手工改。
 dotnet format style FastTranslation.slnx --diagnostics IDE1006 --severity info --verify-no-changes
+
+# 发版前核对「版本号五处」与包名；改版本号后先跑它
+powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1
 ```
 
 ## 公开仓的内容披露
