@@ -282,7 +282,7 @@
             <StackPanel>
               <TextBlock x:Name="SubscribeTitle" Text="选择套餐与周期" FontSize="16" FontWeight="SemiBold"
                          TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <TextBlock Text="三档功能相同，按每月用量选；标价按 88 万字符 10 元折算，季付一次付 90 天。" FontSize="12.5" Margin="0,4,0,0"
+              <TextBlock Text="三档权益逐档叠加，区别在每月额度；标价按 88 万字符 10 元折算，季付一次付 90 天。" FontSize="12.5" Margin="0,4,0,0" TextWrapping="Wrap"
                          Foreground="{DynamicResource TextMutedBrush}"/>
             </StackPanel>
             <Border Grid.Column="1" Background="{DynamicResource WindowBgBrush}" CornerRadius="10"
