@@ -101,6 +101,19 @@ openssl rand -hex 32
 
 `Gateway:ApiKey` 填你自己的百炼 Key。填入后 `Gateway:Enabled` 为 true 即开始为免费用户提供带额度的翻译。
 
+### 注册验证码（生产必须打开）
+
+生产示例里的 `RequireEmailVerification` 已是 `true`。必须同时填齐 `Smtp` 的 `Host`、`Port`、`User`、`Password` 与 `From`；没填好时 `POST /api/v1/auth/code` 会返回 `503 mail_unavailable`（生产环境不会把验证码写进日志）。
+
+```bash
+# 服务器本机验证发码接口；把邮箱换成测试地址
+curl -sS -X POST http://127.0.0.1:5080/api/v1/auth/code 	-H 'Content-Type: application/json' 	-d '{"email":"you@example.com"}'
+# 成功：{"message":"code_sent"}
+# 未配好：503 + error=mail_unavailable
+```
+
+示例文件里的 `__SMTP_HOST__` / `__SMTP_FROM__` 会被当作未配置，不会真的去连占位主机。若暂时不想要求验证码，必须显式改回 `false`；这会让注册零门槛，不建议在生产保持关闭。
+
 配置文件的权限是 `root:ftserver 640` —— server 进程只读,root 可改。
 
 ## Caddyfile 的两处占位

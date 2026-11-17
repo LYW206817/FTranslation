@@ -8,7 +8,7 @@
   "Server": {
     "SigningKey": "__BASE64_32_BYTES__",
     "AdminToken": "__LONG_RANDOM_ADMIN_TOKEN__",
-    "RequireEmailVerification": false,
+    "RequireEmailVerification": true,
     "Smtp": {
       "Host": "__SMTP_HOST__",
       "Port": 587,
@@ -26,7 +26,7 @@
         "WsUrl": "wss://__WORKSPACE_ID__.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference",
         "WorkspaceId": "__WORKSPACE_ID__",
         "Model": "qwen-audio-3.1-asr-flash-streaming",
-        "QuotaCharsPerSecond": 20,
+        "QuotaCharsPerSecond": 50,
         "MinSeconds": 5,
         "MaxSecondsPerSession": 1800,
         "MaxConcurrentSessionsPerUser": 1,

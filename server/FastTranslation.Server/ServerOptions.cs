@@ -70,6 +70,13 @@ public sealed class SmtpOptions
 
     public string From { get; set; } = string.Empty;
 
-    public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(From);
+    public bool IsConfigured => IsUsable(Host) && IsUsable(From);
+
+    // 示例配置里的 __SMTP_HOST__ / __SMTP_FROM__ 不是空串，只看非空会把「忘了填」
+    // 当成已配置，然后在发码时抛连接异常。占位符一律按未配置处理，生产环境会
+    // 干净地回 503 mail_unavailable。
+    private static bool IsUsable(string value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && !(value.StartsWith("__", StringComparison.Ordinal)
+             && value.EndsWith("__", StringComparison.Ordinal));
 }
