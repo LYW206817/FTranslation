@@ -210,7 +210,7 @@ h2 .num { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); lett
 }
 
 /* 数据列表 */
-.figures { margin: 2.6rem 0 0; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 2rem; }
+.figures { margin: 2.6rem 0 0; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1.6rem; }
 .figures div { border-top: 2px solid var(--ink); padding-top: 0.9rem; }
 .figures dt { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); }
 .figures dd { margin: 0.35rem 0 0; font-family: var(--serif); font-size: 2rem; line-height: 1.15; }
@@ -227,6 +227,8 @@ ul.plain li { position: relative; padding-left: 1.1rem; margin-bottom: 0.55rem; 
 ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--blue); }
 /* 文档页那组要点:宽屏排两列,窄屏(见文件末尾的 @media)必须回到一列,否则每列只剩两三个字宽 */
 .doc-points { margin-top: 2.4rem; column-count: 2; column-gap: 3.5rem; }
+/* 热键与写回校验:三条短句,宽屏两列,窄屏一列 */
+.shortcuts { margin-top: 1.8rem; column-count: 2; column-gap: 3.5rem; }
 
 /* 套餐 —— 额度做成两行条目，不用徽章 */
 .plans { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1rem; }
@@ -285,6 +287,11 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
 
 /* ---------- 窄屏 ---------- */
 
+@media (max-width: 1024px) {
+  /* 四列数字在 900px 左右会挤成窄条,两列更易读 */
+  .figures { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1.4rem 2rem; }
+}
+
 @media (max-width: 880px) {
   body { font-size: 16px; }
   .hero, .sec-head { grid-template-columns: 1fr; gap: 2.2rem; }
@@ -303,6 +310,7 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
   .strip { grid-template-columns: 1fr; }
   .figures { grid-template-columns: 1fr; gap: 1.4rem; }
   .doc-points { column-count: 1; }
+  .shortcuts { column-count: 1; }
   section { padding-block: 3rem; }
   .hero { padding-block: 3.2rem; }
 }

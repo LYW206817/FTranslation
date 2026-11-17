@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fast Translation — 划词即译的 Windows 桌面工具</title>
-<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口。还能把整份 docx / txt / md 译成另一种语言,版式不动;电脑里正在播的声音,可以实时出双语字幕。Windows 10/11,免安装运行时。">
+<meta name="description" content="在任意程序里选中文字,一个工具条浮出来:复制、翻译、截图翻译。译文直接贴回原文旁边,不切窗口;选中单个英文单词还会给出音标、词性、义项与考试标签,本地词典离线查询。还能把整份 docx / txt / md 译成另一种语言,版式不动;电脑里正在播的声音,可以实时出双语字幕。Windows 10/11,免安装运行时。">
 <link rel="icon" href="assets/img/icon.png">
 <link rel="canonical" href="https://ftranslation.cn/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Fast Translation — 划词即译的 Windows 桌面工具">
-<meta property="og:description" content="选中文字,工具条浮出来;点翻译,译文贴回原文旁边。531 毫秒,不用切窗口。">
+<meta property="og:description" content="选中文字,工具条浮出来;点翻译,译文贴回原文旁边。单个英文单词直接出词典卡,531 毫秒,不用切窗口。">
 <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="assets/site.css">
@@ -26,6 +26,7 @@
     <nav aria-label="页面导航">
       <a href="#how">怎么用</a>
       <a href="#look">界面</a>
+      <a href="#words">单词</a>
       <a href="#doc">文档</a>
       <a href="#speech">语音</a>
       <a href="#numbers">实测</a>
@@ -42,7 +43,7 @@
     <p class="eyebrow">Windows 10 / 11 · 桌面划词翻译</p>
     <h1>选中,<br><mark>就已经译好了</mark>。</h1>
     <p class="lede">
-      在任意程序里选中一段文字,鼠标旁边浮出一个小工具条。点「翻译」,译文出现在原句下方——不用切窗口,不用复制粘贴,不用等一个网页加载完。
+      在任意程序里选中一段文字,鼠标旁边浮出一个小工具条。点「翻译」,译文出现在原句下方——不用切窗口,不用复制粘贴,不用等一个网页加载完。选中单个英文单词、且译成中文时,结果卡会换成词典样式:音标、词性、多义项与考试标签都在,查词离线完成。
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="#download">下载安装 <span aria-hidden="true">→</span></a>
@@ -113,14 +114,21 @@
       <div>
         <div class="glyph act">译</div>
         <h3>翻译</h3>
-        <p>译完可直接「替换原文」或「插入译文」,写回靠模拟输入,不改剪贴板内容。</p>
+        <p>译文可复制、替换原文、插入光标处,或存进单词本。英→中翻译单个英文单词时,结果卡换成词典样式。</p>
       </div>
       <div>
         <div class="glyph">▣</div>
         <h3>截图翻译</h3>
-        <p>框一块屏幕区域,出译图。用于图片、扫描件、游戏与视频字幕。</p>
+        <p>框一块屏幕区域,出译图;同时识别原文,得到一份可编辑的文本。用于图片、扫描件、游戏与视频字幕。</p>
       </div>
     </div>
+
+    <ul class="plain shortcuts">
+      <li><span class="mono">Ctrl+Alt+T</span> 直接翻译当前选区,不用先点工具条;主窗口里 <span class="mono">Ctrl+Enter</span> 翻译输入框</li>
+      <li><span class="mono">Ctrl+Alt+S</span> 截图翻译</li>
+      <li><span class="mono">Ctrl+Alt+V</span> 开始 / 结束语音翻译;三个热键都能在设置里改</li>
+      <li>「替换原文」「插入译文」写回前会核对目标窗口、锚点与选区文本,对不上就降级成「已复制」,不会写错地方</li>
+    </ul>
   </div>
 </section>
 
@@ -128,30 +136,51 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">02 / 界面</span>没有主界面哲学</h2>
-        <p class="sub">主窗口只在你想手动翻译时打开。日常使用中,你看到的是工具条、结果卡、和一个托盘图标。</p>
+        <h2><span class="num">02 / 界面</span>十个页面,一个托盘</h2>
+        <p class="sub">日常使用中,你看到的是工具条、结果卡和一个托盘图标。需要集中管理时,主窗口的侧栏还有十个页面:首页、单词、短语、语句、复习、文档、语音、套餐、账号、设置。</p>
       </div>
-      <p class="aside-note">配色跟系统深浅色走。浅色 #F7F9FC / 白 / #2562FF,深色 #16191F / #1F242C / #4A82FF。</p>
+      <p class="aside-note">配色跟系统深浅色走。浅色 #F7F9FC / 白 / #2562FF,深色 #16191F / #1F242C / #4A82FF;强调色有电光蓝、湖蓝、雾光紫三支,选完立即生效。</p>
     </div>
 
     <div class="plates">
       <figure class="plate">
-        <img src="assets/img/main-light.png" alt="主窗口浅色主题:输入框、语言选择、模型标记、翻译按钮">
+        <img src="assets/img/main-light.png" alt="主窗口浅色主题:左侧十个页面、翻译输入区、语言与模型选择">
         <figcaption><span>主窗口 / 浅色</span><span>Ctrl+Enter 翻译</span></figcaption>
       </figure>
       <figure class="plate">
-        <img src="assets/img/main-dark.png" alt="主窗口深色主题">
+        <img src="assets/img/main-dark.png" alt="主窗口深色主题:左侧十个页面与翻译输入区">
         <figcaption><span>主窗口 / 深色</span><span>跟随系统</span></figcaption>
       </figure>
       <figure class="plate">
-        <img src="assets/img/settings-light.png" alt="设置窗口:服务地址、API Key、热键、外观">
-        <figcaption><span>设置 / 服务与热键</span><span>浅色主题</span></figcaption>
+        <img src="assets/img/wordbook-dictionary.png" alt="单词本详情:原文、译文、词典快照与四档复习评分">
+        <figcaption><span>单词本 / 词典快照</span><span>单词 · 短语 · 语句</span></figcaption>
       </figure>
       <figure class="plate">
-        <img src="assets/img/notes.png" alt="单词本窗口:搜索、单词/短语/语句三栏、详情面板">
-        <figcaption><span>单词本</span><span>单词 · 短语 · 语句</span></figcaption>
+        <img src="assets/img/word-card.png" alt="结果卡:单个英文单词显示音标、词性、多义项、词形与考试标签">
+        <figcaption><span>结果卡 / 单词</span><span>ECDICT 离线词典</span></figcaption>
       </figure>
     </div>
+  </div>
+</section>
+
+<section id="words">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2><span class="num">03 / 单词</span>查词在本地,复习有节奏</h2>
+        <p class="sub">选中单个英文单词、译成中文时,结果卡会换成词典卡:音标、按词性分组的义项、词形变化与考试标签。词库随安装包分发,离线查询,不消耗额度。</p>
+      </div>
+      <p class="aside-note">词库是 ECDICT 的裁剪子集(MIT),57,841 个常用英文词;只覆盖单个英文单词的英→中查询,不提供例句。</p>
+    </div>
+
+    <ul class="plain doc-points">
+      <li>英→中时只有单个英文单词会走词典,短语和句子仍走在线翻译;本地命中约 0.35 ms,不联网、不耗额度</li>
+      <li>词典卡可以一键存进单词本;音标、词性、义项、词形与考试标签会跟着存下来</li>
+      <li>单词本按单词 / 短语 / 语句自动归类,支持搜索、备注、改类型;登录后跨设备同步,免费版只读</li>
+      <li>复习队列每天把到期的卡排进来,另加最多 20 条当天新存的;新卡没学完会留到以后,日界线按本机时区零点算</li>
+      <li>四档评分:忘记 10 分钟后、模糊 1 天后、熟悉 3 天后、记住 7 天后;之后每次「记住」逐档升到 14 / 28 / 56 天</li>
+      <li>复习页可以只用键盘:空格看译文,1–4 评分,跳过不算评过</li>
+    </ul>
   </div>
 </section>
 
@@ -159,7 +188,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">03 / 文档</span>整份文件,译完还是它原来的样子</h2>
+        <h2><span class="num">04 / 文档</span>整份文件,译完还是它原来的样子</h2>
         <p class="sub">把 <span class="mono">.docx</span> / <span class="mono">.txt</span> / <span class="mono">.md</span> 拖进「文档」页,选目标语言,点开始。产出 <span class="mono">原文件名.en.docx</span> 这样的新文件,原文件一个字节都不动。</p>
       </div>
       <p class="aside-note">解析、拆段、回写全在本机完成,出网的只有段落文字本身。上限:单文件 ≤10 MB、可译字符 ≤20 万、段落 ≤5,000。</p>
@@ -191,10 +220,10 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">04 / 语音</span>电脑里在播什么,字幕就翻什么</h2>
+        <h2><span class="num">05 / 语音</span>电脑里在播什么,字幕就翻什么</h2>
         <p class="sub">会议、网课、视频,按 <span class="mono">Ctrl+Alt+V</span> 开一场语音翻译:屏幕底部升起一块字幕条,原声说完一秒左右,中文原文和译文一起滚出来。</p>
       </div>
-      <p class="aside-note">采集的是系统回环声音,音频会经我们的服务端转发给识别接口(不保存);按秒计费,每秒 50 字符,开始前就能看到还能讲多久。</p>
+      <p class="aside-note">采集的是系统回环声音,音频会经我们的服务端转发给识别接口(不保存);按秒计费,每秒 50 字符,开始前就能看到今天 / 本月还能讲多久。</p>
     </div>
 
     <div class="plates">
@@ -212,7 +241,7 @@
       <li>回环采声:耳机里听什么就翻什么,不占麦克风,不用选窗口</li>
       <li>说约一秒出字幕:原文与译文成对滚动,终稿前先出灰色草稿</li>
       <li>部分结果不送翻译,只有终稿会送去翻译;字幕条数有上限,只影响显示不影响翻译</li>
-      <li>按秒计费每秒 50 字符,开始前显示「本月剩余可讲约 N 分钟」,不够 30 秒直接拦下</li>
+      <li>按秒计费每秒 50 字符,每轮会话最少按 5 秒计费;开始前显示「今天 / 本月剩余可讲约 N 分钟」,剩余不足 30 秒直接拦下</li>
       <li>额度用完、服务未开、请求太频都有明确文案,不会拿「连接失败」糊弄</li>
       <li>切换播放设备自动重接采集,字幕停顿一秒,会话不中断</li>
     </ul>
@@ -223,16 +252,20 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">05 / 实测</span>数字来自真实请求</h2>
+        <h2><span class="num">06 / 实测</span>数字来自真实请求</h2>
         <p class="sub">下面这些不是宣传口径,是开发机上跑真实翻译接口记录下来的值。</p>
       </div>
-      <p class="aside-note">测量方式:客户端记录 Environment.TickCount64 差值;token 与环境来自服务端记账表 usage_events。</p>
+      <p class="aside-note">测量方式:客户端记录 Environment.TickCount64 差值;token 与环境来自服务端记账表 usage_events。词典耗时是本地词库查询的实测值。</p>
     </div>
 
     <dl class="figures">
       <div>
         <dt>单次翻译耗时</dt>
         <dd>531<small>毫秒,短句 en→zh,走开发者网关 + qwen-mt-flash</small></dd>
+      </div>
+      <div>
+        <dt>本地词典查词</dt>
+        <dd>0.35<small>毫秒,57,841 词;离线查询,不消耗额度</small></dd>
       </div>
       <div>
         <dt>每次请求 token</dt>
@@ -250,7 +283,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">06 / 取舍</span>能做与不做</h2>
+        <h2><span class="num">07 / 取舍</span>能做与不做</h2>
         <p class="sub">写在这里的边界都是实测出来的,不是没做完。</p>
       </div>
       <p class="aside-note">划词取词顺序:先 UIA 读当前选区,读不到再退回模拟 Ctrl+C 抓剪贴板。两条路径都在你的机器上完成。</p>
@@ -262,8 +295,9 @@
         <ul class="plain">
           <li>网页、PDF 阅读器、IDE、Word 里的划词取词</li>
           <li>译文写回原位置,替换与插入两种方式</li>
-          <li>截图翻译适合稀疏排版:网页、宽界面、PPT</li>
-          <li>单词本按单词 / 短语 / 语句自动归类</li>
+          <li>单个英文单词的本地词典卡,离线、不耗额度</li>
+          <li>截图翻译适合稀疏排版:网页、宽界面、PPT;结果窗还能改识别出的原文</li>
+          <li>单词本按单词 / 短语 / 语句自动归类,四档间隔复习</li>
           <li>句子级缓存,同一句重复翻译不再发请求</li>
           <li>整份 docx / txt / md 翻译,产出新文件,原文件不动</li>
         </ul>
@@ -274,6 +308,8 @@
           <li>Windows 终端 / cmd / PowerShell 只取词、不写回</li>
           <li>密码框不取词</li>
           <li>密集小字、多栏挤在一起的截图会错位</li>
+          <li>词典只覆盖单个英文单词(英→中),不提供例句;短语与句子走在线翻译</li>
+          <li>xlsx / pptx / pdf 文档尚未支持</li>
           <li>不采集任何使用数据,不写文本日志</li>
           <li>安装包未做代码签名,首次运行会提示未知发布者</li>
         </ul>
@@ -286,10 +322,10 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">07 / 套餐</span>按字符算,不按时间算</h2>
-        <p class="sub">额度用字符衡量:一个汉字、一个字母都算一个字符。额度用完不会断你,会自动切到你自己填的 API Key 继续翻。标价按 88 万字符 10 元折算,月付 / 季付同单价,季付一次付 90 天。</p>
+        <h2><span class="num">08 / 套餐</span>按字符算,不按时间算</h2>
+        <p class="sub">额度用字符衡量:一个汉字、一个字母都算一个字符。额度用完不会断你,会自动切到你自己填的 API Key 继续翻。三档权益逐档叠加,区别在每月额度;标价按 88 万字符 10 元折算,月付 / 季付同单价,季付一次付 90 天。</p>
       </div>
-      <p class="aside-note">付费额度由开发者账号统一出,你不用自己去阿里云开 Key。也可以一直用自己的 Key,免费版即可。</p>
+      <p class="aside-note">付费额度由开发者账号统一出,你不用自己去阿里云开 Key。也可以一直用自己的 Key,免费版即可。语音按每秒 50 字符折算,88 万 / 188 万 / 388 万字符全部用于语音时分别约 5 / 10 / 21 小时。账号页能看到本月 / 今日剩余与登录设备,单账号最多 3 台,不用的设备可以移除。</p>
     </div>
 
     <div class="plans">
@@ -300,6 +336,8 @@
           <li>划词翻译</li>
           <li>截图翻译</li>
           <li>文档翻译(docx / txt / md)</li>
+          <li>本地词典(离线,不耗额度)</li>
+          <li>语音字幕(计入额度)</li>
           <li>自带 API Key,额度不限本工具</li>
           <li>单词本只读</li>
         </ul>
@@ -312,6 +350,7 @@
         <ul>
           <li>免费版全部功能</li>
           <li>单词本保存与跨设备同步</li>
+          <li>四档间隔复习</li>
           <li>无每日限额,只有月额度</li>
           <li>季付 20.7 元,合 6.9 元 / 月</li>
         </ul>
@@ -348,7 +387,7 @@
   <div class="wrap">
     <div class="sec-head">
       <div>
-        <h2><span class="num">08 / 下载</span>装完就能用</h2>
+        <h2><span class="num">09 / 下载</span>装完就能用</h2>
         <p class="sub">安装版支持自动更新;便携版解压即用,不写注册表,但升级要手动换包。</p>
       </div>
       <p class="aside-note">系统要求 Windows 10 1903+ / Windows 11,64 位。.NET 运行时已内置,不需要另装。装在用户目录,不需要管理员权限。</p>
@@ -368,7 +407,7 @@
         <span class="dl-btn">下载便携包</span>
       </a>
     </div>
-    <p class="dl-note">先下载免费版:注册就有 10,000 字符/月,不用自己申请 API Key。付费套餐在客户端「套餐」页选好周期后扫码付款,运营确认到账后自动开通;激活码也可用于赠送兑换。</p>
+    <p class="dl-note">先下载免费版:注册就有 10,000 字符/月,不用自己申请 API Key;本地词典与划词翻译可以直接用,单词本只读。付费套餐在客户端「套餐」页选好周期后扫码付款,运营确认到账后自动开通;激活码也可用于赠送兑换。</p>
   </div>
 </section>
 
@@ -381,7 +420,7 @@
         <img src="assets/img/icon.png" alt="">
         <span>Fast Translation</span>
       </div>
-      <div class="mono">划词翻译 · 截图翻译 · 文档翻译 · 语音翻译 · 单词本</div>
+      <div class="mono">划词翻译 · 截图翻译 · 文档翻译 · 语音翻译 · 本地词典 · 单词本与复习</div>
     </div>
     <div class="mono">
       <div>翻译由阿里云百炼 qwen-mt 提供</div>
