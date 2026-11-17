@@ -66,4 +66,46 @@
 
   // 最后再显示增强控件，脚本缺失或未执行时，静态示例与下载入口仍可完整阅读。
   document.documentElement.classList.add('js');
+
+  const setupScrollReveal = () => {
+    if (!('IntersectionObserver' in window)) return;
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const targets = [...document.querySelectorAll(
+      '.contexts, .section-heading > *, .feature-card, .speech-feature, .learning-copy, ' +
+      '.learning-visual, .interface-toolbar, .app-preview, .interface-notes, .center-heading, ' +
+      '.plan, .plans-note, .faq-section > div:first-child, .faq-list details, .download-intro, .download-option'
+    )];
+    // v163：出现与复位分用两个区域，卡片的入场位移不会在视口边缘触发隐藏/出现循环。
+    const entrance = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.16) entry.target.classList.add('is-visible');
+      });
+    }, { threshold: 0.16, rootMargin: '0px 0px -32px 0px' });
+    const departure = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) entry.target.classList.remove('is-visible');
+      });
+    }, { rootMargin: '96px 0px' });
+    targets.forEach((target) => {
+      target.classList.add('scroll-reveal');
+      const siblings = [...target.parentElement.children];
+      const staggered = target.parentElement.matches('.plans, .feature-grid, .learning-grid, .section-heading, .faq-list');
+      target.style.setProperty('--reveal-delay', `${staggered ? Math.min(siblings.indexOf(target), 3) * 80 : 0}ms`);
+      target.style.setProperty('--reveal-distance', `${Math.min(24, target.offsetHeight * 0.1)}px`);
+    });
+    const syncMotion = () => {
+      entrance.disconnect();
+      departure.disconnect();
+      targets.forEach((target) => {
+        target.classList.toggle('is-visible', motion.matches);
+        if (!motion.matches) {
+          entrance.observe(target);
+          departure.observe(target);
+        }
+      });
+    };
+    motion.addEventListener('change', syncMotion);
+    syncMotion();
+  };
+  setupScrollReveal();
 })();

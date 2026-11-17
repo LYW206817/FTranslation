@@ -27,6 +27,11 @@
   --white: #FFFFFF;
   --shadow: 0 22px 60px -20px rgb(40 65 110 / 18%);
   --card-shadow: 0 16px 44px -18px rgb(40 65 110 / 28%), 0 2px 8px rgb(40 65 110 / 4%);
+  --plan-shadow: 0 25px 46px -24px rgb(31 62 126 / 30%), 0 3px 10px rgb(31 62 126 / 4%);
+  --plan-shadow-raised: 0 36px 56px -22px rgb(31 62 126 / 32%);
+  --plan-glow: rgb(37 98 255 / 10%);
+  --plan-brand-line: rgb(255 255 255 / 26%);
+  --plan-brand-sheen: rgb(255 255 255 / 12%);
   --sans: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
   --measure: 1160px;
 }
@@ -246,23 +251,44 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .interface-notes > span { display: flex; align-items: center; gap: 7px; }
 .interface-notes .icon { color: var(--brand); width: 15px; height: 15px; }
 
-.plans-section { padding-block: 84px; background: var(--canvas); border-block: 1px solid var(--line); }
+.plans-section { padding-block: 92px; background: linear-gradient(180deg, var(--canvas), var(--stage) 64%, var(--canvas)); border-block: 1px solid var(--line); }
 .center-heading { text-align: center; margin-bottom: 46px; }
 .center-heading h2 { font-size: clamp(28px, 3vw, 38px); }
 .center-heading > p { font-size: 14px; color: var(--secondary); margin-top: 18px; line-height: 1.9; }
-.plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.plan { position: relative; padding: 27px 22px 25px; border: 1px solid var(--line); border-radius: 12px; background: var(--page); }
+.plans { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; padding: 28px 12px 36px; isolation: isolate; }
+/* v163：光底超出卡组会在 320px 屏幕撑出横向滚动，径向渐变在组内自然收边。 */
+.plans::before { content: ""; position: absolute; inset: 45% 0 -10px; z-index: -1; pointer-events: none; background: radial-gradient(ellipse, var(--plan-glow), transparent 68%); }
+/* v163：卡片用小角度与高低差形成展开层次，交互时回正，保证价格和权益能舒适阅读。 */
+.plan { --plan-angle: -2.4deg; --plan-rise: 18px; position: relative; isolation: isolate; padding: 30px 23px 28px; border: 1px solid var(--stage-line); border-radius: 22px; background: var(--page); box-shadow: var(--plan-shadow); transform: translateY(var(--plan-rise)) rotate(var(--plan-angle)); transition: transform .42s cubic-bezier(.2,.7,.2,1), box-shadow .42s, border-color .25s; }
+.plan::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 145px; border-radius: 22px 22px 70% 0; background: linear-gradient(135deg, var(--brand-soft), transparent 78%); pointer-events: none; }
+.plan:nth-child(2) { --plan-angle: -1.1deg; --plan-rise: 2px; }
+.plan:nth-child(3) { --plan-angle: 1.4deg; --plan-rise: -14px; z-index: 2; }
+.plan:nth-child(4) { --plan-angle: 2.4deg; --plan-rise: 18px; }
+.plan-emblem { position: absolute; right: 22px; top: 25px; display: flex; align-items: center; justify-content: center; width: 39px; height: 39px; border: 1px solid var(--stage-line); border-radius: 13px; background: var(--page); color: var(--brand); }
+.plan-emblem .icon { width: 19px; height: 19px; }
 .plan h3 { font-size: 22px; letter-spacing: -.02em; }
 .plan-for { font-size: 12px; color: var(--secondary); margin-top: 7px; }
-.price { font-size: 36px; font-weight: 600; letter-spacing: -.05em; margin-top: 22px; line-height: 1.25; }
+.price { font-size: 43px; font-weight: 650; letter-spacing: -.05em; margin-top: 33px; line-height: 1.25; }
 .price > span { font-size: 12px; font-weight: 400; color: var(--secondary); letter-spacing: 0; }
-.quota { color: var(--secondary); font-size: 13px; margin-top: 9px; }
-.plan-button { width: 100%; min-height: 42px; font-size: 12px; margin-top: 22px; padding-inline: 6px; }
+.quota { display: flex; align-items: baseline; gap: 6px; color: var(--secondary); font-size: 11px; margin-top: 16px; }
+.quota strong { font-size: 17px; color: var(--brand-ink); font-weight: 600; letter-spacing: -.025em; }
+.plan-button { width: 100%; min-height: 46px; font-size: 13px; margin-top: 25px; padding-inline: 6px; border-radius: 10px; }
+.plan:nth-child(2) .plan-button, .plan:nth-child(4) .plan-button { border-color: var(--stage-line); color: var(--brand-ink); background: var(--brand-soft); }
 .plan ul { padding: 21px 0 0; margin: 22px 0 0; border-top: 1px solid var(--line); list-style: none; }
 .plan li { font-size: 12px; color: var(--secondary); margin-top: 10px; padding-left: 17px; position: relative; }
 .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--brand); }
-.featured-plan { border: 1.5px solid var(--brand); box-shadow: 0 8px 24px rgb(37 98 255 / 7%); }
-.plan-recommend { position: absolute; top: -12px; right: 20px; background: var(--brand); color: var(--white); font-size: 10px; padding: 3px 10px; border-radius: 5px; }
+.featured-plan { border-color: var(--brand); color: var(--white); background: linear-gradient(145deg, var(--brand-hover), var(--brand-ink)); box-shadow: 0 25px 50px -20px var(--plan-glow), var(--plan-shadow); }
+.featured-plan::before { height: 200px; background: radial-gradient(ellipse at 100% 0, var(--plan-brand-sheen), transparent 70%); }
+.featured-plan .plan-for, .featured-plan .price > span, .featured-plan .quota, .featured-plan .quota strong, .featured-plan li, .featured-plan li::before { color: var(--white); }
+.featured-plan ul { border-color: var(--plan-brand-line); }
+.featured-plan .plan-emblem { background: var(--plan-brand-sheen); border-color: var(--plan-brand-line); color: var(--white); }
+.featured-plan .button.primary { color: var(--brand-ink); background: var(--white); border-color: var(--white); box-shadow: none; }
+.featured-plan .button.primary:hover { background: var(--brand-soft); border-color: var(--brand-soft); }
+.plan-recommend { position: absolute; top: -15px; left: 26px; width: fit-content; background: var(--white); color: var(--brand-ink); border: 1px solid var(--stage-line); font-size: 11px; font-weight: 600; padding: 4px 13px; border-radius: 20px; box-shadow: 0 4px 12px var(--plan-glow); }
+.plan:focus-within { z-index: 5; transform: translateY(-16px) rotate(0deg); box-shadow: var(--plan-shadow-raised); border-color: var(--brand); }
+@media (hover: hover) and (pointer: fine) {
+  .plan:hover { z-index: 5; transform: translateY(-16px) rotate(0deg); box-shadow: var(--plan-shadow-raised); border-color: var(--brand); }
+}
 .plans-note { font-size: 11px; color: var(--muted); max-width: 880px; margin: 25px auto 0; text-align: center; line-height: 1.9; }
 .faq-section { display: grid; grid-template-columns: 1fr 1.5fr; gap: 80px; }
 .faq-section h2 { font-size: 30px; }
@@ -302,6 +328,11 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .footer .footer-links > span { margin: 0; font-size: 11px; }
 
 @keyframes hero-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.scroll-reveal { opacity: 0; }
+.scroll-reveal.is-visible { opacity: 1; animation: scroll-reveal-in .64s cubic-bezier(.2,.65,.25,1) var(--reveal-delay, 0ms) both; }
+/* 键盘可直接到达未入场的链接，不能让视觉动画把已聚焦的控件藏起来。 */
+.scroll-reveal:focus-within { opacity: 1; translate: 0 0; animation: none; }
+@keyframes scroll-reveal-in { from { opacity: 0; translate: 0 var(--reveal-distance, 24px); } to { opacity: 1; translate: 0 0; } }
 @media (min-width: 1600px) { .hero { padding-top: 80px; padding-bottom: 50px; } }
 @media (max-width: 1100px) {
   .nav-inner { gap: 20px; }
@@ -315,8 +346,8 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .language-pair { font-size: 8px; }
   .learning-grid { gap: 45px; }
   .speech-feature { gap: 32px; padding: 32px; }
-  .plans { gap: 10px; }
-  .plan { padding-inline: 17px; }
+  .plans { gap: 13px; padding-inline: 7px; }
+  .plan { padding-inline: 18px; }
   .quota { font-size: 11px; }
   .plan li, .plan-for { font-size: 10px; }
   .download-section { gap: 60px; padding-inline: 46px; }
@@ -374,7 +405,9 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .review-sample { margin-inline: 10px; padding: 17px; }
   .review-ratings small { font-size: 8px; }
   .interface-notes { gap: 23px; font-size: 11px; }
-  .plans { grid-template-columns: repeat(2, 1fr); gap: 22px 18px; }
+  .plans { grid-template-columns: repeat(2, 1fr); gap: 32px 22px; padding: 12px 8px 22px; }
+  .plan:nth-child(n) { --plan-rise: 0px; --plan-angle: -1deg; }
+  .plan:nth-child(2n) { --plan-angle: 1deg; }
   .plan { padding: 28px; }
   .plan li, .plan-for { font-size: 12px; }
   .quota { font-size: 13px; }
@@ -500,7 +533,7 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .center-heading { margin-bottom: 32px; }
   .center-heading h2 { font-size: 27px; }
   .center-heading > p { font-size: 12px; margin-top: 15px; }
-  .plans { gap: 22px 10px; }
+  .plans { gap: 29px 14px; }
   .plan { padding: 22px 15px; border-radius: 10px; }
   .plan h3 { font-size: 21px; }
   .plan-for { font-size: 10px; }
@@ -509,7 +542,7 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .plan-button { font-size: 11px; min-height: 40px; margin-top: 18px; }
   .plan ul { margin-top: 18px; padding-top: 12px; }
   .plan li { font-size: 10px; padding-left: 12px; line-height: 1.8; }
-  .plan-recommend { right: 12px; font-size: 9px; }
+  .plan-recommend { left: 18px; font-size: 10px; }
   .plans-note { font-size: 10px; text-align: left; margin-top: 22px; }
   .faq-section { grid-template-columns: 1fr; gap: 28px; }
   .faq-section h2 { font-size: 28px; }
@@ -529,7 +562,9 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .footer .footer-links > span { font-size: 10px; }
 }
 @media (max-width: 480px) {
-  .plans { grid-template-columns: 1fr; gap: 23px; }
+  .plans { grid-template-columns: 1fr; gap: 30px; }
+  .plan:nth-child(n) { --plan-angle: -.6deg; }
+  .plan:nth-child(2n) { --plan-angle: .6deg; }
   .plan { padding: 25px; }
   .plan-for, .plan li { font-size: 12px; }
   .price { font-size: 36px; }
@@ -554,4 +589,6 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  .scroll-reveal { opacity: 1; translate: none; }
+  .plan:nth-child(n), .plan:focus-within { transform: none; }
 }
