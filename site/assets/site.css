@@ -43,6 +43,10 @@
   --dream-glass: rgb(255 255 255 / 82%);
   --dream-card: rgb(255 255 255 / 76%);
   --dream-rule: #DEE2F4;
+  --toolbar-brand: #3B6BF0;
+  --toolbar-icon: #5C6B82;
+  --toolbar-hover: #F0F4FA;
+  --toolbar-border: #E4EAF3;
   --sans: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
   --measure: 1160px;
 }
@@ -118,12 +122,16 @@ h1, h2, h3 { font-weight: 650; line-height: 1.35; letter-spacing: -.045em; text-
 .reader-selection { position: relative; width: fit-content; margin-top: 15px; font-size: 21px; font-weight: 500; }
 mark { background: var(--brand-soft); color: var(--brand-ink); padding: 2px 3px; }
 .demo-cursor { position: absolute; right: -18px; bottom: -17px; width: 22px; height: 26px; fill: var(--ink); stroke: var(--white); stroke-width: 2; z-index: 2; }
-.floating-toolbar { position: relative; display: inline-flex; align-items: center; gap: 4px; margin: 12px 0 17px 68px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); box-shadow: var(--card-shadow); }
-.floating-toolbar > span, .toolbar-translate { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; height: 32px; font-size: 10px; }
-.floating-toolbar .icon { width: 12px; height: 12px; }
-.toolbar-translate { background: var(--brand); color: var(--white); border: 0; border-radius: 5px; min-height: 44px; }
-.toolbar-translate span { font-size: 11px; }
-.toolbar-translate:hover { background: var(--brand-hover); }
+.floating-toolbar { position: relative; display: inline-flex; align-items: center; gap: 0; margin: 12px 0 17px 68px; padding: 4px; border: 1px solid var(--toolbar-border); border-radius: 10px; background: var(--page); box-shadow: var(--card-shadow); }
+/* v166：按钮高度和字形曾各画一套；统一原生工具条的胶囊比例、中心线与配色，避免翻译按钮单独变高。 */
+.toolbar-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 10px; height: 28px; min-height: 28px; color: var(--ink); font-size: 12px; line-height: 18px; white-space: nowrap; }
+.floating-toolbar .icon { width: 16px; height: 16px; stroke-width: 1.5; color: var(--toolbar-icon); }
+.floating-toolbar .toolbar-divider { width: 1px; height: 16px; margin: 0 2px; flex: 0 0 1px; background: var(--toolbar-border); }
+.toolbar-translate { background: var(--toolbar-hover); border: 0; border-radius: 6px; }
+.toolbar-translate .icon { color: var(--toolbar-brand); }
+.toolbar-translate:hover { background: var(--brand-soft); }
+/* 触摸屏可与鼠标并存，按任一触摸指针扩大目标，不能只检查主指针。 */
+@media (any-pointer: coarse) { .toolbar-action { height: 44px; min-height: 44px; } }
 .reader-body > .reader-bottom { font-size: 11px; }
 .translation-card { position: absolute; right: 0; top: 120px; width: 43%; padding: 20px; border: 1px solid var(--stage-line); border-radius: 14px; background: var(--page); box-shadow: var(--card-shadow); }
 .result-top { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; }
@@ -465,8 +473,8 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .reader-body h2 { font-size: 20px; margin-top: 6px; }
   .reader-body > p:not([class]) { font-size: 10px; }
   .reader-selection { font-size: 18px; margin-top: 13px; }
-  .floating-toolbar { margin: 12px 0 0 13px; }
-  .floating-toolbar > span, .toolbar-translate { font-size: 9px; padding-inline: 7px; }
+  .floating-toolbar { margin: 12px 0 0; }
+  .toolbar-action { font-size: 11px; padding-inline: 8px; }
   .reader-body > .reader-bottom { display: none; }
   .translation-card { position: relative; top: auto; right: auto; width: calc(100% - 16px); padding: 17px; margin: -2px 0 0 16px; border-radius: 10px; }
   .result-top { font-size: 10px; }

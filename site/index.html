@@ -10,11 +10,11 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Fast Translation — 读到哪里，译到哪里">
   <meta property="og:description" content="划词、截图、文档、语音，把翻译放回正在做的事里。为 Windows 打造，免费下载。">
-  <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png?v=e69718556c50">
+  <meta property="og:image" content="https://ftranslation.cn/assets/img/og.png?v=5c9e7d186396">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#F8F7FF">
   <!-- v165：部署将 assets 缓存一年，引用带内容摘要，确保旧访客也能加载更新后的渐变。 -->
-  <link rel="stylesheet" href="assets/site.css?v=998c47eea0a7">
+  <link rel="stylesheet" href="assets/site.css?v=b8ae34d05006">
   <script src="assets/site.js" defer></script>
 </head>
 <body>
@@ -23,8 +23,10 @@
     <symbol id="i-windows" viewBox="0 0 24 24"><path d="M2 4.5 11 3.3v8H2zm11-1.4L22 2v9.3h-9zM2 13h9v8l-9-1.2zm11 0h9v9.3L13 21z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
-    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M15 8V4H4v11h4"/></symbol>
-    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5M7 12h10"/></symbol>
+    <!-- v166：这三支路径与 OverlayWindows.cs 的 FtTheme.Icons 同源，避免宣传示意另画一套而偏离实际工具条。 -->
+    <symbol id="i-copy" viewBox="0 0 16 16"><path vector-effect="non-scaling-stroke" d="M 5.5,5.5 V 4 A 2,2 0 0 1 7.5,2 H 12 A 2,2 0 0 1 14,4 V 8.5 A 2,2 0 0 1 12,10.5 H 10.5 M 10.5,5.5 H 4 A 2,2 0 0 0 2,7.5 V 12 A 2,2 0 0 0 4,14 H 10.5 A 2,2 0 0 0 12.5,12 V 7.5 A 2,2 0 0 0 10.5,5.5 Z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 16 16"><path vector-effect="non-scaling-stroke" d="M 9.5,1.5 L 3.5,9.5 H 7.5 L 6.5,14.5 L 12.5,6.5 H 8.5 Z"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 16 16"><path vector-effect="non-scaling-stroke" d="M 2,6.5 V 4 A 2,2 0 0 1 4,2 H 6.5 M 9.5,2 H 12 A 2,2 0 0 1 14,4 V 6.5 M 14,9.5 V 12 A 2,2 0 0 1 12,14 H 9.5 M 6.5,14 H 4 A 2,2 0 0 1 2,12 V 9.5 M 10.4,8 A 2.4,2.4 0 1 1 5.6,8 A 2.4,2.4 0 1 1 10.4,8 Z"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
     <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1zm0 0v15"/></symbol>
     <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 10v4m4-8v12m5-16v20m5-16v12m4-8v4"/></symbol>
@@ -50,7 +52,7 @@
 
     <section class="showcase wrap" id="how" aria-label="产品交互演示">
       <div class="demo-tabs enhanced-only" role="tablist" aria-label="选择演示场景">
-        <button id="tab-sentence" role="tab" aria-selected="true" aria-controls="demo-sentence" data-demo="sentence"><svg class="icon"><use href="#i-copy"/></svg>划词翻译</button>
+        <button id="tab-sentence" role="tab" aria-selected="true" aria-controls="demo-sentence" data-demo="sentence"><svg class="icon"><use href="#i-bolt"/></svg>划词翻译</button>
         <button id="tab-word" role="tab" aria-selected="false" aria-controls="demo-word" tabindex="-1" data-demo="word"><svg class="icon"><use href="#i-book"/></svg>离线查词</button>
         <button id="tab-image" role="tab" aria-selected="false" aria-controls="demo-image" tabindex="-1" data-demo="image"><svg class="icon"><use href="#i-scan"/></svg>截图翻译</button>
       </div>
@@ -59,11 +61,11 @@
           <div class="reader-window"><div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>留一点时间，读点好内容</span><svg class="icon"><use href="#i-book"/></svg></div>
             <div class="reader-body"><p class="reader-category">阅读随记</p><h2>A little room for curiosity.</h2><p>There is always something new to discover.<br>Sometimes, all it takes is a different perspective.</p>
               <p class="reader-selection"><mark>Keep your curiosity close.</mark><svg class="demo-cursor" viewBox="0 0 24 28" aria-hidden="true"><path d="m2 2 18 13-8 1-3 8Z"/></svg></p>
-              <div class="floating-toolbar"><span><svg class="icon"><use href="#i-copy"/></svg>复制</span><button class="toolbar-translate enhanced-only" type="button">译<span>翻译</span></button><span><svg class="icon"><use href="#i-scan"/></svg>截图翻译</span></div>
+              <div class="floating-toolbar"><span class="toolbar-action"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>复制</span></span><span class="toolbar-divider" aria-hidden="true"></span><button class="toolbar-action toolbar-translate enhanced-only" type="button"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg><span>翻译</span></button><span class="toolbar-action"><svg class="icon" aria-hidden="true"><use href="#i-scan"/></svg><span>截图翻译</span></span></div>
               <p class="reader-bottom">A small thought can open a whole new world.</p>
             </div>
           </div>
-          <div class="translation-card" id="sentence-result"><div class="result-top"><span class="result-logo">译</span><span>Fast Translation</span><span class="language-pair">英语<svg class="icon"><use href="#i-arrow"/></svg>简体中文</span></div><p class="source-line">Keep your curiosity close.</p><p class="translated-line">常怀好奇之心。</p><div class="result-bottom"><span class="sample-save">保存到单词本</span><span>复制</span><span>替换</span><span>插入</span><svg class="icon"><use href="#i-check"/></svg></div></div>
+          <div class="translation-card" id="sentence-result"><div class="result-top"><span class="result-logo"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><span>Fast Translation</span><span class="language-pair">英语<svg class="icon"><use href="#i-arrow"/></svg>简体中文</span></div><p class="source-line">Keep your curiosity close.</p><p class="translated-line">常怀好奇之心。</p><div class="result-bottom"><span class="sample-save">保存到单词本</span><span>复制</span><span>替换</span><span>插入</span><svg class="icon"><use href="#i-check"/></svg></div></div>
           <div class="scene-note"><span class="note-line"></span>译文就在原文旁，思路留在原地。</div>
         </div>
         <div class="demo-panel" id="demo-word" role="tabpanel" aria-labelledby="tab-word" hidden>
