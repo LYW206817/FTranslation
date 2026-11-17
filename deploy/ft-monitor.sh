@@ -19,6 +19,26 @@ FT_BACKUP_MAX_AGE_HOURS=${FT_BACKUP_MAX_AGE_HOURS:-36}
 FT_DISK_MAX_PERCENT=${FT_DISK_MAX_PERCENT:-85}
 FT_BUDGET_ALERT_PERCENT=${FT_BUDGET_ALERT_PERCENT:-80}
 FT_STATE_DIR=${FT_STATE_DIR:-/var/lib/fasttranslation-monitor}
+# 只从 backup.env 读两个非敏感项；不要把整份含 OSS 密钥的文件 source 进监控进程。
+FT_BACKUP_ENV_FILE=${FT_BACKUP_ENV_FILE:-/etc/fasttranslation/backup.env}
+
+read_env_value() {
+	local key=$1 file=$2 value
+	[ -f "$file" ] || return 1
+	value=$(sed -n "s/^[[:space:]]*${key}=//p" "$file" | tail -1)
+	value=${value%$'\r'}
+	case "$value" in
+		\"*\"|\'*\') value=${value:1:${#value}-2} ;;
+	esac
+	printf '%s' "$value"
+}
+
+offsite_enabled=${FT_BACKUP_OFFSITE:-}
+[ -n "$offsite_enabled" ] || offsite_enabled=$(read_env_value FT_BACKUP_OFFSITE "$FT_BACKUP_ENV_FILE" || true)
+offsite_enabled=${offsite_enabled:-0}
+offsite_marker=${FT_BACKUP_OFFSITE_MARKER:-}
+[ -n "$offsite_marker" ] || offsite_marker=$(read_env_value FT_BACKUP_OFFSITE_MARKER "$FT_BACKUP_ENV_FILE" || true)
+offsite_marker=${offsite_marker:-$FT_BACKUP_DIR/.offsite-ok}
 
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
@@ -62,6 +82,22 @@ check_resources() {
 		fi
 	else
 		ft_alert_once backup fail "[FastTranslation] 备份检查：目录 $FT_BACKUP_DIR 不存在" || true
+	fi
+
+	if [ "$offsite_enabled" != "1" ]; then
+		# 从启用改回关闭时也写一次 ok，清掉历史上遗留的异地失败告警。
+		ft_alert_once offsite ok "[FastTranslation] 异地备份未启用" || true
+	elif [ -f "$offsite_marker" ]; then
+		latest=$(stat -c %Y "$offsite_marker" 2>/dev/null || true)
+		latest=${latest:-0}
+		age=$(( (now - latest) / 3600 ))
+		if [ "$age" -gt "$FT_BACKUP_MAX_AGE_HOURS" ]; then
+			ft_alert_once offsite fail "[FastTranslation] 异地备份检查：最近成功上传已 ${age}h（阈值 ${FT_BACKUP_MAX_AGE_HOURS}h）" || true
+		else
+			ft_alert_once offsite ok "[FastTranslation] 异地备份恢复：最近成功上传 ${age}h" || true
+		fi
+	else
+		ft_alert_once offsite fail "[FastTranslation] 异地备份检查：从未成功上传（缺少 $offsite_marker）" || true
 	fi
 
 	disk=$(df -P /var/lib/fasttranslation 2>/dev/null | awk 'NR==2 { gsub("%","",$5); print $5 }')

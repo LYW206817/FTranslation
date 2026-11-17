@@ -235,7 +235,7 @@ systemctl start fasttranslation
    FT_BACKUP_OFFSITE_DRY_RUN=1 /usr/local/bin/ft-backup.sh
    ```
 
-5. 正式跑一次，确认日志里出现 `offsite backup uploaded: oss://...`。
+5. 正式跑一次，确认日志里出现 `offsite backup uploaded: oss://...`。成功上传还会写 `/var/backups/fasttranslation/.offsite-ok`（600）；`ft-monitor.sh` 每小时检查它，超过 `FT_BACKUP_MAX_AGE_HOURS`（默认 36）没更新就告警。本地备份再新也不能证明 OSS 上有可恢复的副本。
 
 从异地副本恢复：
 
@@ -246,7 +246,7 @@ chown ftserver:ftserver /var/lib/fasttranslation/fasttranslation.db
 chmod 600 /var/lib/fasttranslation/fasttranslation.db
 ```
 
-异地失败不会删本地备份：本地仍保留 14 天，脚本以非零退出，错误留在 `/var/log/ft-backup.log`。私钥丢失则异地副本无法恢复，务必离线备份私钥。
+异地失败不会删本地备份：本地仍保留 14 天，脚本以非零退出，错误留在 `/var/log/ft-backup.log`。私钥丢失则异地副本无法恢复，务必离线备份私钥。启用后若超过 36 小时没有成功上传，`ft-monitor.sh` 会单独报一条异地备份告警，不会被本地备份的正常状态盖住。
 
 ## 监控与告警
 

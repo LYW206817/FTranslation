@@ -22,6 +22,9 @@ if [ -f "$ENV_FILE" ]; then
 fi
 FT_BACKUP_OFFSITE=${FT_BACKUP_OFFSITE:-0}
 FT_OSS_PREFIX=${FT_OSS_PREFIX:-fasttranslation}
+# 上传成功才写这个时间戳。监控按它判断异地副本是否还在更新；本地备份再新，
+# 也不能证明 OSS 上有一份能恢复的副本。
+OFFSITE_MARKER=${FT_BACKUP_OFFSITE_MARKER:-$DEST/.offsite-ok}
 
 # 备份里是全部账号与笔记，默认权限只给 root（目录 700、文件 600）；
 # 不设 umask 时 sqlite3/gzip 会按 644 落盘，同机其他用户可读。
@@ -97,6 +100,12 @@ offsite_upload() {
 	fi
 
 	rm -f "$encrypted"
+	# 先落盘再打日志：监控只看这个文件，日志丢失或轮转不影响判断。
+	if ! printf '%s\n' "$(date -u +%s)" > "$OFFSITE_MARKER"; then
+		echo "offsite uploaded but could not write marker: $OFFSITE_MARKER" >&2
+		return 1
+	fi
+	chmod 600 "$OFFSITE_MARKER"
 	echo "offsite backup uploaded: oss://$FT_OSS_BUCKET/$key"
 }
 
