@@ -316,9 +316,41 @@ function openDialog(options) {
     confirm.type = 'button';
 
     const previous = document.activeElement;
+    // aria-modal 只是告知读屏，浏览器不会真的把背景隔开。对话框打开期间给两个
+    // 顶层容器加 inert，Tab 与指针都进不去背景；关闭时按原值恢复。
+    const background = [$('app'), $('login')].filter(Boolean);
+    const previousInert = background.map((element) => element.inert);
+    background.forEach((element) => { element.inert = true; });
+
+    // 焦点陷阱：Tab / Shift+Tab 在对话框内部循环，不能跑到被 inert 的背景里。
+    const trapFocus = (event) => {
+      if (event.key !== 'Tab') return;
+      const items = [...backdrop.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => !element.disabled && !element.hidden);
+      if (!items.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!backdrop.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
     const finish = (value) => {
       if (dialogClose !== finish) return;
       dialogClose = null;
+      document.removeEventListener('keydown', trapFocus, true);
+      background.forEach((element, index) => { element.inert = previousInert[index]; });
       setHidden(backdrop, true);
       $('dialog-body').replaceChildren();
       $('dialog-actions').replaceChildren();
@@ -335,6 +367,7 @@ function openDialog(options) {
 
     dialogClose = finish;
     setHidden(backdrop, false);
+    document.addEventListener('keydown', trapFocus, true);
     (options.focus || cancel).focus({ preventScroll: true });
     if (options.focus?.select) options.focus.select();
   });
