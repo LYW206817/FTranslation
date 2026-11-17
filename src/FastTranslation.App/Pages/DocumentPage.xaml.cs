@@ -320,19 +320,12 @@ public partial class DocumentPage : UserControl
 
     // ── 翻译 ────────────────────────────────────────────────────────────────
 
-    private async void Start_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await RunAsync();
-        }
-        catch (Exception ex)
-        {
-            ReportError(ex.Message);
-        }
-    }
+    private async void Start_Click(object sender, RoutedEventArgs e) => await RunFromButtonAsync();
 
-    private async void Retry_Click(object sender, RoutedEventArgs e)
+    private async void Retry_Click(object sender, RoutedEventArgs e) => await RunFromButtonAsync();
+
+    /// <summary>两个按钮只差在重试入口，异常文案与日志收在同一处。</summary>
+    private async Task RunFromButtonAsync()
     {
         try
         {
@@ -340,7 +333,9 @@ public partial class DocumentPage : UserControl
         }
         catch (Exception ex)
         {
-            ReportError(ex.Message);
+            // 协调器已经消化了业务错误；到这里的是意外异常，英文栈留给诊断日志。
+            App.Trace($"document run failed: {ex.GetType().Name}: {ex.Message}");
+            ReportError("文档翻译遇到意外错误，请重试。");
         }
     }
 
@@ -407,7 +402,8 @@ public partial class DocumentPage : UserControl
         }
         catch (Exception ex)
         {
-            ReportError(ex.Message);
+            App.Trace($"document open folder failed: {ex.GetType().Name}: {ex.Message}");
+            ReportError("无法打开译文所在的位置，请到输出目录手动查看。");
         }
     }
 

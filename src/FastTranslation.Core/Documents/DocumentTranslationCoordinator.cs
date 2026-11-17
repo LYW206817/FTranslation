@@ -30,12 +30,14 @@ public sealed class DocumentTranslationCoordinator
     private readonly Action<DocumentJobResult> _present;
     private readonly Action<string> _reportError;
     private readonly Action<double, int, int> _progress;
+    private readonly Action<string> _log;
     private readonly string? _checkpointDirectory;
 
     /// <param name="checkpointDirectory">
     /// 断点落点，null 用 <see cref="DocumentJob.DefaultDirectory"/>。做成可注入是为了测试不去碰用户的
     /// <c>%LOCALAPPDATA%</c>——测试往真实目录写断点会污染下一个跑测试的人。
     /// </param>
+    /// <param name="log">意外异常的原始文本只进日志，不上屏；默认丢弃，界面会注入自己的诊断日志。</param>
     public DocumentTranslationCoordinator(
         Func<DocumentFormat, IDocumentTranslator> translatorFactory,
         Func<string, string, CancellationToken, Task<string>> translateText,
@@ -43,7 +45,8 @@ public sealed class DocumentTranslationCoordinator
         Action<DocumentJobResult> present,
         Action<string> reportError,
         Action<double, int, int> progress,
-        string? checkpointDirectory = null)
+        string? checkpointDirectory = null,
+        Action<string>? log = null)
     {
         ArgumentNullException.ThrowIfNull(translatorFactory);
         ArgumentNullException.ThrowIfNull(translateText);
@@ -58,6 +61,7 @@ public sealed class DocumentTranslationCoordinator
         _present = present;
         _reportError = reportError;
         _progress = progress;
+        _log = log ?? (_ => { });
         _checkpointDirectory = checkpointDirectory;
     }
 
@@ -89,7 +93,8 @@ public sealed class DocumentTranslationCoordinator
         }
         catch (Exception ex)
         {
-            _reportError(ex.Message);
+            _log($"document run failed: {ex.GetType().Name}: {ex.Message}");
+            _reportError("文档翻译遇到意外错误，请重试。");
         }
     }
 
@@ -222,7 +227,8 @@ public sealed class DocumentTranslationCoordinator
         }
         catch (Exception ex)
         {
-            _reportError(ex.Message);
+            _log($"document preview failed: {ex.GetType().Name}: {ex.Message}");
+            _reportError("读取文档失败，请检查文件后重试。");
             return null;
         }
     }

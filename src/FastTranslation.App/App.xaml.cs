@@ -191,7 +191,8 @@ public partial class App : Application, IResultPresenter
             outputDirectory: () => null,
             present: result => _mainWindow?.PresentDocument(result),
             reportError: message => _mainWindow?.ReportDocumentError(message),
-            progress: (fraction, done, total) => _mainWindow?.ReportDocumentProgress(fraction, done, total));
+            progress: (fraction, done, total) => _mainWindow?.ReportDocumentProgress(fraction, done, total),
+            log: Trace);
 
         // 第一阶段工具栏（复制/翻译）+ 第二阶段结果卡（复制/替换/插入/✕）
         _toolbar = new SelectionToolbar();
@@ -1022,7 +1023,7 @@ public partial class App : Application, IResultPresenter
         }
     }
 
-    private static void Trace(string message)
+    internal static void Trace(string message)
     {
         try
         {
@@ -1914,7 +1915,11 @@ public partial class App : Application, IResultPresenter
         capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(
             () => Observe(RestartSpeechCaptureAsync(), "切换音频设备后恢复失败"));
         capture.Failed += ex => Dispatcher.BeginInvoke(() =>
-            EndSpeechSession("无法采集系统声音：" + ex.Message));
+        {
+            // 用户只需要知道「声音没采到」，WASAPI 的英文异常留给诊断日志。
+            Trace($"speech capture failed: {ex.GetType().Name}: {ex.Message}");
+            EndSpeechSession("系统声音采集失败，请检查音频设备后重试。");
+        });
         capture.Start();
     }
 
@@ -2019,8 +2024,14 @@ public partial class App : Application, IResultPresenter
     /// 所以统一收口到 EndSpeechSession 显示原因。</remarks>
     private void Observe(Task task, string failureMessage) =>
         _ = task.ContinueWith(
-            t => Dispatcher.BeginInvoke(() =>
-                EndSpeechSession(failureMessage + ":" + t.Exception!.GetBaseException().Message)),
+            t =>
+            {
+                var ex = t.Exception!.GetBaseException();
+                // 任务链里的异常文本可能是英文 .NET 消息或空引用，界面只给可行动的中文结论。
+                Trace($"speech task failed: {failureMessage}: {ex.GetType().Name}: {ex.Message}");
+                Dispatcher.BeginInvoke(() =>
+                    EndSpeechSession(failureMessage + "，请稍后重试。"));
+            },
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
@@ -2028,13 +2039,18 @@ public partial class App : Application, IResultPresenter
     /// <summary>收尾阶段的观察：失败只报告，不拆掉可能已经开始的新会话。</summary>
     private void ObserveSessionEnd(Task task) =>
         _ = task.ContinueWith(
-            t => Dispatcher.BeginInvoke(() =>
+            t =>
             {
-                // 旧会话的停传最多等 2s，用户可能已经点了「继续」；没有这道判断时旧会话的
-                // 异常会走 EndSpeechSession 把新会话的协调器与采集直接清掉。
-                if (_speechCoordinator is not null || _speechStarting) return;
-                EndSpeechSession("语音结束失败：" + t.Exception!.GetBaseException().Message);
-            }),
+                var ex = t.Exception!.GetBaseException();
+                Trace($"speech stop failed: {ex.GetType().Name}: {ex.Message}");
+                Dispatcher.BeginInvoke(() =>
+                {
+                    // 旧会话的停传最多等 2s，用户可能已经点了「继续」；没有这道判断时旧会话的
+                    // 异常会走 EndSpeechSession 把新会话的协调器与采集直接清掉。
+                    if (_speechCoordinator is not null || _speechStarting) return;
+                    EndSpeechSession("语音结束失败，请重新开始语音翻译。");
+                });
+            },
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);

@@ -186,6 +186,30 @@ public sealed class DocumentTranslationCoordinatorTests : IDisposable
         Assert.Contains("单段", Assert.Single(_errors), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Unexpected_parser_errors_are_logged_but_not_shown_raw()
+    {
+        var source = WriteText("boom.txt", "一段正文");
+        var logs = new List<string>();
+        var coordinator = new DocumentTranslationCoordinator(
+            _ => throw new InvalidOperationException("raw parser failure"),
+            (text, _, _) => Task.FromResult(text),
+            () => _dir,
+            _results.Add,
+            _errors.Add,
+            (_, _, _) => { },
+            _dir,
+            logs.Add);
+
+        var preview = await coordinator.PreviewAsync(source, CancellationToken.None);
+
+        Assert.Null(preview);
+        var error = Assert.Single(_errors);
+        Assert.Contains("读取文档失败", error, StringComparison.Ordinal);
+        Assert.DoesNotContain("raw parser failure", error, StringComparison.Ordinal);
+        Assert.Contains(logs, line => line.Contains("raw parser failure", StringComparison.Ordinal));
+    }
+
     private DocumentTranslationCoordinator Build(
         Func<string, Task<string>>? translate = null,
         Action<double, int, int>? progress = null) =>

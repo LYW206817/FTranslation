@@ -173,8 +173,10 @@ internal sealed class ImageTranslationCoordinator : IDisposable
         catch (Exception ex)
         {
             // 异常原来只走托盘气泡，气泡不弹时用户和排查者都看不到任何线索。
+            // 已知的网络/上游错误在上面的分支里已有业务文案；走到这里的是意外异常，
+            // 英文异常只进诊断日志，界面上给一句可行动的中文。
             WindowsSelectionCapture.Diag($"image: failed {ex.GetType().Name}: {ex.Message}");
-            _reportError(ex.Message);
+            _reportError("截图翻译遇到意外错误，请重试。");
         }
         finally
         {
