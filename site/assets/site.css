@@ -290,7 +290,15 @@ footer .mono { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.0
   .hero, .sec-head { grid-template-columns: 1fr; gap: 2.2rem; }
   .note { border-left: 0; border-top: 1px solid var(--rule); padding: 1.35rem 0 0; }
   .note::before { position: static; display: block; margin-bottom: 0.6rem; }
-  .nav nav { display: none; }
+  /* 窄屏把导航折成第二行并允许横向滑动：整排隐藏等于手机上没有入口，
+     七个链接放不下时至少还能滑到「下载」。 */
+  .nav-inner { height: auto; flex-wrap: wrap; gap: 0.25rem 1rem; padding-block: 0.55rem 0.15rem; }
+  .nav nav {
+    width: 100%; margin-left: 0; gap: 1rem; padding-block: 0.2rem 0.35rem;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .nav nav::-webkit-scrollbar { display: none; }
+  .nav nav a { flex: none; white-space: nowrap; }
   .plates, .cols, .plans, .dl { grid-template-columns: 1fr; }
   .strip { grid-template-columns: 1fr; }
   .figures { grid-template-columns: 1fr; gap: 1.4rem; }
