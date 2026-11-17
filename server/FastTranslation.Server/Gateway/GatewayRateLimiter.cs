@@ -36,17 +36,20 @@ public sealed class GatewayRateLimiter(TimeProvider? time = null)
         return window.Count <= permitPerMinute;
     }
 
-    /// <summary>清除已经滚过的窗口，避免字典无限增长。</summary>
-    public void Prune()
+    /// <summary>清除已经滚过的窗口，避免字典无限增长；返回本次清掉的窗口数。</summary>
+    public int Prune()
     {
         var now = _time.GetUtcNow().ToUnixTimeSeconds();
+        var removed = 0;
         foreach (var pair in _windows)
         {
-            if (pair.Value.ResetAt <= now)
+            if (pair.Value.ResetAt <= now && _windows.TryRemove(pair.Key, out _))
             {
-                _windows.TryRemove(pair.Key, out _);
+                removed++;
             }
         }
+
+        return removed;
     }
 
     private readonly record struct Window(long ResetAt, int Count);
