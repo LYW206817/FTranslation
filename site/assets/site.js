@@ -53,13 +53,12 @@
     document.getElementById('demo-instruction').textContent = '译文已在原文旁显示 · 此处为交互示意';
   });
 
-  const setupThemePreview = () => {
+  const setupAccentPreview = () => {
     const screenshot = document.getElementById('app-screenshot');
-    const preview = document.getElementById('theme-preview');
-    const caption = document.getElementById('theme-caption');
-    const player = document.querySelector('.theme-play');
-    const buttons = [...document.querySelectorAll('[data-theme]')];
-    const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+    const preview = document.getElementById('accent-preview');
+    const caption = document.getElementById('accent-caption');
+    const player = document.querySelector('.accent-play');
+    const buttons = [...document.querySelectorAll('.accent-switch [data-accent]')];
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     const frameMs = 3600;
     let current = 0;
@@ -67,17 +66,13 @@
 
     const show = (index) => {
       current = index;
-      const mode = buttons[index].dataset.theme;
-      // v172：跟随系统是外观选择规则，预览使用当前设备偏好对应的实机截图。
-      const dark = mode === 'dark' || (mode === 'system' && systemTheme.matches);
-      const appearance = dark ? '深色' : '浅色';
-      const source = `assets/img/main-${dark ? 'dark' : 'light'}.png`;
-      if (screenshot.getAttribute('src') !== source) screenshot.src = source;
-      screenshot.alt = `Fast Translation ${appearance}主窗口，左侧为功能导航，右侧为原文和译文区域`;
-      preview.classList.toggle('is-dark', dark);
-      caption.textContent = mode === 'system'
-        ? `跟随系统 · 当前设备使用${appearance}外观`
-        : dark ? '深色主题 · 暗色背景，适合夜间阅读' : '浅色主题 · 明亮背景，适合白天阅读';
+      const { accent } = buttons[index].dataset;
+      const label = buttons[index].textContent.trim();
+      // v173：三张图固定同一浅色模式，只比较应用内真正切换的强调色。
+      screenshot.src = `assets/img/main-${accent}.webp`;
+      screenshot.alt = `Fast Translation ${label}强调色实机界面`;
+      preview.dataset.accent = accent;
+      caption.textContent = `${label} · 设置 → 强调色`;
       buttons.forEach((button, choice) => button.setAttribute('aria-pressed', String(choice === index)));
     };
 
@@ -85,7 +80,7 @@
       if (timer === null) return;
       clearInterval(timer);
       timer = null;
-      player.querySelector('span').textContent = '播放主题';
+      player.querySelector('span').textContent = '播放配色';
       player.querySelector('use').setAttribute('href', '#i-play');
       caption.setAttribute('aria-live', 'polite');
     };
@@ -101,13 +96,10 @@
       stop();
       show(index);
     }));
-    systemTheme.addEventListener('change', () => {
-      if (buttons[current].dataset.theme === 'system') show(current);
-    });
     document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
     reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) stop(); });
   };
-  setupThemePreview();
+  setupAccentPreview();
 
   const contact = document.getElementById('contact-dialog');
   if (typeof contact.showModal === 'function') {
@@ -134,6 +126,14 @@
 
   const setupScrollReveal = () => {
     if (!('IntersectionObserver' in window)) return;
+    const plans = document.getElementById('plan-cards');
+    const planMotion = document.querySelector('.plan-motion');
+    planMotion.parentElement.hidden = false;
+    planMotion.addEventListener('click', () => {
+      const paused = plans.classList.toggle('is-paused');
+      planMotion.querySelector('span').textContent = paused ? '播放卡片动效' : '暂停卡片动效';
+      planMotion.querySelector('use').setAttribute('href', paused ? '#i-play' : '#i-pause');
+    });
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     // v168：主题开关和问答按钮保持位置，避免入场位移让刚滚到这里的第一次点击落空。
     const scenes = {

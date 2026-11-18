@@ -300,19 +300,21 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .review-ratings small { font-size: 9px; margin-top: 2px; }
 .interface-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 52px; margin-bottom: 15px; }
 .interface-toolbar > span { display: flex; align-items: center; gap: 8px; color: var(--secondary); font-size: 12px; }
-.theme-controls { flex-wrap: wrap; align-items: center; gap: 8px; }
-.theme-switch { display: flex; gap: 3px; border-radius: 8px; padding: 3px; border: 1px solid var(--line); background: var(--canvas); }
-.theme-switch button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 0 14px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--secondary); font-size: 12px; }
-.theme-switch button[aria-pressed="true"] { background: var(--page); border-color: var(--line); color: var(--ink); }
-.theme-switch .icon { width: 15px; height: 15px; }
-.theme-play { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--brand-ink); font-size: 12px; }
-.theme-play:hover { background: var(--brand-soft); }
-.theme-play .icon { width: 16px; height: 16px; }
-.app-preview { padding: 28px 28px 0; border: 1px solid var(--dream-glass); border-radius: 24px; background: radial-gradient(ellipse at 28% 5%, var(--dream-panel-white), transparent 65%), linear-gradient(120deg, var(--dream-blue), var(--dream-violet)); overflow: hidden; box-shadow: 0 18px 60px -40px rgb(49 54 136 / 55%), 0 0 0 1px var(--dream-rule); transition: background .2s; }
-.app-preview.is-dark { background: var(--night-card); border-color: var(--night-line); }
-.app-preview img { width: 100%; border-radius: 8px; box-shadow: var(--shadow); aspect-ratio: 1750 / 1085; object-fit: contain; }
+.accent-controls { flex-wrap: wrap; align-items: center; gap: 8px; }
+.accent-switch { display: flex; gap: 3px; border-radius: 8px; padding: 3px; border: 1px solid var(--line); background: var(--canvas); }
+.accent-switch button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 0 14px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--secondary); font-size: 12px; }
+.accent-switch button[aria-pressed="true"] { background: var(--page); border-color: var(--line); color: var(--ink); }
+/* v173：色点取应用浅色模式的品牌色，便于与同一模式下的三张实机截图对照。 */
+[data-accent="electro"] { --preview-accent: #2562FF; --preview-wash: var(--dream-blue); }
+[data-accent="lake"] { --preview-accent: #0E7EA8; --preview-wash: #BFE8F5; }
+[data-accent="violet"] { --preview-accent: #5B36F0; --preview-wash: var(--dream-violet); }
+.accent-switch button span { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: var(--preview-accent); }
+.preview-play { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--brand-ink); font-size: 12px; }
+.preview-play:hover { background: var(--brand-soft); }
+.preview-play .icon { width: 16px; height: 16px; }
+.app-preview { padding: 28px 28px 0; border: 1px solid var(--dream-glass); border-radius: 24px; background: radial-gradient(ellipse at 28% 5%, var(--dream-panel-white), transparent 65%), linear-gradient(120deg, var(--preview-wash), var(--dream-panel-violet)); overflow: hidden; box-shadow: 0 18px 60px -40px rgb(49 54 136 / 55%), 0 0 0 1px var(--dream-rule); }
+.app-preview img { width: 100%; border-radius: 8px; box-shadow: var(--shadow); aspect-ratio: 1750 / 1140; object-fit: contain; }
 .app-preview figcaption { padding: 14px 4px; text-align: center; font-size: 10px; color: var(--secondary); }
-.app-preview.is-dark figcaption { color: var(--night-muted); }
 .interface-notes { display: flex; justify-content: center; gap: 42px; margin-top: 23px; color: var(--secondary); font-size: 12px; }
 .interface-notes > span { display: flex; align-items: center; gap: 7px; }
 .interface-notes .icon { color: var(--brand); width: 15px; height: 15px; }
@@ -321,6 +323,7 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .center-heading { text-align: center; margin-bottom: 46px; }
 .center-heading h2 { font-size: clamp(28px, 3vw, 38px); }
 .center-heading > p { font-size: 14px; color: var(--secondary); margin-top: 18px; line-height: 1.9; }
+.plan-controls { justify-content: flex-end; margin-bottom: 8px; }
 .plans { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; padding: 28px 12px 36px; isolation: isolate; }
 /* v163：光底超出卡组会在 320px 屏幕撑出横向滚动，径向渐变在组内自然收边。 */
 .plans::before { content: ""; position: absolute; inset: 45% 0 -10px; z-index: -1; pointer-events: none; background: radial-gradient(ellipse, var(--plan-glow), transparent 68%); }
@@ -335,9 +338,9 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   30%, 70% { opacity: .68; }
   100% { opacity: 0; background-position-x: 0%; }
 }
-.plan:nth-child(2) { --plan-angle: -1.1deg; --plan-rise: 2px; }
-.plan:nth-child(3) { --plan-angle: 1.4deg; --plan-rise: -14px; z-index: 2; }
-.plan:nth-child(4) { --plan-angle: 2.4deg; --plan-rise: 18px; }
+.plan:nth-child(2) { --plan-angle: -1.1deg; --plan-rise: 2px; --plan-drift-delay: .65s; }
+.plan:nth-child(3) { --plan-angle: 1.4deg; --plan-rise: -14px; --plan-drift-delay: 1.3s; z-index: 2; }
+.plan:nth-child(4) { --plan-angle: 2.4deg; --plan-rise: 18px; --plan-drift-delay: 1.95s; }
 .plan-emblem { position: absolute; right: 22px; top: 25px; display: flex; align-items: center; justify-content: center; width: 39px; height: 39px; border: 1px solid var(--stage-line); border-radius: 13px; background: var(--page); color: var(--brand); }
 .plan-emblem .icon { width: 19px; height: 19px; }
 .plan h3 { font-size: 22px; letter-spacing: -.02em; }
@@ -427,6 +430,12 @@ html:has(.contact-dialog[open]) { overflow: hidden; }
 .scroll-reveal[data-reveal="iris"] { --reveal-name: iris-in; }
 .scroll-reveal[data-reveal="fade"] { --reveal-name: fade-in; }
 .scroll-reveal.is-visible { opacity: 1; animation: var(--reveal-name) .72s var(--entrance-ease) var(--reveal-delay, 0ms) both; }
+/* v173：入场结束后才接上循环起伏，独立位移保留卡片原来的倾角和悬停回正。 */
+.plan.scroll-reveal.is-visible { animation: rise-in .72s var(--entrance-ease) var(--reveal-delay, 0ms) both, plan-drift 4.4s ease-in-out calc(.72s + var(--reveal-delay, 0ms) + var(--plan-drift-delay, 0s)) infinite; }
+.plans.is-paused .plan.is-visible, .plan.is-visible:hover { animation-play-state: running, paused; }
+.plans.is-paused .plan::after, .plan.is-visible:hover::after { animation-play-state: paused; }
+.plan.scroll-reveal:focus-within { opacity: 1; animation: none; }
+@keyframes plan-drift { 0%, 100% { translate: 0 0; } 50% { translate: 0 -13px; } }
 .capture-feature.is-visible .capture-translated, .speech-feature.is-visible .subtitle-art { animation: iris-in .8s var(--entrance-ease) .16s both; }
 .speech-feature.is-visible .subtitle-progress span { animation: subtitle-flow .95s var(--entrance-ease) .33s both; }
 .speech-feature.is-visible .waveform i { animation: wave-in .75s var(--entrance-ease) .3s both; }
@@ -657,9 +666,8 @@ main { overflow-x: clip; }
   .review-sample > p { font-size: 17px; }
   .interface-toolbar { margin-bottom: 12px; }
   .interface-toolbar > span { font-size: 10px; }
-  .theme-switch button { padding-inline: 11px; font-size: 10px; }
-  .theme-switch .icon { width: 13px; height: 13px; }
-  .theme-play { font-size: 11px; }
+  .accent-switch button { padding-inline: 11px; font-size: 10px; }
+  .preview-play { font-size: 11px; }
   .app-preview { padding: 9px 9px 0; border-radius: 10px; }
   .app-preview img { border-radius: 4px; }
   .app-preview figcaption { font-size: 9px; padding: 10px 0; }
@@ -729,5 +737,6 @@ main { overflow-x: clip; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .scroll-reveal { opacity: 1; translate: none; }
+  .js .plan-controls.enhanced-only { display: none !important; }
   .plan:nth-child(n), .plan:focus-within { transform: none; }
 }
