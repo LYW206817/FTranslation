@@ -53,16 +53,81 @@
     document.getElementById('demo-instruction').textContent = '译文已在原文旁显示 · 此处为交互示意';
   });
 
-  const screenshot = document.getElementById('app-screenshot');
-  const themeButtons = [...document.querySelectorAll('[data-theme]')];
-  themeButtons.forEach((button) => button.addEventListener('click', () => {
-    const dark = button.dataset.theme === 'dark';
-    screenshot.src = `assets/img/main-${dark ? 'dark' : 'light'}.png`;
-    screenshot.alt = `Fast Translation ${dark ? '深色' : '浅色'}主窗口，左侧为功能导航，右侧为原文和译文区域`;
-    screenshot.closest('figure').classList.toggle('is-dark', dark);
-    document.getElementById('theme-caption').textContent = `${dark ? '深色' : '浅色'}主题 · 也可在软件中跟随系统切换`;
-    themeButtons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
-  }));
+  const setupThemePreview = () => {
+    const screenshot = document.getElementById('app-screenshot');
+    const preview = document.getElementById('theme-preview');
+    const caption = document.getElementById('theme-caption');
+    const player = document.querySelector('.theme-play');
+    const buttons = [...document.querySelectorAll('[data-theme]')];
+    const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const frameMs = 3600;
+    let current = 0;
+    let timer = null;
+
+    const show = (index) => {
+      current = index;
+      const mode = buttons[index].dataset.theme;
+      // v172：跟随系统是外观选择规则，预览使用当前设备偏好对应的实机截图。
+      const dark = mode === 'dark' || (mode === 'system' && systemTheme.matches);
+      const appearance = dark ? '深色' : '浅色';
+      const source = `assets/img/main-${dark ? 'dark' : 'light'}.png`;
+      if (screenshot.getAttribute('src') !== source) screenshot.src = source;
+      screenshot.alt = `Fast Translation ${appearance}主窗口，左侧为功能导航，右侧为原文和译文区域`;
+      preview.classList.toggle('is-dark', dark);
+      caption.textContent = mode === 'system'
+        ? `跟随系统 · 当前设备使用${appearance}外观`
+        : dark ? '深色主题 · 暗色背景，适合夜间阅读' : '浅色主题 · 明亮背景，适合白天阅读';
+      buttons.forEach((button, choice) => button.setAttribute('aria-pressed', String(choice === index)));
+    };
+
+    const stop = () => {
+      if (timer === null) return;
+      clearInterval(timer);
+      timer = null;
+      player.querySelector('span').textContent = '播放主题';
+      player.querySelector('use').setAttribute('href', '#i-play');
+      caption.setAttribute('aria-live', 'polite');
+    };
+    player.addEventListener('click', () => {
+      if (timer !== null) return stop();
+      caption.setAttribute('aria-live', 'off');
+      player.querySelector('span').textContent = '暂停播放';
+      player.querySelector('use').setAttribute('href', '#i-pause');
+      show((current + 1) % buttons.length);
+      timer = setInterval(() => show((current + 1) % buttons.length), frameMs);
+    });
+    buttons.forEach((button, index) => button.addEventListener('click', () => {
+      stop();
+      show(index);
+    }));
+    systemTheme.addEventListener('change', () => {
+      if (buttons[current].dataset.theme === 'system') show(current);
+    });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+    reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) stop(); });
+  };
+  setupThemePreview();
+
+  const contact = document.getElementById('contact-dialog');
+  if (typeof contact.showModal === 'function') {
+    document.querySelectorAll('[data-contact]').forEach((link) => {
+      link.setAttribute('aria-haspopup', 'dialog');
+      link.setAttribute('aria-controls', contact.id);
+      link.addEventListener('click', (event) => {
+        // v172：保留原图链接，关闭脚本或用新标签打开时仍能查看二维码。
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        contact.showModal();
+      });
+    });
+    contact.addEventListener('click', (event) => {
+      if (event.target !== contact) return;
+      const bounds = contact.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right ||
+          event.clientY < bounds.top || event.clientY > bounds.bottom) contact.close();
+    });
+  }
 
   // 最后再显示增强控件，脚本缺失或未执行时，静态示例与下载入口仍可完整阅读。
   document.documentElement.classList.add('js');

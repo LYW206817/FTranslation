@@ -14,8 +14,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#F8F7FF">
   <!-- v168：assets 缓存一年，脚本与样式都带内容摘要，避免新版页面配到旧入场逻辑。 -->
-  <link rel="stylesheet" href="assets/site.css?v=86de2321c083">
-  <script src="assets/site.js?v=7f10d6984b72" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=e88dec053662">
+  <script src="assets/site.js?v=5f29c25ea889" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -34,11 +34,15 @@
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14m6-14v14"/></symbol>
   </svg>
 
   <header class="nav"><div class="wrap nav-inner">
     <a class="brand" href="#" aria-label="Fast Translation 首页"><img src="assets/img/icon.png" alt="" width="32" height="32"><span>Fast Translation</span></a>
-    <nav aria-label="页面导航"><a href="#how">使用体验</a><a href="#features">功能</a><a href="#words">单词与复习</a><a href="#look">软件界面</a><a href="#plans">套餐</a><a href="#faq">FAQ</a></nav>
+    <nav aria-label="页面导航"><a href="#how">使用体验</a><a href="#features">功能</a><a href="#words">单词与复习</a><a href="#look">软件界面</a><a href="#plans">套餐</a><a href="#faq">FAQ</a><a href="assets/img/contact-wechat.jpg?v=439a8b4c6362" data-contact>联系我们</a></nav>
     <a class="nav-download" href="#download">免费下载<svg class="icon"><use href="#i-down"/></svg></a>
   </div></header>
 
@@ -104,8 +108,7 @@
             <div><dt>低内存模式</dt><dd><strong>约 60</strong> MiB</dd></div>
             <div><dt>默认模式</dt><dd><strong>约 143</strong> MiB</dd></div>
           </dl>
-          <p class="advantage-copy">界面简洁，无广告弹窗。开启低内存模式后，托盘空闲内存实测少约 58%；主窗口重绘可能变慢。</p>
-          <small class="advantage-method">Windows 11 · i5-13500H · v1.5.1。收进托盘后第 45–75 秒，每种模式采样 7 次，取私有工作集的中位数。实际占用随用法和环境变化。</small>
+          <p class="advantage-copy">界面简洁，无广告弹窗。开启低内存模式后，托盘空闲内存实测少约 58%。</p>
         </div>
       </li>
       <li>
@@ -117,7 +120,6 @@
             <div><dt>95% 的查询在</dt><dd><strong>0.60</strong> 毫秒内</dd></div>
           </dl>
           <p class="advantage-copy">英文单词译中文时，本地词典命中即可返回音标、词性和释义；无需联网，也不消耗翻译额度。</p>
-          <small class="advantage-method">同机实测：词典预载后查 5,000 个不同的收录词，未用译文缓存。从提交查询到词条返回，不含取词和弹窗绘制。</small>
         </div>
       </li>
     </ul>
@@ -138,9 +140,19 @@
 
     <section class="section wrap interface-section" id="look" aria-labelledby="look-title">
       <div class="section-heading"><div><span class="section-label chapter-label">03 / Windows 原生体验</span><h2 id="look-title">需要时一键打开，<br>用完就回到手头的事。</h2></div><p>平时藏在托盘，需要时就在身边。<br>集中翻译、管理单词、调整设置，都在同一个窗口。</p></div>
-      <div class="interface-toolbar"><span><span class="caption-dot"></span>软件实际界面</span><div class="theme-switch enhanced-only" role="group" aria-label="软件截图主题"><button type="button" data-theme="light" aria-pressed="true"><svg class="icon"><use href="#i-sun"/></svg>浅色</button><button type="button" data-theme="dark" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg>深色</button></div></div>
-      <figure class="app-preview"><img id="app-screenshot" src="assets/img/main-light.png" alt="Fast Translation 浅色主窗口，左侧为功能导航，右侧为原文和译文区域" width="1750" height="1085" loading="lazy"><figcaption id="theme-caption">浅色主题 · 也可在软件中跟随系统切换</figcaption></figure>
-      <div class="interface-notes"><span><svg class="icon"><use href="#i-check"/></svg>原生桌面体验</span><span><svg class="icon"><use href="#i-check"/></svg>浅色与深色主题</span><span><svg class="icon"><use href="#i-check"/></svg>全局快捷键</span><span><svg class="icon"><use href="#i-check"/></svg>支持自带 API Key</span></div>
+      <div class="interface-toolbar">
+        <span><span class="caption-dot"></span>软件实际界面</span>
+        <div class="theme-controls enhanced-only">
+          <div class="theme-switch" role="group" aria-label="软件截图主题">
+            <button type="button" data-theme="light" aria-pressed="true" aria-controls="theme-preview"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg>浅色</button>
+            <button type="button" data-theme="dark" aria-pressed="false" aria-controls="theme-preview"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg>深色</button>
+            <button type="button" data-theme="system" aria-pressed="false" aria-controls="theme-preview"><svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>跟随系统</button>
+          </div>
+          <button class="theme-play" type="button" aria-controls="theme-preview"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>播放主题</span></button>
+        </div>
+      </div>
+      <figure class="app-preview" id="theme-preview"><img id="app-screenshot" src="assets/img/main-light.png" alt="Fast Translation 浅色主窗口，左侧为功能导航，右侧为原文和译文区域" width="1750" height="1085" loading="lazy"><figcaption id="theme-caption" aria-live="polite">浅色主题 · 明亮背景，适合白天阅读</figcaption></figure>
+      <div class="interface-notes"><span><svg class="icon"><use href="#i-check"/></svg>原生桌面体验</span><span><svg class="icon"><use href="#i-check"/></svg>浅色、深色与跟随系统</span><span><svg class="icon"><use href="#i-check"/></svg>全局快捷键</span><span><svg class="icon"><use href="#i-check"/></svg>支持自带 API Key</span></div>
     </section>
 
     <section class="plans-section" id="plans" aria-labelledby="plans-title"><div class="wrap">
@@ -152,7 +164,6 @@
         <article class="plan featured-plan"><span class="plan-recommend">进阶之选</span><span class="plan-emblem" aria-hidden="true"><svg class="icon"><use href="#i-wave"/></svg></span><h3>Pro <span class="plan-discount">5.6 折</span></h3><p class="plan-for">外文常读，字幕常开</p><p class="price">¥11.9<span> / 月</span></p><div class="plan-billing"><strong>季付 ¥35.7 / 90 天</strong><span>参考标价 <s>¥64.1</s></span></div><p class="quota"><strong>1,880,000</strong><span>字符 / 月</span></p><a class="button primary plan-button" href="#download">下载后开通</a><ul><li>Lite 全部功能</li><li>更充足的每月额度</li><li>无每日限额</li><li>可用自带 Key 继续翻译</li></ul></article>
         <article class="plan"><span class="plan-emblem" aria-hidden="true"><svg class="icon"><use href="#i-file"/></svg></span><h3>Max <span class="plan-discount">4.5 折</span></h3><p class="plan-for">批量文档，长期使用</p><p class="price">¥19.9<span> / 月</span></p><div class="plan-billing"><strong>季付 ¥59.7 / 90 天</strong><span>参考标价 <s>¥132.3</s></span></div><p class="quota"><strong>3,880,000</strong><span>字符 / 月</span></p><a class="button plan-button" href="#download">下载后开通</a><ul><li>Pro 全部功能</li><li>更宽裕的每月额度</li><li>无每日限额</li><li>可用自带 Key 继续翻译</li></ul></article>
       </div>
-      <p class="plan-price-note">折扣以每 88 万字符 ¥10 的参考标价折算；季付与连续三次月付同价。</p>
       <p class="plans-note">套餐在客户端内扫码付款，运营确认到账后开通。额度按所选模型与翻译类型折算，语音按时长折算；具体用量与权益可在客户端查看。配置自有 Key 后，文本翻译额度用尽可自动切换。</p>
     </div></section>
 
@@ -171,6 +182,17 @@
     </div></section>
   </main>
 
-  <footer class="wrap footer"><div><a class="brand" href="#"><img src="assets/img/icon.png" alt="" width="28" height="28"><span>Fast Translation</span></a><p>让理解随手发生。</p><span>© 2026 Fast Translation</span></div><div class="footer-links"><a href="mailto:3349325206@qq.com">联系开发者</a><span>翻译由阿里云百炼提供</span><a href="https://beian.miit.gov.cn/" rel="nofollow">豫ICP备2026058690号</a></div></footer>
+  <footer class="wrap footer"><div><a class="brand" href="#"><img src="assets/img/icon.png" alt="" width="28" height="28"><span>Fast Translation</span></a><p>让理解随手发生。</p><span>© 2026 Fast Translation</span></div><div class="footer-links"><a href="assets/img/contact-wechat.jpg?v=439a8b4c6362" data-contact>联系开发者</a><span>翻译由阿里云百炼提供</span><a href="https://beian.miit.gov.cn/" rel="nofollow">豫ICP备2026058690号</a></div></footer>
+  <dialog class="contact-dialog" id="contact-dialog" aria-labelledby="contact-title" aria-describedby="contact-intro">
+    <div class="contact-card">
+      <form method="dialog"><button class="contact-close" type="submit" aria-label="关闭联系方式" autofocus><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></form>
+      <div class="contact-brand"><img src="assets/img/icon.png" alt="" width="36" height="36">Fast Translation</div>
+      <h2 id="contact-title">微信联系开发者</h2>
+      <p id="contact-intro">使用遇到问题，或有想要的功能？欢迎来聊。</p>
+      <div class="contact-qr"><img src="assets/img/contact-wechat.jpg?v=439a8b4c6362" alt="Fast Translation 开发者的微信二维码" width="960" height="878" loading="lazy"></div>
+      <p class="contact-scan"><strong>打开微信扫一扫</strong><span>手机上也可以长按识别二维码</span></p>
+      <p class="contact-note">添加时可以备注「Fast Translation」</p>
+    </div>
+  </dialog>
 </body>
 </html>
