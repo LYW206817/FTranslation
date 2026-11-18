@@ -24,14 +24,11 @@ public static class UpdateInstaller
     private const string GitHubHost = "github.com";
 
     /// <summary>
-    /// github.com release 下载用的代理前缀，按顺序尝试。ghfast.top 实测
-    /// 已死(连接从未建立，5 秒超时)，因此移除：一个连不通的候选
-    /// 只会让用户多等一次超时，之后才轮到直连主机。
+    /// github.com release 下载用的代理前缀，按顺序尝试。ghfast.top 实测已死（连接从未建立，
+    /// 5 秒超时），gh-proxy 在 2026-11-18 实测返回 HTML 而不是文件，两者都已移除：一个连不通
+    /// 的候选只会让用户多等一次超时。当前安装包由 OSS 直链提供，这里不再需要任何前缀。
     /// </summary>
-    private static readonly string[] ProxyPrefixes =
-    {
-        "https://gh-proxy.com/",
-    };
+    private static readonly string[] ProxyPrefixes = [];
 
     // 8 MiB：低于这个值时，每段额外的 TLS+请求往返开销超过
     // 并发带来的收益，而这里唯一会下载的文件就是约 46 MB 的安装包。

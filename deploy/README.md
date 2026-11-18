@@ -350,6 +350,18 @@ Caddy 对后台额外加了 `Cache-Control: no-store`、`Content-Security-Policy
 
 **已填好的 `/etc/caddy/Caddyfile` 不会被 `install.sh` 覆盖。** 第一次升级到带后台的版本时，`install.sh` 会提示 `/admin` 路由缺失；把 `deploy/Caddyfile` 里的 `redir /admin` 与 `handle_path /admin/*` 两段合并进现有配置，或者用 `FT_FORCE_CADDYFILE=1 bash install.sh` 重新铺模板（会覆盖手改）。
 
+## 自动更新清单
+
+客户端（v177 起）优先读取自托管清单 `https://ftranslation.cn/updates/version.json`，GitHub Pages 作为兜底。清单由 Caddy 从 `/var/www/fasttranslation-updates` 提供，和官网整目录同步互不影响——站点每次 `install.sh` 会整目录覆盖，这里不会。
+
+发版时除了更新 GitHub 仓库里的 `version.json`，还要覆盖服务器上的这一份：
+
+```bash
+scp version.json root@YOUR_TAILNET_IP:/var/www/fasttranslation-updates/version.json
+```
+
+`install.sh` 会创建目录并提示文件缺失；文件不存在时 `/updates/version.json` 返回 404，客户端自动回落到 GitHub Pages。改完 `/etc/caddy/Caddyfile` 必须 `systemctl restart caddy`：配置里 `admin off`，`systemctl reload caddy` 会失败。
+
 ## 升级
 
 升级就是再跑一遍 `install.sh`:它会自己停服务、拷完再启动(不要手写 stop/cp/start —— 边跑边拷会撞上面那条 Text file busy)。上传目录的铺法与首次部署相同,产物用最新的 `publish/server-linux`:

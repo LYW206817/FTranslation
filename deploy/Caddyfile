@@ -57,6 +57,18 @@ __DOMAIN__ www.__DOMAIN__ {
 		# }
 	}
 
+	# 自动更新清单的自托管源（v177）。独立 root，与官网整目录同步互不影响；
+	# GitHub Pages 有 600 秒缓存，自托管才能做到发版即生效，也是 gh-proxy 失效后的兜底。
+	# handle_path 会去掉 /updates 前缀，实际文件是 /var/www/fasttranslation-updates/version.json。
+	handle_path /updates/* {
+		root * /var/www/fasttranslation-updates
+		file_server
+		header {
+			Cache-Control "no-cache"
+			X-Content-Type-Options "nosniff"
+		}
+	}
+
 	# 账号 API、开发者网关和健康探针都落在同一个 Kestrel 实例上，
 	# 该实例只监听回环地址。
 	handle /v1/* {

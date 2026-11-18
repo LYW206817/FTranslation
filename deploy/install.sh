@@ -76,6 +76,15 @@ if grep -q '__ICP_NUMBER__' "$WEB_DIR/index.html" 2>/dev/null; then
 	echo "    !! A mainland-hosted site must display it; fill it in once the管局 issues it."
 fi
 
+echo "==> update manifest"
+# 自托管清单放在独立目录：发版时用 scp 覆盖这里的 version.json，站点整目录同步不会带走它。
+# 目录或文件缺失时 /updates/* 返回 404，客户端会回落到 GitHub Pages 源。
+install -d -m 0755 /var/www/fasttranslation-updates
+if [ ! -f /var/www/fasttranslation-updates/version.json ]; then
+	echo "    !! /var/www/fasttranslation-updates/version.json is missing."
+	echo "    !! Copy it from the release machine; until then /updates/version.json answers 404."
+fi
+
 echo "==> admin console"
 # 独立目录：site 的整目录同步不能带走后台文件，回滚也只需删这一块。
 if [ -d "$HERE/admin" ]; then

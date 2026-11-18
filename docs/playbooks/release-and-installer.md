@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File tools/qa/make-portable.ps1
 3. 主仓库建 Release:`POST https://api.github.com/repos/LYW206817/FTranslation/releases`,body 用 node 生成 JSON 文件再 `curl --data-binary @file`(PowerShell 拼 JSON 会被 `$`/`@` 吃掉)。`target_commitish` **必须传完整 40 位 sha**,短 sha 会被拒。
 4. 上传两个资产(Setup.exe + portable.zip):`POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`,大文件用 `run_in_background` + `job_output`。
 5. 更新通道仓库建同名 tag 的 Release,上传**同一份 Setup.exe**。
-6. 更新 `version.json`:`GET .../contents/version.json` 先取 `sha`(blob),`PUT` 时**必须带上它**,否则 422/409。字段:`version` / `url`(指向通道资产的 `/releases/download/<tag>/<file>`)/ `sha256`(小写)/ `size` / `notes` / `releasePage`。
+6. 更新 `version.json`:`GET .../contents/version.json` 先取 `sha`(blob),`PUT` 时**必须带上它**,否则 422/409。字段:`version` / `url`(指向通道资产或 OSS 对象的下载地址)/ `sha256`(小写)/ `size` / `notes` / `releasePage`。同时 `scp` 覆盖服务器上的 `/var/www/fasttranslation-updates/version.json`——客户端 v177 起优先读自托管源 `https://ftranslation.cn/updates/version.json`,只更新 GitHub 那份会让自托管源停在旧版本。
 7. 校验:每个资产的 `state` 必须是 `uploaded`(只看到 `size` 是假成功),`digest` 与本地 hash 一致;再轮询清单源确认新版本(`publish/poll-manifest.sh`)。清单只有 Pages 与 gh-proxy 两个源,Pages 有 600 秒缓存。
 8. 在 `docs/IMPL.md` 追加「发布记录」小节,提交 `docs: record the vX release and its assets`。
 9. 删掉临时令牌文件与本次生成的 json。

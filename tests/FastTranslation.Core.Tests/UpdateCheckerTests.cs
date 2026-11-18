@@ -64,13 +64,13 @@ public class UpdateCheckerTests
     }
 
     [Fact]
-    public void Channel_RacesTheTwoMeasuredEndpoints()
+    public void Channel_prefers_the_self_hosted_manifest_and_keeps_pages_as_fallback()
     {
         Assert.Equal(
             new[]
             {
+                "https://ftranslation.cn/updates/version.json",
                 "https://lyw206817.github.io/FTranslation-Updates/version.json",
-                "https://gh-proxy.com/https://github.com/LYW206817/FTranslation-Updates/raw/main/version.json",
             },
             UpdateChannel.ManifestUrls);
     }

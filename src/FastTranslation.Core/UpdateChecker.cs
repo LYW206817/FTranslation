@@ -38,11 +38,10 @@ public readonly record struct UpdateCheckNotice(string Title, string Body, strin
 }
 
 /// <summary>
-/// 更新器去哪里找清单。项目仓库是私有的，所以清单放在另一个公开仓库，并从两个端点并行
-/// 竞速读取：GitHub Pages（权威）与 gh-proxy 走 github.com raw 路由。两者都在大陆网络实测过。
-/// 那边访问不到 raw.githubusercontent.com（连接被重置），而 jsDelivr 镜像因为缓存 @main
-/// 返回了几个月前的清单——过期清单比死链更糟：它会把「有更新」永久变成
-/// 「你已是最新」，而且再也回不来。
+/// 更新器去哪里找清单：自托管的权威源（ftranslation.cn，随 Caddy 一起部署）与 GitHub Pages
+/// 兜底并行竞速。v177 起加入自托管源：gh-proxy 在 2026-11-18 实测已返回 HTML 而不是清单，
+/// 而 GitHub Pages 有 600 秒缓存、大陆网络也未必总能连上；把清单放到自己的已验证域名上，
+/// 更新链路才不再依赖镜像。GitHub Pages 继续保留，作为自托管域名故障时的过渡兜底。
 /// </summary>
 public static class UpdateChannel
 {
@@ -52,8 +51,8 @@ public static class UpdateChannel
 
     public static IReadOnlyList<string> ManifestUrls { get; } = new[]
     {
+        "https://ftranslation.cn/updates/" + ManifestFile,
         "https://" + Owner.ToLowerInvariant() + ".github.io/" + Repository + "/" + ManifestFile,
-        "https://gh-proxy.com/https://github.com/" + Owner + "/" + Repository + "/raw/main/" + ManifestFile,
     };
 
     /// <summary>面向人的下载页，供无法自安装的便携版使用。</summary>
