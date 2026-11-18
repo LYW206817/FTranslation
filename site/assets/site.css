@@ -47,7 +47,6 @@
   --prism-violet: #6443B9;
   --prism-night: #1D2450;
   --prism-night-violet: #37285E;
-  --prism-night-text: #D4D9F7;
   --prism-glint: #AFC4FF;
   --entrance-ease: cubic-bezier(.18,.72,.24,1);
   --toolbar-brand: #3B6BF0;
@@ -201,6 +200,15 @@ mark { background: var(--brand-soft); color: var(--brand-ink); padding: 2px 3px;
 .context-icon { display: grid; flex: 0 0 36px; height: 36px; place-items: center; border-radius: 10px; background: var(--brand-soft); color: var(--prism-blue); }
 .contexts a:nth-child(even) .context-icon { background: var(--dream-panel-violet); color: var(--prism-violet); }
 .contexts .context-arrow { width: 16px; height: 16px; margin-left: auto; color: var(--prism-blue); }
+.product-advantages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block: 20px 0; padding: 0; list-style: none; }
+.product-advantages li { display: flex; align-items: flex-start; gap: 16px; padding: 22px 24px; border: 1px solid var(--dream-rule); border-radius: 18px; background: linear-gradient(125deg, var(--dream-card), var(--dream-panel-blue)); }
+.product-advantages li:nth-child(2) { background: linear-gradient(125deg, var(--dream-card), var(--dream-panel-violet)); }
+.advantage-icon { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border-radius: 12px; color: var(--prism-blue); background: var(--brand-soft); }
+.product-advantages li:nth-child(2) .advantage-icon { color: var(--prism-violet); background: var(--dream-panel-violet); }
+.advantage-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 12px; line-height: 1.45; }
+.advantage-title strong { font-size: 20px; letter-spacing: -.03em; }
+.advantage-title span { color: var(--brand-ink); font-size: 13px; font-weight: 650; }
+.advantage-title + p { margin-top: 7px; font-size: 13px; color: var(--secondary); }
 
 .section { padding-block: 96px; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; margin-bottom: 36px; }
@@ -312,9 +320,12 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .plan-emblem { position: absolute; right: 22px; top: 25px; display: flex; align-items: center; justify-content: center; width: 39px; height: 39px; border: 1px solid var(--stage-line); border-radius: 13px; background: var(--page); color: var(--brand); }
 .plan-emblem .icon { width: 19px; height: 19px; }
 .plan h3 { font-size: 22px; letter-spacing: -.02em; }
+.plan-discount { display: inline-block; vertical-align: 3px; padding: 3px 7px; border-radius: 20px; background: var(--dream-panel-violet); color: var(--prism-violet); font-size: 10px; font-weight: 700; letter-spacing: 0; white-space: nowrap; }
 .plan-for { font-size: 12px; color: var(--secondary); margin-top: 7px; }
 .price { font-size: 43px; font-weight: 650; letter-spacing: -.05em; margin-top: 33px; line-height: 1.25; }
 .price > span { font-size: 12px; font-weight: 400; color: var(--secondary); letter-spacing: 0; }
+.plan-billing { display: grid; gap: 2px; margin-top: 10px; padding: 7px 10px; border: 1px solid var(--dream-rule); border-radius: 9px; color: var(--secondary); background: var(--canvas); font-size: 11px; }
+.plan-billing strong { color: var(--brand-ink); font-size: 12px; font-weight: 650; }
 .quota { display: flex; align-items: baseline; gap: 6px; color: var(--secondary); font-size: 11px; margin-top: 16px; }
 .quota strong { font-size: 17px; color: var(--brand-ink); font-weight: 600; letter-spacing: -.025em; }
 .plan-button { width: 100%; min-height: 46px; font-size: 13px; margin-top: 25px; padding-inline: 6px; border-radius: 10px; }
@@ -327,6 +338,8 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .featured-plan .plan-for, .featured-plan .price > span, .featured-plan .quota, .featured-plan .quota strong, .featured-plan li, .featured-plan li::before { color: var(--white); }
 .featured-plan ul { border-color: var(--plan-brand-line); }
 .featured-plan .plan-emblem { background: var(--plan-brand-sheen); border-color: var(--plan-brand-line); color: var(--white); }
+.featured-plan .plan-billing { background: var(--plan-brand-sheen); border-color: var(--plan-brand-line); }
+.featured-plan .plan-billing, .featured-plan .plan-billing strong { color: var(--white); }
 .featured-plan .button.primary { color: var(--brand-ink); background: var(--white); border-color: var(--white); box-shadow: none; }
 .featured-plan .button.primary:hover { background: var(--brand-soft); border-color: var(--brand-soft); }
 .plan-recommend { position: absolute; top: -15px; left: 26px; width: fit-content; background: var(--white); color: var(--brand-ink); border: 1px solid var(--stage-line); font-size: 11px; font-weight: 600; padding: 4px 13px; border-radius: 20px; box-shadow: 0 4px 12px var(--plan-glow); }
@@ -335,6 +348,7 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
   .plan:hover { z-index: 5; transform: translateY(-16px) rotate(0deg); box-shadow: var(--plan-shadow-raised); border-color: var(--brand); }
 }
 .plans-note { font-size: 11px; color: var(--muted); max-width: 880px; margin: 25px auto 0; text-align: center; line-height: 1.9; }
+.plan-price-note { text-align: center; color: var(--secondary); font-size: 12px; }
 .faq-section { display: grid; grid-template-columns: 1fr 1.5fr; gap: 80px; }
 .faq-section h2 { font-size: 30px; }
 .text-link { display: inline-flex; align-items: center; gap: 12px; margin-top: 23px; color: var(--secondary); font-size: 12px; }
@@ -346,11 +360,11 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .faq-list summary > span { font-size: 22px; font-weight: 300; color: var(--secondary); transition: transform .2s; }
 .faq-list details[open] summary > span { transform: rotate(45deg); }
 .faq-list details > p { font-size: 13px; color: var(--secondary); line-height: 1.9; padding: 0 28px 22px 0; }
-.download-section { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 84px; background: radial-gradient(ellipse at 83% 0%, var(--prism-violet), transparent 72%), linear-gradient(120deg, var(--prism-night), var(--prism-night-violet)); padding: 56px 64px; border: 1px solid var(--night-line); border-radius: 26px; color: var(--white); }
+.download-section { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 84px; background: linear-gradient(120deg, var(--dream-panel-blue), var(--dream-panel-violet)); padding: 56px 64px; border: 1px solid var(--dream-rule); border-radius: 26px; }
 .download-intro > img { border-radius: 13px; margin-bottom: 23px; }
 .download-intro h2 { font-size: clamp(29px, 3.3vw, 46px); }
-.download-intro > p { font-size: 12px; color: var(--prism-night-text); margin-top: 16px; }
-.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 28px 24px; border: 1px solid var(--stage-line); border-radius: 17px; background: var(--page); color: var(--ink); box-shadow: 0 14px 38px -18px rgb(14 9 44 / 66%); transition: border-color .18s, box-shadow .18s; }
+.download-intro > p { font-size: 12px; color: var(--secondary); margin-top: 16px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 28px 24px; border: 1px solid var(--stage-line); border-radius: 17px; background: var(--page); box-shadow: var(--shadow); transition: border-color .18s, box-shadow .18s; }
 .download-option:hover { border-color: var(--brand); box-shadow: var(--card-shadow); }
 .download-option > div { min-width: 0; }
 .download-label { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--secondary); }
@@ -358,7 +372,7 @@ kbd { font: inherit; font-size: 10px; padding: 2px 7px; border: 1px solid var(--
 .download-filename { display: block; font-size: 10px; color: var(--secondary); margin-top: 4px; overflow-wrap: anywhere; }
 .download-description { display: block; color: var(--muted); font-size: 10px; margin-top: 7px; }
 .download-icon { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 9px; background: var(--brand); color: var(--white); }
-.download-help { font-size: 10px; color: var(--prism-night-text); margin-top: 12px; text-align: center; }
+.download-help { font-size: 10px; color: var(--secondary); margin-top: 12px; text-align: center; }
 .footer { display: flex; justify-content: space-between; align-items: flex-end; padding-block: 48px 35px; margin-top: 24px; }
 .footer .brand { font-size: 16px; }
 .footer p { font-size: 12px; color: var(--secondary); margin-top: 9px; }
@@ -491,7 +505,7 @@ main { overflow-x: clip; }
   .brand { font-size: 16px; gap: 7px; }
   .brand img { width: 28px; height: 28px; }
   .nav-download { padding-inline: 12px; font-size: 11px; gap: 9px; }
-  .nav nav { gap: 24px; margin-top: 6px; }
+  .nav nav { gap: clamp(12px, 4vw, 24px); margin-top: 6px; }
   .nav nav a { font-size: 11px; }
   .hero-shell { padding-block: 24px 16px; gap: 19px; }
   .hero { text-align: left; }
@@ -556,6 +570,10 @@ main { overflow-x: clip; }
   .image-result-label { margin-top: 11px; }
   .image-result .result-bottom { margin-top: 15px; }
   .contexts { gap: 9px; }
+  .product-advantages { grid-template-columns: 1fr; gap: 9px; margin-top: 12px; }
+  .product-advantages li { gap: 12px; padding: 16px; }
+  .advantage-icon { flex-basis: 36px; height: 36px; }
+  .advantage-title strong { font-size: 17px; }
   .contexts a { gap: 8px; min-height: 63px; padding: 9px; }
   .contexts strong { font-size: 12px; }
   .context-icon { flex-basis: 30px; height: 30px; }
