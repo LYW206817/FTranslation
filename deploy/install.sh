@@ -131,6 +131,19 @@ else
 	echo "    (monitor scripts missing from $HERE — skipping; copy them from deploy/)"
 fi
 
+echo "==> Tailscale / Workbench"
+# 阿里云 Workbench 的来源 100.104.0.0/16 与 Tailscale 的 100.64.0.0/10 重叠，
+# tailscaled 的 DROP 规则会把 Workbench 的 SSH 丢掉；这条放行规则必须在它启动后补回。
+if command -v tailscale >/dev/null 2>&1; then
+	install -m 0755 "$HERE/ft-tailscale-workbench-allow.sh" /usr/local/bin/ft-tailscale-workbench-allow.sh
+	install -d -m 0755 /etc/systemd/system/tailscaled.service.d
+	install -m 0644 "$HERE/tailscaled-workbench.conf" /etc/systemd/system/tailscaled.service.d/workbench.conf
+	systemctl daemon-reload
+	/usr/local/bin/ft-tailscale-workbench-allow.sh || echo "    !! ts-input rule not applied yet (tailscaled may not be running)"
+else
+	echo "    (tailscale not installed — skipping)"
+fi
+
 echo "==> Caddy"
 # 已经配好（没有占位符）的 Caddyfile 不能被升级覆盖：拷贝过来会带回占位符，
 # 下面那段检测就会把 caddy 停掉，网站跟着下线。要重新铺模板用

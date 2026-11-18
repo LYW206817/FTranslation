@@ -231,6 +231,19 @@ ssh root@YOUR_TAILNET_IP 'nohup timeout 40 python3 -m http.server 443 --bind 0.0
 
 公网侧 22 现在应当恒为「超时」；Tailscale 通道单独用 `tailscale ping YOUR_TAILNET_IP` 验证，直连时返回 `pong ... via <ip>:41641`，走中继则会显示 `via DERP(...)`。
 
+### Workbench 与 Tailscale 的 100.64 网段冲突
+
+阿里云 Workbench 的来源 `100.104.0.0/16` 落在 Tailscale 视为自家的 `100.64.0.0/10` 网段里。`tailscaled` 会在 `ts-input` 链顶部插入 `DROP !tailscale0 100.64.0.0/10`，于是 Workbench 的 SSH SYN 到达网卡后被丢掉——安全组放行、ufw 放行，抓包能看见 SYN，服务器却不回 SYN-ACK。
+
+修复方式是在 `ts-input` 顶部插一条 `100.104.0.0/16` 的 ACCEPT，并挂到 `tailscaled.service` 启动之后执行：
+
+```bash
+/usr/local/bin/ft-tailscale-workbench-allow.sh    # 幂等;install.sh 已装为 drop-in 的 ExecStartPost
+iptables -L ts-input -n | sed -n '3p'             # 第一行规则应为 100.104.0.0/16 -> ACCEPT
+```
+
+`install.sh` 会安装 `ft-tailscale-workbench-allow.sh` 与 `tailscaled.service.d/workbench.conf`。`tailscaled` 每次重启都会重建 `ts-input`，所以规则不能只手工加一次。
+
 ## 备份与恢复
 
 ```bash
