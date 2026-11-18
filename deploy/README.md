@@ -215,6 +215,8 @@ Codex / Qoder 这类客户端把服务器当远程开发环境时，对远端的
 
 - **Windows 客户端**：系统自带的 OpenSSH 会检查私钥 ACL，只要文件对 `Authenticated Users` 可读就拒绝加载（`UNPROTECTED PRIVATE KEY FILE`）。用 `icacls <key> /inheritance:r /grant:r "*<SID>:(R)"` 收窄；Git Bash 自带的 ssh 不做这项检查，容易误判为「密钥没问题」。
 
+- **BaoCode**：连接远程主机时需要与客户端版本匹配的 `baocode-server`，版本号和下载地址见客户端 `remote/servers.json`。服务器解析不了 `dl.baocode.dev` 时会报 `The BaoCode server for Linux x64 could not be downloaded`；本机下载后校验 `sha256`，解压放到 `/root/.baocode-server/<版本号>/baocode-server`（755）即可。2026-11-18 已在服务器上通过 `/etc/systemd/resolved.conf.d/99-ft-dns.conf` 把 DNS 改为 `223.5.5.5` / `119.29.29.29` 并在 `FallbackDNS` 留了 `1.1.1.1` / `8.8.8.8`，阿里云内网默认解析器（`100.100.2.136`）对这类境外域名会失败。
+
 ### 验证
 
 验证方法仍然是「门口被丢 / 机器自己拒绝」两分法：临时在机器上起监听，再从本机探测：
