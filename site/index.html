@@ -14,7 +14,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#F8F7FF">
   <!-- v168：assets 缓存一年，脚本与样式都带内容摘要，避免新版页面配到旧入场逻辑。 -->
-  <link rel="stylesheet" href="assets/site.css?v=dcb3dfa56036">
+  <link rel="stylesheet" href="assets/site.css?v=86de2321c083">
   <script src="assets/site.js?v=7f10d6984b72" defer></script>
 </head>
 <body>
@@ -94,9 +94,32 @@
       <a href="#speech"><span class="context-icon"><svg class="icon" aria-hidden="true"><use href="#i-wave"/></svg></span><span><strong>实时字幕</strong><small>边听边看</small></span><svg class="icon context-arrow" aria-hidden="true"><use href="#i-arrow"/></svg></a>
     </nav>
 
-    <ul class="product-advantages wrap" aria-label="Fast Translation 的两项优势">
-      <li><span class="advantage-icon"><svg class="icon" aria-hidden="true"><use href="#i-feather"/></svg></span><div><p class="advantage-title"><strong>超轻量</strong><span>安静待在托盘</span></p><p>界面简洁易懂，没有广告弹窗。可开启低内存模式，进一步减少后台内存占用。</p></div></li>
-      <li><span class="advantage-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><div><p class="advantage-title"><strong>超迅速</strong><span>单词本地快查</span></p><p>单个英文词译成中文时优先查本地词典，收录的词无需联网等响应，音标、词性和释义直接返回。</p></div></li>
+    <!-- v170：数字按已测场景展示。内存区分渲染模式，查词计时到返回词条为止，避免被读作弹窗速度。 -->
+    <ul class="product-advantages wrap" id="advantages" aria-label="Fast Translation 的两项优势">
+      <li>
+        <span class="advantage-icon"><svg class="icon" aria-hidden="true"><use href="#i-feather"/></svg></span>
+        <div>
+          <p class="advantage-title"><strong>超轻量</strong><span>托盘空闲内存实测</span></p>
+          <dl class="advantage-metrics">
+            <div><dt>低内存模式</dt><dd><strong>约 60</strong> MiB</dd></div>
+            <div><dt>默认模式</dt><dd><strong>约 143</strong> MiB</dd></div>
+          </dl>
+          <p class="advantage-copy">界面简洁，无广告弹窗。开启低内存模式后，托盘空闲内存实测少约 58%；主窗口重绘可能变慢。</p>
+          <small class="advantage-method">Windows 11 · i5-13500H · v1.5.1。收进托盘后第 45–75 秒，每种模式采样 7 次，取私有工作集的中位数。实际占用随用法和环境变化。</small>
+        </div>
+      </li>
+      <li>
+        <span class="advantage-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        <div>
+          <p class="advantage-title"><strong>超迅速</strong><span>英文单词本地查词实测</span></p>
+          <dl class="advantage-metrics">
+            <div><dt>查询耗时中位数</dt><dd><strong>0.25</strong> 毫秒</dd></div>
+            <div><dt>95% 的查询在</dt><dd><strong>0.60</strong> 毫秒内</dd></div>
+          </dl>
+          <p class="advantage-copy">英文单词译中文时，本地词典命中即可返回音标、词性和释义；无需联网，也不消耗翻译额度。</p>
+          <small class="advantage-method">同机实测：词典预载后查 5,000 个不同的收录词，未用译文缓存。从提交查询到词条返回，不含取词和弹窗绘制。</small>
+        </div>
+      </li>
     </ul>
 
     <section class="section wrap" id="features" aria-labelledby="features-title">
