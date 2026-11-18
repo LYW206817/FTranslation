@@ -77,13 +77,12 @@ powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1
 
 本仓库**没有 CI**:构建、测试、截图都必须在本机跑出来,并把输出贴进验证记录。
 
-## 版本号:必须同时改的五处
+## 版本号:必须同时改的四处
 
 1. `Directory.Build.props` 的 `<Version>` → 程序集版本与「关于」显示
 2. `installer/FastTranslation.iss` 的 `#define AppVersion`
-3. `docs/portable-readme.txt` 的标题、安装包名,并在「更新记录」顶部加一节
-4. `README.md` 安装段的两处包名(最近就漏改过:1.3.7 发布后 README 与 site 都还停在 1.2.2,发布前必须逐处核对)
-5. `site/index.html` 的三处硬编码:版本徽标、hero 说明(含包体积)、安装版下载卡的文件名
+3. `README.md` 安装段的包名
+4. `site/index.html` 的三处硬编码:版本徽标、hero 说明(含包体积)、安装版下载卡的文件名
 
 产品版本号与 `docs/IMPL.md` 里的 `vN` 是两套编号:`vN` 是变更序号,一直累加,不等于版本号。
 

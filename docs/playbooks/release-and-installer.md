@@ -1,6 +1,6 @@
 # 发版、打包与安装器
 
-本文件是 `AGENTS.md` 的延伸,只在准备发布、改安装器、打便携包时读。
+本文件是 `AGENTS.md` 的延伸,只在准备发布、改安装器时读。
 
 ## 前置事实
 
@@ -17,10 +17,6 @@ dotnet publish src/FastTranslation.App/FastTranslation.App.csproj -c Release -r 
 # 2) 安装包(约 70 秒;ISCC 不接受 /Q,别加)
 "$ISCC" installer/FastTranslation.iss
 # → publish/dist/FastTranslation-<ver>-Setup.exe
-
-# 3) 便携包
-powershell -ExecutionPolicy Bypass -File tools/qa/make-portable.ps1
-# → publish/dist/FastTranslation-<ver>-portable.zip(263 条目)
 ```
 
 `$ISCC` 用本机 Inno 6 的 per-user 版(默认 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`,当前 6.7.3)。换机器先 `where ISCC` 确认,不要把用户名硬编码进脚本。本机两个 Inno 编译器都可用,默认用 per-user 版。Inno 帮助是 `ISetup.chm`,已解包到 `publish/chm6`(读脚本 `publish/chmread.py`);类定义在 `topic_scriptclasses.htm`。
@@ -30,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File tools/qa/make-portable.ps1
 1. 提交并推送代码;记下 `git rev-parse HEAD` 的**完整 40 位 sha**。
 2. 读用户环境变量 `GITHUB RELEASE` 取令牌 → 写到 `$env:TEMP` 的临时 header 文件(`Authorization: Bearer <tok>`),见「令牌操作」。
 3. 主仓库建 Release:`POST https://api.github.com/repos/LYW206817/FTranslation/releases`,body 用 node 生成 JSON 文件再 `curl --data-binary @file`(PowerShell 拼 JSON 会被 `$`/`@` 吃掉)。`target_commitish` **必须传完整 40 位 sha**,短 sha 会被拒。
-4. 上传两个资产(Setup.exe + portable.zip):`POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`,大文件用 `run_in_background` + `job_output`。
+4. 上传安装包资产(Setup.exe):`POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`,大文件用 `run_in_background` + `job_output`。PowerShell 会话里 45 MB 直传经常被重置,实测可用的组合是 `--noproxy '*' --http1.1 -H 'Expect:' --limit-rate 1M --data-binary @- < file`(见 IMPL v175)。
 5. 更新通道仓库建同名 tag 的 Release,上传**同一份 Setup.exe**。
 6. 更新 `version.json`:`GET .../contents/version.json` 先取 `sha`(blob),`PUT` 时**必须带上它**,否则 422/409。字段:`version` / `url`(指向通道资产或 OSS 对象的下载地址)/ `sha256`(小写)/ `size` / `notes` / `releasePage`。同时 `scp` 覆盖服务器上的 `/var/www/fasttranslation-updates/version.json`——客户端 v177 起优先读自托管源 `https://ftranslation.cn/updates/version.json`,只更新 GitHub 那份会让自托管源停在旧版本。
 7. 校验:每个资产的 `state` 必须是 `uploaded`(只看到 `size` 是假成功),`digest` 与本地 hash 一致;再轮询清单源确认新版本(`publish/poll-manifest.sh`)。清单只有 Pages 与 gh-proxy 两个源,Pages 有 600 秒缓存。
@@ -72,9 +68,9 @@ curl -H @"$HDR" https://api.github.com/user
 
 ## 发版前自检清单
 
-- [ ] `powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1` 通过（五处版本号、安装包与便携包名）
+- [ ] `powershell -ExecutionPolicy Bypass -File tools/qa/check-version.ps1` 通过（四处版本号、安装包名）
 - [ ] `dotnet build` 0 警告 0 错误;`dotnet test` 全绿(当前基线 704 个用例:Core 302 / Platform.Windows 97 / Providers.QwenMt 95 / Server 210;用例数会变,以本机输出为准,别拿旧数字当门)
-- [ ] 安装包与便携包都在 `publish/dist/`,文件名含新版本
+- [ ] 安装包在 `publish/dist/`,文件名含新版本
 - [ ] 两个 Release 的资产 `state: uploaded`,digest 与本地 hash 一致
 - [ ] `version.json` 已更新,两个清单源都能取到新版本
 - [ ] `docs/IMPL.md` 有对应 `vN` 与「发布记录」

@@ -1,5 +1,6 @@
-﻿# 发版前核对「版本号五处」：程序集、安装器、便携说明、README、官网。
+﻿# 发版前核对「版本号四处」：程序集、安装器、README、官网。
 # 只做精确锚点检查；历史更新记录里的旧版本号不算错。
+# 便携包自 v179 起不再发布，docs/portable-readme.txt 保留为历史说明，不再参与校验。
 param([string]$Root = '')
 
 $ErrorActionPreference = 'Stop'
@@ -25,19 +26,14 @@ if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
 }
 
 $iss = Read-Utf8 'installer/FastTranslation.iss'
-$portable = Read-Utf8 'docs/portable-readme.txt'
 $readme = Read-Utf8 'README.md'
 $site = Read-Utf8 'site/index.html'
 
 $setup = "FastTranslation-$version-Setup.exe"
-$zip = "FastTranslation-$version-portable.zip"
 $checks = @(
     @{ File = 'installer/FastTranslation.iss'; Text = $iss; Need = "#define AppVersion `"$version`""; Label = 'AppVersion' },
-    @{ File = 'docs/portable-readme.txt'; Text = $portable; Need = "Fast Translation $version"; Label = 'title' },
-    @{ File = 'docs/portable-readme.txt'; Text = $portable; Need = $setup; Label = 'setup name' },
     @{ File = 'README.md'; Text = $readme; Need = "当前版本 **$version**"; Label = 'current version' },
     @{ File = 'README.md'; Text = $readme; Need = $setup; Label = 'setup name' },
-    @{ File = 'README.md'; Text = $readme; Need = $zip; Label = 'portable name' },
     @{ File = 'site/index.html'; Text = $site; Need = "v$version"; Label = 'badge' },
     @{ File = 'site/index.html'; Text = $site; Need = "$version ·"; Label = 'hero size line' },
     @{ File = 'site/index.html'; Text = $site; Need = $setup; Label = 'setup name' }
@@ -56,4 +52,4 @@ if ($bad.Count -gt 0) {
     exit 1
 }
 
-Write-Host "Version $version is consistent across the five release locations."
+Write-Host "Version $version is consistent across the four release locations."
