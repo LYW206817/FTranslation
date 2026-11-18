@@ -52,16 +52,16 @@ cp -r publish/server-linux publish/ftdeploy/server
 cp -r site publish/ftdeploy/site
 cp -r admin publish/ftdeploy/admin
 
-# 3) 上传(IP 换成你的)
-scp -r publish/ftdeploy root@YOUR_SERVER_IP:/root/ftdeploy
+# 3) 上传(地址换成 `tailscale status` 里的 100.x 地址,见「远程接入」)
+scp -r publish/ftdeploy root@YOUR_TAILNET_IP:/root/ftdeploy
 
 # 4) 服务器:装系统依赖
-ssh root@YOUR_SERVER_IP 'bash /root/ftdeploy/bootstrap.sh'
+ssh root@YOUR_TAILNET_IP 'bash /root/ftdeploy/bootstrap.sh'
 
 # 5) 服务器:填生产配置(见下节),再跑安装脚本
-ssh root@YOUR_SERVER_IP 'cp /root/ftdeploy/appsettings.Production.json.example /opt/fasttranslation/appsettings.Production.json'
+ssh root@YOUR_TAILNET_IP 'cp /root/ftdeploy/appsettings.Production.json.example /opt/fasttranslation/appsettings.Production.json'
 # ...编辑该文件填 SigningKey / AdminToken / Gateway:ApiKey...
-ssh root@YOUR_SERVER_IP 'bash /root/ftdeploy/install.sh'
+ssh root@YOUR_TAILNET_IP 'bash /root/ftdeploy/install.sh'
 ```
 
 第 5 步的 `install.sh` 会做幂等安装,最后打印健康检查结果。Caddy 只有在 `Caddyfile` 的占位符被替换后才会被启用 —— 这是刻意的,见下文。`bootstrap.sh` 里的 SSH 加固只在 `/root/.ssh/authorized_keys` 非空时才动手(否则它会把自己锁在门外);不想动 sshd 和防火墙就加 `FT_SKIP_HARDEN=1`。
@@ -133,7 +133,7 @@ systemctl reload-or-restart caddy
 **备案通过之前不要启用 Caddy。** 域名解析过去就是对外开放,而且 ACME 也签不下证书。这段时间调试用 SSH 隧道:
 
 ```bash
-ssh -L 5080:127.0.0.1:5080 root@YOUR_SERVER_IP
+ssh -L 5080:127.0.0.1:5080 root@YOUR_TAILNET_IP
 # 然后本机浏览器访问 http://127.0.0.1:5080/health
 ```
 
@@ -157,31 +157,77 @@ bash /root/ftdeploy/go-live.sh --email 你的邮箱 --icp '豫ICP备2026xxxxxx�
 
 > 备案号到手后,别忘了同时把它写进仓库的 `site/index.html`(替换 `__ICP_NUMBER__`)并提交 —— 否则下次 `install.sh` 会把页脚覆盖回占位符。`install.sh` 已经不会覆盖已配好的 `/etc/caddy/Caddyfile`,但站点文件是整目录同步的。
 
-## 安全组
+## 远程接入（Tailscale）与安全组
 
-入方向只留这四条（2026-10-29 已按此配好，实测从公网只有 22/80/443 能到达机器）：
+SSH 只走 Tailscale 内网（`100.x`），公网侧看不见 22。2026-11-18 之前用的是「开发机出口 IP `/32`」白名单；宽带是动态 IP，地址从 `.134` 漂到 `.135` 之后 `ssh` 直接超时，白名单方案随之失效。改走 Tailscale 后不再依赖源 IP，换网络、换地点都不受影响。
+
+### 安全组当前状态
+
+入方向（2026-11-18 实测，公网只剩 80 / 443 / ICMP）：
 
 | 端口 | 来源 | 优先级 | 用途 |
 |---|---|---|---|
-| 22 | 开发机出口 IP `/32`（当前 `YOUR_DEV_IP/32`） | 100 | SSH，只认密钥 |
-| 22 | `100.104.0.0/16` | 100 | Workbench「文件管理」——它走真实 sshd + 实例密码 |
+| 22 | `100.104.0.0/16` | 100 | Workbench「文件管理」——走真实 sshd + 实例密码，唯一不依赖 Tailscale 的 SSH 通道 |
 | 80 | `0.0.0.0/0` | 1 | ACME HTTP 挑战 + 跳转 443 |
 | 443 | `0.0.0.0/0` | 1 | 站点与 API |
+| 全部 | `0.0.0.0/0`（ICMP） | 100 | 排查连通性用的 ping |
 
+- **公网 22 一条都不要留**，包括「开发机出口 IP」。动态 IP 被运营商回收再分配后，旧规则会对陌生人继续生效。
 - 5080 **不要**对外放行：应用只监听 `127.0.0.1:5080`，调试走 `ssh -L`。
 - 镜像自带的 `RDP(3389)`，以及 `3000 / 8888 / 23404` 这类「任何位置 + 优先级 1」的放行一律删掉。阿里云优先级数字越小越优先，留着它们等于以后哪个软件一绑定端口就立刻对公网开门。
-- 开发机 IP 是动态的，变了就连不上 22。两条兜底都不经过 22：控制台 VNC/管理终端（用实例密码）、Workbench 免密连接（走云助手 agent）。
-- sshd 侧的按来源放行（公网只密钥、内网段可密码）见 `docs/IMPL.md` v53。
+- 两条兜底都不经过公网 22：控制台 VNC / 管理终端（实例密码）、Workbench（`100.104.0.0/16`，走云助手 agent）。
+- sshd 侧的按来源放行（公网只密钥、内网段可密码）见 `docs/impl/IMPL-v41-60.md` v53。
 
-验证方法：临时在机器上起监听，再从本机探测，能分清「门口被丢」和「机器自己拒绝」：
+### 服务器侧安装
 
 ```bash
-ssh root@YOUR_SERVER_IP 'nohup timeout 40 python3 -m http.server 443 --bind 0.0.0.0 >/dev/null 2>&1 &'
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up                 # 打印一次性的登录链接，在浏览器完成认证
+ufw allow in on tailscale0   # 必须：ufw 默认 deny incoming，漏了这条隧道建得起来但包进不来
+```
+
+`tailscaled` 由 systemd 托管、默认 enable；客户端（Windows / macOS）装好登录同一账户即可，Windows 服务 `StartType=Automatic`。日常不用手动启动，只有手动「退出」客户端才会断开隧道。
+
+### 连接
+
+```bash
+ssh root@YOUR_TAILNET_IP
+scp -r publish/ftdeploy root@YOUR_TAILNET_IP:/root/ftdeploy
+```
+
+`YOUR_TAILNET_IP` 在 `tailscale status` 里查。
+
+### 远端 Codex（可选）
+
+Codex / Qoder 这类客户端把服务器当远程开发环境时，对远端的要求不同：
+
+- **Qoder**：只要 SSH 通即可。
+- **Codex**：codex-managed 连接会在远端拉起 `codex app server`，远端必须装好 Codex CLI 并让它在 login shell 的 `PATH` 里，否则 SSH 认证通过之后仍然连不上：
+
+  ```bash
+  curl -sL -o /tmp/c.tgz "https://gh-proxy.com/https://github.com/openai/codex/releases/latest/download/codex-x86_64-unknown-linux-musl.tar.gz"
+  tar xzf /tmp/c.tgz -C /tmp
+  install -m 755 /tmp/codex-x86_64-unknown-linux-musl /usr/local/bin/codex
+  apt-get install -y bubblewrap   # 缺它 app-server 启动即报 could not find bubblewrap
+  ```
+
+  认证二选一：把本机 `~/.codex/auth.json` 复制到远端 `/root/.codex/auth.json`（600），或在远端跑 `codex login`。本机重新登录后远端副本不会自动更新，需要重新复制。远端 Codex 以 root 身份运行，沙箱只约束它自己的命令范围，不会阻止它碰 `/opt/fasttranslation`。
+
+- **Windows 客户端**：系统自带的 OpenSSH 会检查私钥 ACL，只要文件对 `Authenticated Users` 可读就拒绝加载（`UNPROTECTED PRIVATE KEY FILE`）。用 `icacls <key> /inheritance:r /grant:r "*<SID>:(R)"` 收窄；Git Bash 自带的 ssh 不做这项检查，容易误判为「密钥没问题」。
+
+### 验证
+
+验证方法仍然是「门口被丢 / 机器自己拒绝」两分法：临时在机器上起监听，再从本机探测：
+
+```bash
+ssh root@YOUR_TAILNET_IP 'nohup timeout 40 python3 -m http.server 443 --bind 0.0.0.0 >/dev/null 2>&1 &'
 # 本机对 22/80/443/3000/3389/8888/23404 各发一次 TCP 连接：
 #   OPEN     = 安全组放行，且机器有人监听
 #   REFUSED  = 安全组放行，但机器无监听（秒回 RST）
 #   超时     = 包在阿里云门口就被丢掉
 ```
+
+公网侧 22 现在应当恒为「超时」；Tailscale 通道单独用 `tailscale ping YOUR_TAILNET_IP` 验证，直连时返回 `pong ... via <ip>:41641`，走中继则会显示 `via DERP(...)`。
 
 ## 备份与恢复
 
@@ -319,8 +365,8 @@ cp -r publish/server-linux /root/ftup/server
 cp -r site /root/ftup/site
 cp -r admin /root/ftup/admin
 tar czf /root/ftup.tgz -C /root/ftup .
-scp /root/ftup.tgz root@YOUR_SERVER_IP:/tmp/
-ssh root@YOUR_SERVER_IP 'rm -rf /root/ftdeploy && mkdir -p /root/ftdeploy && tar xzf /root/ftup.tgz -C /root/ftdeploy && bash /root/ftdeploy/install.sh'
+scp /root/ftup.tgz root@YOUR_TAILNET_IP:/tmp/
+ssh root@YOUR_TAILNET_IP 'rm -rf /root/ftdeploy && mkdir -p /root/ftdeploy && tar xzf /root/ftup.tgz -C /root/ftdeploy && bash /root/ftdeploy/install.sh'
 ```
 
 `/opt/fasttranslation/appsettings.Production.json` 不在上传目录里,升级不会覆盖服务器上的生产配置。
