@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FastTranslation.Core;
@@ -165,38 +164,6 @@ public partial class SettingsPage : UserControl
         ExclusionEmpty.Visibility = ExcludedList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // 每个文本框和排除应用列表都在页面的那个 ScrollViewer 里带着自己的 ScrollViewer。
-    // 嵌套的那个即使已经滚到底也会把滚轮标记为已处理，于是指针停在输入框上时页面就
-    // 卡死了——也就是「卡住一会儿、之后又恢复」的那份反馈。所以在页面层隧道滚轮，
-    // 嵌套滚动器在该方向用不了时就把事件转给外层。
-    private void Body_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Handled) return;
-
-        var inner = FindInnerScrollViewer(e.OriginalSource as DependencyObject);
-        if (inner is not null && CanScroll(inner, e.Delta)) return; // 交给嵌套滚动器处理
-
-        var lines = SystemParameters.WheelScrollLines;
-        var step = lines > 0 ? lines * 16.0 : lines == -1 ? Body.ViewportHeight * 0.9 : 0.0;
-        if (step <= 0) return;
-
-        e.Handled = true;
-        var target = Body.VerticalOffset - Math.Sign(e.Delta) * step;
-        Body.ScrollToVerticalOffset(Math.Clamp(target, 0, Body.ScrollableHeight));
-    }
-
-    private static bool CanScroll(ScrollViewer viewer, int delta) =>
-        delta > 0 ? viewer.VerticalOffset > 0.5 : viewer.VerticalOffset < viewer.ScrollableHeight - 0.5;
-
-    private ScrollViewer? FindInnerScrollViewer(DependencyObject? node)
-    {
-        for (var current = node; current is not null && !ReferenceEquals(current, Body); current = VisualTreeHelper.GetParent(current))
-        {
-            if (current is ScrollViewer viewer) return viewer;
-        }
-        return null;
-    }
-
     private void FillForeground_Click(object sender, RoutedEventArgs e)
     {
         var name = ForegroundInfo.ProcessName();
@@ -310,6 +277,7 @@ public partial class SettingsPage : UserControl
             App.ApplyAppearance(_settings.Theme, _settings.Accent);
             return;
         }
+
         _service.Save(_settings);
         // v149：保存后留在设置页，不再触发 Closed 跳回首页；先应用外观再回填控件，
         // 确保主题、强调色立即生效，且页内各输入值/提示与落盘后的设置完全一致。

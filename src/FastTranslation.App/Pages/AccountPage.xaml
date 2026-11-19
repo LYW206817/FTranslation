@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:FastTranslation.App"
+             xmlns:win="clr-namespace:FastTranslation.Platform.Windows;assembly=FastTranslation.Platform.Windows"
              Background="Transparent"
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <UserControl.Resources>
@@ -31,10 +32,12 @@
 
   <!-- v111：登录成功时「登录」按钮随未登录面板一起收起，键盘焦点落到这个 ScrollViewer 上，
        WPF 会围绕整个账号页画出默认的深色焦点框（用户反馈的那一圈）。它不参与 Tab 导航，
-       不需要焦点指示；关掉后子控件自己的焦点环不受影响。 -->
+       不需要焦点指示；关掉后子控件自己的焦点环不受影响。
+       v188：页内多个全宽 PasswordBox/TextBox 自带 PART_ContentHost ScrollViewer 会吞掉滚轮，
+       启用 ScrollViewerWheel.Forward 让无法继续滚动的嵌套控件把滚轮转交给外层视口。 -->
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                 HorizontalContentAlignment="Stretch" Focusable="False"
-                FocusVisualStyle="{x:Null}">
+                FocusVisualStyle="{x:Null}" win:ScrollViewerWheel.Forward="True">
     <!-- 账号页在效果图里是整宽单列：卡片一张压一张，只有未登录的那个表单保留左右并排 -->
     <StackPanel MaxWidth="1440" Margin="{StaticResource PagePadding}" HorizontalAlignment="Center">
       <StackPanel Margin="0,0,0,14">

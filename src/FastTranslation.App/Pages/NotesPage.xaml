@@ -1,6 +1,7 @@
 <UserControl x:Class="FastTranslation.App.Pages.NotesPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:win="clr-namespace:FastTranslation.Platform.Windows;assembly=FastTranslation.Platform.Windows"
              Background="Transparent"
              FontFamily="Segoe UI, Microsoft YaHei UI" UseLayoutRounding="True">
   <UserControl.Resources>
@@ -190,7 +191,8 @@
         <Grid>
           <TextBlock x:Name="DetailEmpty" Text="从左边选一条看看。" FontSize="13" LineHeight="22"
                      Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-          <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+          <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"
+                        win:ScrollViewerWheel.Forward="True">
             <StackPanel>
               <TextBlock Text="原文" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
               <TextBlock x:Name="DetailSource" FontSize="14" TextWrapping="Wrap"
