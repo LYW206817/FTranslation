@@ -239,7 +239,9 @@
                 <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"
                              ValueChanged="MonthlyBar_ValueChanged"/>
 
-                <StackPanel x:Name="DailyRow" Margin="0,12,0,0">
+                <!-- v183：先收起，等用量结果确认有日额度（免费版）再显示。
+                     付费版只有月度额度，首次进入不能先亮出一条空的日额度行。 -->
+                <StackPanel x:Name="DailyRow" Margin="0,12,0,0" Visibility="Collapsed">
                   <TextBlock x:Name="DailyText" FontSize="12" TextWrapping="Wrap"
                              Foreground="{DynamicResource TextSecondaryBrush}"/>
                   <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>

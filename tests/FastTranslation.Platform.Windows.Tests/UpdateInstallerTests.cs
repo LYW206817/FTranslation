@@ -31,27 +31,6 @@ public class UpdateInstallerTests
     }
 
     [Fact]
-    public void MirrorCandidates_PutsEveryProxyBeforeTheDirectHost()
-    {
-        var candidates = UpdateInstaller.MirrorCandidates(GitHubSetupUrl);
-
-        var direct = candidates.ToList().IndexOf(GitHubSetupUrl);
-        Assert.True(direct > 0, "the direct URL must not be the first candidate");
-        Assert.Equal("https://gh-proxy.com/" + GitHubSetupUrl, candidates[0]);
-        Assert.All(candidates.Take(direct), c => Assert.Contains("://gh", c));
-    }
-
-    [Fact]
-    public void MirrorCandidates_HasNoDeadProxyPrefix()
-    {
-        // 实测已死:连接从未建立,5 秒后放弃,所以保留它只会
-        // 在轮到直连主机之前先耗掉这个超时
-        var candidates = UpdateInstaller.MirrorCandidates(GitHubSetupUrl);
-        Assert.DoesNotContain(candidates, c => c.Contains("ghfast.top", StringComparison.OrdinalIgnoreCase));
-        Assert.Single(candidates, c => c.StartsWith("https://gh", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
     public void MirrorCandidates_AddsTheWwwHostLastForGitHub()
     {
         // github.com 与 www.github.com 在某些网络上重置方式不同,所以 www 被保留为

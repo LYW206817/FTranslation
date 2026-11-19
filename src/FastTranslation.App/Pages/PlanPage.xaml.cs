@@ -83,9 +83,12 @@ public partial class PlanPage : UserControl
         var signedIn = session is not null;
 
         SignedOutHint.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
-        DailyRow.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         if (!signedIn)
         {
+            // v183：日额度行的可见性只由用量结果（LoadUsageAsync）或登出决定。
+            // 原来这里无条件按 signedIn 设回 Visible：OnLoaded 会在首次请求成功后重绘，
+            // 把已收起的那行重新亮出来，只留一行「读取中…」和一条空进度条。
+            DailyRow.Visibility = Visibility.Collapsed;
             MonthlyText.Text = "登录后显示";
             MonthlyLeftText.Text = string.Empty;
             MonthlyBar.Value = 0;
@@ -207,6 +210,13 @@ public partial class PlanPage : UserControl
             DailyLeftText.Text = "还剩 " + (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符";
             DailyBar.Value = usage.DailyFraction;
         }
+        else
+        {
+            // 付费版只有月度额度：收起后把占位文本也清掉，下一次 Render 不会再带出「读取中…」。
+            DailyText.Text = string.Empty;
+            DailyLeftText.Text = string.Empty;
+            DailyBar.Value = 0;
+        }
     }
 
     /// <summary>用量读取失败：文字与进度环一起落到明确的失败态，不留假的 0%。</summary>
@@ -214,8 +224,10 @@ public partial class PlanPage : UserControl
     {
         MonthlyText.Text = "读取失败";
         MonthlyLeftText.Text = string.Empty;
+        DailyRow.Visibility = Visibility.Collapsed;
         DailyText.Text = string.Empty;
         DailyLeftText.Text = string.Empty;
+        DailyBar.Value = 0;
         RingProgress.Data = null;
         RingPercent.Text = "—";
         UsageError.Text = message;
