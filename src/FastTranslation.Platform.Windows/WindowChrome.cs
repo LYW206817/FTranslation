@@ -1,12 +1,14 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace FastTranslation.Platform.Windows;
 
 /// <summary>
-/// 把原生标题栏绘制成与解析后的调色板一致(v38)。WPF 没有托管开关可做这件事：调色板切到
-/// 深色时客户区变暗，而边框仍是浅色——这是主题唯一够不到的一块窗口装饰。
+/// 把原生标题栏绘制成与解析后的调色板一致(v38)，并提供扩展客户区窗口最大化时的非客户区
+/// 内缩计算(v189)。WPF 没有托管开关可改原生标题栏：调色板切到深色时客户区变暗，而边框
+/// 仍是浅色——这是主题唯一够不到的一块窗口装饰。
 /// </summary>
 public static class WindowChrome
 {
@@ -19,6 +21,7 @@ public static class WindowChrome
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
+    private const double MaxFrameOverhangDip = 24.0;
 
     /// <summary>
     /// 在窗口构造函数里调用。窗口显示之前 HWND 并不存在，所以该特性在 SourceInitialized
@@ -39,6 +42,63 @@ public static class WindowChrome
             try { SetDarkTitleBar(window, ThemePalette.Current == AppTheme.Dark); }
             catch { /* 同上：标题栏外观失败不应阻断窗口显示 */ }
         };
+    }
+
+    /// <summary>
+    /// 计算窗口最大化时四边探出显示器工作区的非客户区厚度（DIP，v189）。
+    /// 使用 WPF <c>System.Windows.Shell.WindowChrome</c> 扩展客户区后，Windows 在最大化时会把
+    /// 窗口矩形向屏外扩出隐藏的缩放边框；不补这段内缩会让侧栏边缘与右上角窗口按钮被屏边裁切。
+    /// </summary>
+    public static Thickness GetMaximizedPadding(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (window.WindowState != WindowState.Maximized) return new Thickness(0);
+
+        var fallback = SystemParameters.WindowResizeBorderThickness;
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(hwnd, out var winRect))
+        {
+            return fallback;
+        }
+
+        var monitor = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var info = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+        if (monitor == IntPtr.Zero || !NativeMethods.GetMonitorInfo(monitor, ref info))
+        {
+            return fallback;
+        }
+
+        var dpi = NativeMethods.GetDpiForWindow(hwnd);
+        var scale = dpi > 0 ? dpi / 96.0 : VisualTreeHelper.GetDpi(window).DpiScaleX;
+        return ComputeMaximizedPadding(
+            info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom,
+            winRect.Left, winRect.Top, winRect.Right, winRect.Bottom,
+            scale,
+            fallback);
+    }
+
+    /// <summary>按物理像素工作区与窗口矩形差值换算 DIP 内缩；窗口尚未铺满工作区时退回默认边框厚度。</summary>
+    internal static Thickness ComputeMaximizedPadding(
+        int workLeft, int workTop, int workRight, int workBottom,
+        int winLeft, int winTop, int winRight, int winBottom,
+        double scale,
+        Thickness fallback)
+    {
+        if (scale <= 0) return fallback;
+        var workWidth = workRight - workLeft;
+        var workHeight = workBottom - workTop;
+        var winWidth = winRight - winLeft;
+        var winHeight = winBottom - winTop;
+        if (workWidth <= 0 || workHeight <= 0 || winWidth < workWidth || winHeight < workHeight)
+        {
+            return fallback;
+        }
+
+        var left = Math.Min(MaxFrameOverhangDip, Math.Max(0, workLeft - winLeft) / scale);
+        var top = Math.Min(MaxFrameOverhangDip, Math.Max(0, workTop - winTop) / scale);
+        var right = Math.Min(MaxFrameOverhangDip, Math.Max(0, winRight - workRight) / scale);
+        var bottom = Math.Min(MaxFrameOverhangDip, Math.Max(0, winBottom - workBottom) / scale);
+        return new Thickness(left, top, right, bottom);
     }
 
     /// <summary>把边框设为深色(true)或浅色(false)。DWM 拒绝该请求时返回 false。</summary>

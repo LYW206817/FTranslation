@@ -79,6 +79,14 @@ internal static class ThemeBridge
         // 侧栏活动项与主按钮下面那圈品牌色辉光，颜色跟着强调色走，不能写死在 XAML 里。
         SetDropShadow(r, "NavGlowEffect", c.Brand, dark ? 0.30 : 0.34, 18, 6);
 
+        // v189：自定义无边框标题栏的右上角磨砂控制胶囊与悬停色，随深浅主题切换保持通透与对比。
+        Set(r, "TitleBarGlassBrush", dark ? "#8A1F242C" : "#9EFFFFFF");
+        Set(r, "TitleBarButtonHoverBrush", dark ? "#1AFFFFFF" : "#141B2536");
+        Set(r, "TitleBarButtonPressedBrush", dark ? "#28FFFFFF" : "#221B2536");
+        Set(r, "TitleBarCloseHoverBrush", "#DC2626");
+        Set(r, "TitleBarClosePressedBrush", "#B91C1C");
+        Set(r, "TitleBarCloseIconBrush", "#FFFFFF");
+
         // v91：效果图 A 的装饰底。深色下不能照搬浅色的冷雾——白底会亮成一块斑，
         // 所以径向光在深色里收成「卡片面 → 窗口底」的一点落差，浅色才给满蓝调。
         SetRadial(r, "StageWashBrush", c.Surface, dark ? c.WindowBg : "#F2F7FF", new Point(0.5, 0.34), 0.78);

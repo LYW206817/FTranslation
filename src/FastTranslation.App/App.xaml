@@ -31,6 +31,12 @@
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5C6B82"/>
     <SolidColorBrush x:Key="TextMutedBrush" Color="#8B97A9"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
+    <SolidColorBrush x:Key="TitleBarGlassBrush" Color="#9EFFFFFF"/>
+    <SolidColorBrush x:Key="TitleBarButtonHoverBrush" Color="#141B2536"/>
+    <SolidColorBrush x:Key="TitleBarButtonPressedBrush" Color="#221B2536"/>
+    <SolidColorBrush x:Key="TitleBarCloseHoverBrush" Color="#DC2626"/>
+    <SolidColorBrush x:Key="TitleBarClosePressedBrush" Color="#B91C1C"/>
+    <SolidColorBrush x:Key="TitleBarCloseIconBrush" Color="#FFFFFF"/>
 
     <!-- v91 效果图 A 的两种底：投放台的柔和径向光、图标砖的浅蓝对角渐变。
          XAML 里给浅色默认值，深色由 ThemeBridge 覆盖；原套餐/登录右栏 HeroPanelBrush 已在 v187 移除。 -->

@@ -121,11 +121,64 @@ public partial class MainWindow : Window
 
         // v86/v186：页面在空闲时先建好并量一遍，但只在窗口可见之后才调度——
         // 未登录期间主窗口未显示时，ActualWidth 为 0，提前跑会在 ApplicationIdle 上空转重试。
-        Loaded += (_, _) => SchedulePrebuild();
+        Loaded += (_, _) =>
+        {
+            SyncWindowChromeState();
+            SchedulePrebuild();
+        };
+        SourceInitialized += (_, _) => SyncWindowChromeState();
+        StateChanged += (_, _) => SyncWindowChromeState();
+        SizeChanged += (_, _) =>
+        {
+            if (WindowState == WindowState.Maximized) SyncWindowChromeState();
+        };
+        DpiChanged += (_, _) => SyncWindowChromeState();
         IsVisibleChanged += (_, e) =>
         {
-            if (e.NewValue is true) SchedulePrebuild();
+            if (e.NewValue is true)
+            {
+                SyncWindowChromeState();
+                SchedulePrebuild();
+            }
         };
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void BrandHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            return;
+        }
+        // 品牌区下半截超出 48 DIP CaptionHeight 时仍允许普通状态下按住拖拽窗口
+        if (e.LeftButton == MouseButtonState.Pressed && WindowState != WindowState.Maximized)
+        {
+            try { DragMove(); }
+            catch (InvalidOperationException) { /* 快速松键时 DragMove 可能抛出，忽略即可 */ }
+        }
+    }
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    /// <summary>同步最大化/还原图标、无障碍标签，以及最大化时四边非客户区内缩。</summary>
+    private void SyncWindowChromeState()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeGlyph.Visibility = maximized ? Visibility.Collapsed : Visibility.Visible;
+        RestoreGlyph.Visibility = maximized ? Visibility.Visible : Visibility.Collapsed;
+        var action = maximized ? "还原" : "最大化";
+        MaximizeButton.ToolTip = action;
+        AutomationProperties.SetName(MaximizeButton, action);
+
+        var padding = WindowChrome.GetMaximizedPadding(this);
+        if (!WindowChromeRoot.Margin.Equals(padding)) WindowChromeRoot.Margin = padding;
     }
 
     private void SchedulePrebuild()
