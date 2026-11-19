@@ -15,18 +15,11 @@ namespace FastTranslation.App.Pages;
 /// </summary>
 public partial class AccountPage : UserControl
 {
-    /// <summary>未登录卡片的三种形态。登录 / 注册 / 重置密码共用同一套字段，</summary>
-    /// <remarks>注册与重置都靠邮箱验证码，所以不能把它们做成两张独立表单——那会让同一份
-    /// 「邮箱 + 验证码 + 密码」在校验、限流和错误文案上分叉。</remarks>
-    private enum AuthMode { Login, Register, Reset }
-
     private const string SupportEmail = AccountError.SupportEmail;
 
     private readonly AccountCoordinator _account;
-    private AuthMode _mode = AuthMode.Login;
     private bool _busy;
     private bool _subscribed;
-    private bool _verificationRequired = true;
 
     /// <summary>用户要求看价目表时触发；导航由外壳负责。</summary>
     public event Action? PlanRequested;
@@ -36,13 +29,21 @@ public partial class AccountPage : UserControl
         InitializeComponent();
         _account = account;
         SupportEmailText.Text = SupportEmail;
+        SignedOutPanel.Initialize(account);
+        SignedOutPanel.Authenticated += OnAuthenticated;
         // v111：页面是缓存并反复挂载/卸载的。订阅必须跟着 Loaded/Unloaded 成对走，
         // 否则切走一次（Unloaded）就永远收不到登录/登出事件——用户登录后仍停在未登录
         // 面板、只能手动刷新，根因就在这里。
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        ApplyMode();
         Render();
+    }
+
+    private void OnAuthenticated()
+    {
+        // v111：Changed 事件里的异步调度会慢一帧；先就地切面板，让成功提示不会先于卡片切换。
+        Render();
+        _ = LoadUsageAsync();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -88,6 +89,7 @@ public partial class AccountPage : UserControl
         var session = _account.Session;
         SignedOutPanel.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
         SignedInPanel.Visibility = session is null ? Visibility.Collapsed : Visibility.Visible;
+        LoginRequiredBanner.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
         if (session is null)
         {
             // 退出登录后清掉上一个账号的设备名，别让它们在下一帧里闪一下
@@ -221,179 +223,6 @@ public partial class AccountPage : UserControl
 
     private void GotoPlan_Click(object sender, RoutedEventArgs e) => PlanRequested?.Invoke();
 
-    // ---------------- 登录 / 注册 ----------------
-
-    private void Switch_Click(object sender, RoutedEventArgs e)
-    {
-        // 重置模式的「返回登录」与注册模式的「去登录」都落到这里：只有登录能一去一回。
-        _mode = _mode == AuthMode.Login ? AuthMode.Register : AuthMode.Login;
-        ApplyMode();
-        SetError(null);
-    }
-
-    private void ForgotPassword_Click(object sender, RoutedEventArgs e)
-    {
-        _mode = AuthMode.Reset;
-        ApplyMode();
-        SetError(null);
-    }
-
-    /// <summary>登录/注册/重置三套文案与验证码行只在这里切换，退出登录时也必须复位。</summary>
-    private void ApplyMode()
-    {
-        var reset = _mode == AuthMode.Reset;
-        var register = _mode == AuthMode.Register;
-
-        FormTitle.Text = reset ? "重置密码" : register ? "创建账号" : "登录账号";
-        ModeHint.Text = reset
-            ? "输入注册邮箱，收到验证码后设置一个新密码。"
-            : register
-                ? "注册后自动登录，免费额度立刻可用。"
-                : "登录后免费额度、单词本与复习进度都跟着账号同步。";
-        PasswordLabelText.Text = reset ? "新密码" : "密码";
-        PasswordHint.Text = reset ? "至少 8 位。重置后其他设备需要重新登录。" : "至少 8 位。";
-        ConfirmPasswordRow.Visibility = reset ? Visibility.Visible : Visibility.Collapsed;
-        ResetHint.Visibility = reset ? Visibility.Visible : Visibility.Collapsed;
-        ForgotPasswordButton.Visibility = _mode == AuthMode.Login ? Visibility.Visible : Visibility.Collapsed;
-        CodeRow.Visibility = reset || (register && _verificationRequired)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        SwitchPrompt.Text = reset ? "想起密码了？" : register ? "已经有账号？" : "还没有账号？";
-        SwitchButton.Content = reset ? "返回登录" : register ? "去登录" : "去注册";
-        SubmitButton.Content = reset ? "重置密码" : register ? "注册并登录" : "登录";
-    }
-
-    private async void SendCode_Click(object sender, RoutedEventArgs e)
-    {
-        var email = EmailBox.Text.Trim();
-        if (email.Length == 0) { SetError("请先填写邮箱。"); return; }
-        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对，检查一下有没有输错。"); return; }
-
-        SendCodeButton.IsEnabled = false;
-        try
-        {
-            if (_mode == AuthMode.Reset)
-            {
-                var reset = await _account.RequestPasswordResetCodeAsync(email, CancellationToken.None);
-                if (!reset.Succeeded)
-                {
-                    SetError(reset.Error!.Display);
-                    return;
-                }
-                // 服务端不区分邮箱是否存在，界面也必须保持同样的口径。
-                CodeHint.Text = "如果该邮箱已注册，验证码已发送，10 分钟内有效。";
-                SetError(null);
-                return;
-            }
-
-            var result = await _account.RequestCodeAsync(email, CancellationToken.None);
-            if (!result.Succeeded)
-            {
-                SetError(result.Error!.Display);
-                return;
-            }
-            if (!result.Value!.VerificationRequired)
-            {
-                // 这个服务端不校验邮箱：别再去要一个永远不会到的验证码
-                _verificationRequired = false;
-                CodeRow.Visibility = Visibility.Collapsed;
-                SetError(null);
-                CodeHint.Text = "这个服务器不需要邮箱验证码，直接注册即可。";
-                return;
-            }
-            CodeHint.Text = "验证码已发送，10 分钟内有效。";
-            SetError(null);
-        }
-        catch (Exception)
-        {
-            // async void 入口必须自己兜住：全局处理器只记 Debug，用户会看到按钮转一圈后毫无反馈。
-            SetError("发送验证码失败，请稍后再试。");
-        }
-        finally
-        {
-            // 重发在服务端也有限流；本地冷却只是避免点下去没反应
-            await Task.Delay(TimeSpan.FromSeconds(60));
-            SendCodeButton.IsEnabled = true;
-        }
-    }
-
-    private async void Submit_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy) return;
-        var email = EmailBox.Text.Trim();
-        var password = PasswordBox.Password;
-        if (email.Length == 0) { SetError("请填写邮箱。"); return; }
-        // 登录也先查格式:服务端登录只查不校验,填错格式只会得到含糊的「邮箱或密码不正确」。
-        if (!EmailFormat.IsValid(email)) { SetError("邮箱格式不对，检查一下有没有输错。"); return; }
-        if (password.Length == 0) { SetError(_mode == AuthMode.Reset ? "请填写新密码。" : "请填写密码。"); return; }
-
-        SetBusy(true);
-        try
-        {
-            if (_mode == AuthMode.Reset)
-            {
-                var code = CodeBox.Text.Trim();
-                if (code.Length == 0) { SetError("请填写邮箱验证码。"); return; }
-                if (password.Length < 8) { SetError("新密码至少 8 位。"); return; }
-                if (!string.Equals(password, ResetConfirmPasswordBox.Password, StringComparison.Ordinal))
-                {
-                    SetError("两次输入的新密码不一样。");
-                    return;
-                }
-
-                var reset = await _account.ResetPasswordAsync(email, code, password, CancellationToken.None);
-                if (!reset.Succeeded) { SetError(reset.Error!.Display); return; }
-
-                PasswordBox.Clear();
-                ResetConfirmPasswordBox.Clear();
-                CodeBox.Clear();
-                _mode = AuthMode.Login;
-                ApplyMode();
-                SetError(null);
-                ToastWindow.Show("密码已重置，请用新密码登录。");
-                return;
-            }
-
-            if (_mode == AuthMode.Register)
-            {
-                var code = _verificationRequired ? CodeBox.Text.Trim() : null;
-                var result = await _account.RegisterAsync(email, password, code, CancellationToken.None);
-                if (!result.Succeeded) { SetError(RegisterError(result.Error!)); return; }
-                PasswordBox.Clear();
-                // v111：Changed 事件负责重绘，但它是下一帧才到的；这里先切面板，
-                // 「注册成功」的提示才不会比页面先出现。
-                Render();
-                // 面板从表单切到已登录卡片是唯一反馈，用户看不出「成功」还是「什么都没发生」(v98)
-                ToastWindow.Show("注册成功，已自动登录，免费额度立刻可用。");
-                await LoadUsageAsync();
-                return;
-            }
-            var signIn = await _account.SignInAsync(email, password, CancellationToken.None);
-            if (!signIn.Succeeded) { SetError(signIn.Error!.Display); return; }
-            PasswordBox.Clear();
-            Render();
-            var profile = _account.Session?.Profile;
-            ToastWindow.Show(profile is null
-                ? "登录成功。"
-                : $"登录成功：{profile.Email}（{profile.PlanDisplay}）");
-            await LoadUsageAsync();
-        }
-        catch (Exception)
-        {
-            SetError("操作没完成，请稍后再试。");
-        }
-        finally
-        {
-            SetBusy(false);
-        }
-    }
-
-    private static string RegisterError(AccountError error) => error.Code switch
-    {
-        AccountErrorCode.Verification => "验证码不正确或已过期，点「获取验证码」重新发送。",
-        _ => error.Display,
-    };
-
     // ---------------- 资料编辑 ----------------
 
     private async void SaveName_Click(object sender, RoutedEventArgs e)
@@ -478,8 +307,7 @@ public partial class AccountPage : UserControl
             SetBusy(false);
         }
 
-        _mode = AuthMode.Login;
-        ApplyMode();
+        SignedOutPanel.ResetToLogin();
         NameBox.Clear();
         CurrentPasswordBox.Clear();
         NewPasswordBox.Clear();
@@ -489,7 +317,6 @@ public partial class AccountPage : UserControl
         DeletePanel.Visibility = Visibility.Collapsed;
         DeleteAccountButton.Visibility = Visibility.Visible;
         SetStatus(null, isError: false);
-        SetError(null);
     }
 
     // ---------------- 注销与支持 ----------------
@@ -539,9 +366,7 @@ public partial class AccountPage : UserControl
             DeleteAccountButton.Visibility = Visibility.Visible;
             DeletePasswordBox.Clear();
             DeleteConfirmBox.Clear();
-            _mode = AuthMode.Login;
-            ApplyMode();
-            SetError(null);
+            SignedOutPanel.ResetToLogin();
             ToastWindow.Show("账号已注销，学习记录已删除。");
         }
         catch (Exception ex)
@@ -576,33 +401,14 @@ public partial class AccountPage : UserControl
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        SubmitButton.IsEnabled = !busy;
-        SwitchButton.IsEnabled = !busy;
-        SendCodeButton.IsEnabled = !busy;
         SignOutButton.IsEnabled = !busy;
         RefreshButton.IsEnabled = !busy;
         SaveNameButton.IsEnabled = !busy;
         SavePasswordButton.IsEnabled = !busy;
-        ForgotPasswordButton.IsEnabled = !busy;
         DeleteAccountButton.IsEnabled = !busy;
         ConfirmDeleteButton.IsEnabled = !busy;
         CancelDeleteButton.IsEnabled = !busy;
         SupportButton.IsEnabled = !busy;
-        SubmitButton.Content = busy
-            ? "请稍候…"
-            : _mode switch
-            {
-                AuthMode.Register => "注册并登录",
-                AuthMode.Reset => "重置密码",
-                _ => "登录",
-            };
-    }
-
-    /// <summary>未登录错误与登录后状态在每个面板各占一个位置；只显示其中一个。</summary>
-    private void SetError(string? message)
-    {
-        ErrorText.Text = message ?? string.Empty;
-        ErrorText.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void SetStatus(string? message, bool isError)
@@ -614,12 +420,7 @@ public partial class AccountPage : UserControl
     }
 
     private void Input_Changed(object sender, TextChangedEventArgs e)
-    {
-        SetError(null);
-        SetStatus(null, isError: false);
-    }
-
-    private void Password_Changed(object sender, RoutedEventArgs e) => SetError(null);
+        => SetStatus(null, isError: false);
 }
 
 /// <summary>

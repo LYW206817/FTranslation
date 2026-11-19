@@ -217,6 +217,19 @@ public class TranslationServiceDictionaryTests
     }
 
     [Fact]
+    public async Task Signed_out_lookup_does_not_serve_the_local_dictionary()
+    {
+        var provider = new FakeProvider();
+        var service = new TranslationService(provider, new FakeLexicon(Bank()), canTranslate: () => false);
+
+        var result = await service.TranslateAsync("bank", Settings());
+
+        Assert.Null(result.Dictionary);
+        Assert.Equal(TranslationErrorCode.NotSignedIn, result.Error?.Code);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Fact]
     public async Task Sentence_still_goes_to_the_provider()
     {
         var provider = new FakeProvider();

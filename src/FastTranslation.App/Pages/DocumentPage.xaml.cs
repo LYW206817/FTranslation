@@ -251,7 +251,7 @@ public partial class DocumentPage : UserControl
     {
         if (!_account.IsSignedIn)
         {
-            QuotaText.Text = "未登录：会用你自己的 Key 翻译，不占免费额度，也不做额度预检。";
+            QuotaText.Text = "未登录：先在「账号」页登录后再翻译文档。";
             return;
         }
 
@@ -342,6 +342,14 @@ public partial class DocumentPage : UserControl
     private async Task RunAsync()
     {
         if (_path is not { } path || _running) return;
+
+        // v184：未登录不翻译文档。判定必须在选文件 / 预检之后、作业开始之前：
+        // 换文档、读额度都不该在未登录时白跑一轮网络。
+        if (_account is not { IsSignedIn: true })
+        {
+            ReportError("未登录：先在「账号」页登录后再翻译文档。");
+            return;
+        }
 
         _running = true;
         _cts = new CancellationTokenSource();

@@ -2,7 +2,7 @@
 
 划词即翻译的 Windows 桌面工具。在任意应用里选中文字，浮出一个小工具条（复制 / 翻译 / 截图翻译），点「翻译」就在原文旁边读结果；译文可以复制、替换原文、插入到光标处，或存进单词本。除此之外还有整份文档翻译、系统声音的实时双语字幕，以及跟着账号走的单词本与四档间隔复习。
 
-翻译走阿里云百炼 DashScope 的千问模型：文本 `qwen-mt-flash`（可选 `qwen-mt-lite` / `qwen-mt-plus`），截图翻译 `qwen-mt-image-2.0`，OCR `qwen-vl-ocr`，语音识别 `qwen-audio-3.1-asr-flash-streaming`。不登录也能一直用：填自己的 API Key 直连官方接口；登录账号后走免费 / 付费额度，请求由本项目的服务端转发并按字符记账，额度用完自动回落到你自己的 Key，翻译不会中断。
+翻译走阿里云百炼 DashScope 的千问模型：文本 `qwen-mt-flash`（可选 `qwen-mt-lite` / `qwen-mt-plus`），截图翻译 `qwen-mt-image-2.0`，OCR `qwen-vl-ocr`，语音识别 `qwen-audio-3.1-asr-flash-streaming`。登录账号后走免费 / 付费额度，请求由本项目的服务端转发并按字符记账；额度用完自动回落到你自己配置的 Key，翻译不会中断。未登录不能翻译。
 
 <p align="center">
   <img src="assets/screenshots/main-light.png" width="46%" alt="主窗口 · 浅色">
@@ -105,7 +105,7 @@
 - **两种额度可以混用**：登录后优先走服务端网关的免费 / 付费额度；额度用完自动静默回落到你自己的 API Key，翻译不中断，结果卡的状态行会注明这次用了哪个。
 - **套餐**：在「套餐」页选好档位与周期下单，弹窗显示微信 / 支付宝收款码；付完后把账单详情里的完整交易单号提交上来，运营核对到账后直接开通，不用再换激活码。激活码路径保留，用于赠送与手动销售。
 - **设备管理**：单账号最多 3 台设备。账号页的「登录设备」卡片会列出设备、上次登录时间与当前设备；不用的设备可以移除，名额立刻空出来。当前设备不能在这里移除。
-- **自己的 Key**：不登录也能用，Key 用 Windows DPAPI 加密后存在 `%LOCALAPPDATA%\FastTranslation\qwenmt-api-key.bin`，直连 `dashscope.aliyuncs.com`。
+- **自己的 Key**：登录后作为额度用完后的回落；Key 用 Windows DPAPI 加密后存在 `%LOCALAPPDATA%\FastTranslation\qwenmt-api-key.bin`，回落时直连 `dashscope.aliyuncs.com`。未登录时不会使用它。
 
 <p align="center">
   <img src="assets/screenshots/account-light.png" width="72%" alt="账号页">
@@ -146,7 +146,7 @@
 |---|---|
 | 系统 | Windows 10 1903 及以上 / Windows 11（x64） |
 | 运行时 | 不需要，安装包自带 .NET 运行时（self-contained） |
-| 账号 | 可选：注册账号领免费额度，或自备一个[阿里云百炼](https://bailian.console.aliyun.com/) API Key |
+| 账号 | 必需：注册并登录后使用免费额度；可自备一个[阿里云百炼](https://bailian.console.aliyun.com/) API Key 作为额度回落 |
 
 ## 安装
 
@@ -158,10 +158,8 @@
 
 ## 首次使用
 
-1. 启动后托盘出现图标，弹出设置窗口
-2. 选一种翻译额度，两种可以混用：
-   - **注册账号**：在「账号」页用邮箱注册，免费额度到手就能翻，不用自己申请 API Key
-   - **自己的 Key**：在设置里填入 API Key（用 DPAPI 加密后存在本机），直连 DashScope
+1. 启动后先弹出独立的登录/注册窗口（未登录时不会打开应用主页面）
+2. 注册并登录：进入应用「首页」，免费额度到手就能翻译。也可以在设置里填入自己的 API Key（DPAPI 加密后存在本机），在额度用完后回落使用
 3. 选目标语言（默认「自动」，中英互译时按原文语种自动决定方向）
 4. 保存，然后随便在哪个应用里选一段文字试试
 

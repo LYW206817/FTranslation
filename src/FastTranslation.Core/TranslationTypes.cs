@@ -19,6 +19,12 @@ public enum TranslationErrorCode
     /// </summary>
     QuotaExhausted,
 
+    /// <summary>
+    /// 未登录。v184 起翻译前置条件就是登录账号，自带 Key 只在登录后作为额度回落使用，
+    /// 所以这个错误由 <see cref="TranslationService"/> 在发请求前直接给出，不需要网络。
+    /// </summary>
+    NotSignedIn,
+
     Unknown,
 }
 
@@ -27,6 +33,7 @@ public sealed record TranslationError(TranslationErrorCode Code, string Message)
     public static TranslationError Cancelled() => new(TranslationErrorCode.Cancelled, "已取消");
     public static TranslationError Network(string detail) => new(TranslationErrorCode.Network, $"网络错误:{detail}");
     public static TranslationError Authentication() => new(TranslationErrorCode.Authentication, "API Key 无效或已过期");
+    public static TranslationError SignInRequired() => new(TranslationErrorCode.NotSignedIn, "未登录：先在「账号」页登录后再翻译");
     public static TranslationError RateLimited() => new(TranslationErrorCode.RateLimited, "请求过于频繁,请稍后再试");
     public static TranslationError ContentTooLong(int length, int max) => new(TranslationErrorCode.ContentTooLong, $"文本超长({length}>{max})");
     public static TranslationError InvalidResponse(string detail) => new(TranslationErrorCode.InvalidResponse, $"响应异常:{detail}");

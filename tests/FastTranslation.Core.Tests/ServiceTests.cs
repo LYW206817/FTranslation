@@ -43,6 +43,33 @@ public class TranslationServiceTests
     }
 
     [Fact]
+    public async Task Signed_out_translation_returns_sign_in_error_without_calling_the_provider()
+    {
+        var provider = new FakeProvider();
+        var service = new TranslationService(provider, canTranslate: () => false);
+
+        var result = await service.TranslateAsync("hello", Settings());
+
+        Assert.Equal(TranslationErrorCode.NotSignedIn, result.Error?.Code);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Fact]
+    public async Task Signing_out_after_a_cached_translation_blocks_and_does_not_serve_the_cache()
+    {
+        var signedIn = true;
+        var provider = new FakeProvider();
+        var service = new TranslationService(provider, canTranslate: () => signedIn);
+        Assert.True((await service.TranslateAsync("hello", Settings())).Succeeded);
+
+        signedIn = false;
+        var result = await service.TranslateAsync("hello", Settings());
+
+        Assert.Equal(TranslationErrorCode.NotSignedIn, result.Error?.Code);
+        Assert.False(result.FromCache);
+    }
+
+    [Fact]
     public async Task SecondIdenticalRequest_HitsCache()
     {
         var provider = new FakeProvider();

@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -59,7 +61,12 @@ public partial class MainWindow : Window
     private MainPageId _current = MainPageId.Home;
     private bool _suppressCaptureToggle;
     private bool _ready;
+    private bool _loginLocked;
+    private bool _prebuildScheduled;
+    private bool _prebuildDone;
     private int _themeTransitionVersion;
+
+    public bool IsLoginLocked => _loginLocked;
 
     /// <summary>从首页转发过来，这样 App 不必伸手去拿某个页面实例。</summary>
     public event Action? SettingsRequested;
@@ -108,11 +115,23 @@ public partial class MainWindow : Window
         // 所有会碰这些回调的代码都等这个标志。
         _ready = true;
         ApplyCaptureState();
+        var profile = _account.Session?.Profile;
+        RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
         ShowPage(MainPageId.Home);
 
-        // v86：页面在空闲时先建好并量一遍。点侧栏那一下原本要现场构造控件树再排版——设置页
-        // 要拉进五组控件，实测从点到第一帧 185ms，这就是"点一下得等一下"的来源。放到
-        // ApplicationIdle 里做，窗口早已经画出来了，用户看不到，也不拖慢启动。
+        // v86/v186：页面在空闲时先建好并量一遍，但只在窗口可见之后才调度——
+        // 未登录期间主窗口未显示时，ActualWidth 为 0，提前跑会在 ApplicationIdle 上空转重试。
+        Loaded += (_, _) => SchedulePrebuild();
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true) SchedulePrebuild();
+        };
+    }
+
+    private void SchedulePrebuild()
+    {
+        if (_prebuildDone || _prebuildScheduled || !IsVisible) return;
+        _prebuildScheduled = true;
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, PrebuildPages);
     }
 
@@ -124,11 +143,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void PrebuildPages()
     {
+        _prebuildScheduled = false;
+        if (_prebuildDone || !IsVisible) return;
         var size = new Size(PageHost.ActualWidth, PageHost.ActualHeight);
         if (size.Width < 1 || size.Height < 1)
         {
             // 窗口还没排出尺寸：这次收工就再没机会预热了，等下一帧重试。
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, PrebuildPages);
+            SchedulePrebuild();
             return;
         }
 
@@ -141,6 +162,7 @@ public partial class MainWindow : Window
             page.Measure(size);
             page.Arrange(new Rect(size));
         }
+        _prebuildDone = true;
     }
 
     /// <summary>显示在侧边栏底部，这样不打开任何界面也能看到登录状态。</summary>
@@ -150,6 +172,25 @@ public partial class MainWindow : Window
         // 会把 200px 宽的侧栏挤到截断（全角括号比半角更宽，长邮箱直接变成「（Lit…」）。
         AccountStatus.Text = email is null ? "账号：未登录" : "账号：" + email;
         PlanLabel.Text = email is null || string.IsNullOrEmpty(planDisplay) ? string.Empty : planDisplay;
+    }
+
+    /// <summary>
+    /// v185：登录墙。未登录时侧栏只留「账号」可点、取词开关禁用，并强制停在账号页；
+    /// 登录成功后解锁并回到首页，登出后再次锁回账号页。重复调用是幂等的。
+    /// </summary>
+    public void SetLoginLocked(bool locked)
+    {
+        if (_loginLocked == locked) return;
+        _loginLocked = locked;
+        foreach (var button in SidebarItems.Children.OfType<Button>())
+        {
+            var isAccount = Enum.TryParse<MainPageId>(button.Tag as string, ignoreCase: true, out var id)
+                && id == MainPageId.Account;
+            button.IsEnabled = !locked || isAccount;
+        }
+        CaptureToggle.IsEnabled = !locked;
+        if (locked) ShowPage(MainPageId.Account);
+        else if (_current == MainPageId.Account) ShowPage(MainPageId.Home);
     }
 
     /// <summary>
@@ -410,6 +451,10 @@ public partial class MainWindow : Window
 
     public void ShowPage(MainPageId page)
     {
+        // v185：登录墙。未登录时任何入口（侧栏、托盘、页面事件）都只能落到账号页，
+        // 这样即便某个入口的按钮忘了禁用，也绕不过去。退出托盘不受影响。
+        if (_loginLocked && page != MainPageId.Account) page = MainPageId.Account;
+
         // 重建同一个页面会丢掉里面已经输入的内容，所以缓存页面只做刷新——而这次刷新
         // 同时也是首次访问的加载，这就是它在 Build 之后也跑的原因：刚构造出来的页面
         // 还从没读过任何东西。

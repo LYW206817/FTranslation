@@ -306,13 +306,10 @@ public partial class SettingsPage : UserControl
         {
             HotkeyError.Text = "开机启动设置失败（注册表不可写），其他设置已保存。";
             HotkeyError.Visibility = Visibility.Visible;
-            _settings.FirstRunCompleted = true;
             _service.Save(_settings);
             App.ApplyAppearance(_settings.Theme, _settings.Accent);
             return;
         }
-
-        _settings.FirstRunCompleted = true;
         _service.Save(_settings);
         // v149：保存后留在设置页，不再触发 Closed 跳回首页；先应用外观再回填控件，
         // 确保主题、强调色立即生效，且页内各输入值/提示与落盘后的设置完全一致。

@@ -13,20 +13,32 @@ public sealed class TranslationService
 
     private readonly ITranslationProvider _provider;
     private readonly ILexicon? _lexicon;
+    // v184：登录是翻译的前置条件。判定放在服务里而不是各个入口，是因为首页、划词、
+    // 截图 OCR 文本三条路最终都汇到这里；连本地词库命中也一起挡住，才谈得上「未登录不能翻译」。
+    private readonly Func<bool>? _canTranslate;
     private readonly ConcurrentDictionary<string, TranslationResult> _cache = new();
     private readonly object _cacheEvictionLock = new();
     private readonly LinkedList<string> _cacheOrder = new();
     private CancellationTokenSource? _inFlight;
 
     /// <param name="lexicon">本地词库；缺失时所有输入都走在线翻译。</param>
-    public TranslationService(ITranslationProvider provider, ILexicon? lexicon = null)
+    /// <param name="canTranslate">翻译前置条件；null 表示不设限制（测试与离线工具）。</param>
+    public TranslationService(ITranslationProvider provider, ILexicon? lexicon = null, Func<bool>? canTranslate = null)
     {
         _provider = provider;
         _lexicon = lexicon;
+        _canTranslate = canTranslate;
     }
 
     public Task<TranslationResult> TranslateAsync(string text, AppSettings settings, CancellationToken external = default)
     {
+        if (_canTranslate is { } canTranslate && !canTranslate())
+        {
+            return Task.FromResult(new TranslationResult(text, string.Empty, settings.SourceLanguage,
+                settings.TargetLanguage, settings.Model, 0, false)
+            { Error = TranslationError.SignInRequired() });
+        }
+
         var normalized = TextNormalization.Normalize(text);
         if (!TextNormalization.IsMeaningful(normalized))
         {

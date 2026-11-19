@@ -20,7 +20,6 @@ public sealed class AppSettings
     // 账号服务（FastTranslation.Server）。留空 = 内置默认主机；做成设置项而不是常量，
     // 这样测试服务器或自建部署都不必重新编译。
     public string AccountBaseUrl { get; set; } = "";
-    public bool FirstRunCompleted { get; set; }
     public string Theme { get; set; } = "system";
 
     // v115：低内存模式（软件渲染）默认关闭。v113 曾为了压内存默认开启，但软件渲染下

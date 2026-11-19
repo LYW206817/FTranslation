@@ -79,18 +79,15 @@ internal static class ThemeBridge
         // 侧栏活动项与主按钮下面那圈品牌色辉光，颜色跟着强调色走，不能写死在 XAML 里。
         SetDropShadow(r, "NavGlowEffect", c.Brand, dark ? 0.30 : 0.34, 18, 6);
 
-        // v91：效果图 A 的三块底。深色下不能照搬浅色的冷雾——白底会亮成一块斑，
+        // v91：效果图 A 的装饰底。深色下不能照搬浅色的冷雾——白底会亮成一块斑，
         // 所以径向光在深色里收成「卡片面 → 窗口底」的一点落差，浅色才给满蓝调。
         SetRadial(r, "StageWashBrush", c.Surface, dark ? c.WindowBg : "#F2F7FF", new Point(0.5, 0.34), 0.78);
         SetLinear(r, "TileGradientBrush",
             dark ? c.BrandFill : "#EFF4FF", dark ? c.Surface : "#E1EAFF",
             new Point(0, 0), new Point(1, 1));
-        SetLinear(r, "HeroPanelBrush",
-            c.Surface, dark ? c.WindowBg : c.Warm,
-            new Point(0, 0), new Point(1, 1));
     }
 
-    /// <summary>两段线性渐变：图标砖、hero 右列这类「一头亮一头暗」的薄底。</summary>
+    /// <summary>两段线性渐变：图标砖这类「一头亮一头暗」的薄底。</summary>
     private static void SetLinear(
         ResourceDictionary resources, string key, string from, string to, Point start, Point end)
     {

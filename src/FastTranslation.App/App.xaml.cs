@@ -27,7 +27,12 @@ public partial class App : Application, IResultPresenter
 
     private Mutex? _mutex;
     private MainWindow? _mainWindow;
+    private AuthWindow? _authWindow;
     private bool _reallyExiting;
+    private bool _startupRestoring;
+    private bool _startupResolved;
+    private bool _hasEnteredSignedInWindow;
+    private bool _activateAfterRestore;
     private TrayIconService? _tray;
     private HotkeyService? _hotkey;
     private HotkeyService? _imageHotkey;
@@ -153,7 +158,7 @@ public partial class App : Application, IResultPresenter
         _account = new AccountCoordinator(_accountClient, _secrets, notes: _notesClient);
         _account.Changed += OnAccountChanged;
 
-        // 用户自己的 Key：既是不登录时的唯一链路，也是网关额度用完后的回落目标
+        // 用户自己的 Key：登录后的额度回落链路（v184 起未登录不再走这条）。
         var ownProvider = new QwenMtProvider(
             () => _secrets.LoadSecret(QwenMtProvider.ApiKeySecretName),
             new QwenMtOptions
@@ -171,7 +176,12 @@ public partial class App : Application, IResultPresenter
         // 免得第一次划词时把索引加载时间算进用户等待里。
         var lexicon = EcdictLexicon.TryLoad(Path.Combine(AppContext.BaseDirectory, "dictionary", "ecdict.ftd"));
         if (lexicon is null) Trace("dictionary: ecdict.ftd not found, word lookup falls back to online translation");
-        _translation = new TranslationService(new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider), lexicon);
+        // v184：未登录不翻译——自带 Key 只在登录后作为额度回落使用。判定放在 TranslationService 里，
+        // 首页、划词与截图 OCR 文本三条入口共用同一个规则。
+        _translation = new TranslationService(
+            new GatewayTranslationProvider(GatewayTranslateAsync, ownProvider),
+            lexicon,
+            () => _account is { IsSignedIn: true });
 
         // v72: 文档翻译单独一条 provider 链，**不经过 TranslationService**——那个服务每次新请求会
         // 取消上一次在途请求（划词时"最后一次输入赢"），而文档是一份文档几十段并发在飞，
@@ -218,6 +228,9 @@ public partial class App : Application, IResultPresenter
         _capture.SelectionToolbarRequested += captured =>
         {
             if (!_captureEnabled) return;
+            // v185：未登录不弹工具条——复制与翻译都算使用应用；登录墙期间静默忽略选区，
+            // 热键与截图入口各自会引导到账号页。
+            if (_account is not { IsSignedIn: true }) return;
             _card?.Hide();
             _toolbar?.ShowAt(captured);
         };
@@ -332,52 +345,6 @@ public partial class App : Application, IResultPresenter
             _tray.ShowBalloon("Fast Translation", $"语音翻译热键 {_settings.SpeechHotkey} 被占用，请到设置里换一个");
         }
 
-        _mainWindow = new MainWindow(
-            _translation,
-            _account!,
-            () => _settings,
-            _settingsService,
-            _secrets,
-            _hotkey!,
-            _documents!,
-            enabled =>
-            {
-                _captureEnabled = enabled;
-                _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
-            },
-            () => _captureEnabled,
-            () => _updates?.CheckAsync(interactive: true) ?? Task.CompletedTask);
-        _mainWindow.SettingsRequested += () => ShowPage(MainPageId.Settings);
-        _mainWindow.ScreenshotRequested += RunScreenshotTranslation;
-        _mainWindow.SpeechRequested += RunSpeechTranslation;
-        _mainWindow.Closing += (_, args) =>
-        {
-            if (_reallyExiting) return;
-            args.Cancel = true;      // 关闭按钮是收进托盘；真正退出在 托盘 → 退出
-            _mainWindow.Hide();
-        };
-        _mainWindow.Show();
-
-        if (!_settings.FirstRunCompleted)
-        {
-            // 引导流程的意义就是收集 API Key；一旦有了 Key，就绝不能再打扰用户
-            var hasKey = false;
-            try { hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(Providers.QwenMt.QwenMtProvider.ApiKeySecretName)); }
-            catch { }
-            if (hasKey)
-            {
-                _settings.FirstRunCompleted = true;
-                _settingsService.Save(_settings);
-            }
-            else
-            {
-                ShowOnboarding();
-            }
-        }
-
-        // 在后台恢复已存储的会话：网络不通不能拖慢启动，
-        // 屏幕上也没有任何东西会等它
-        _ = RestoreAccountAsync();
         _ = Task.Run(RunGatewayProbeLoopAsync);
 
         // 更新器放最后：它只调度一个定时器，而在 UI 存在之前跑的检查，
@@ -402,9 +369,36 @@ public partial class App : Application, IResultPresenter
             try { _toolbar?.Prewarm(); _card?.Prewarm(); } catch { }
         });
 
+        // v186：未登录先弹独立登录/注册弹窗，不显示主界面；已登录直接进首页。
+        // QA 钩子仍优先于真实登录墙以便截图探针停在任意指定页。
+        var uitest = Environment.GetEnvironmentVariable("FT_UITEST");
+        if (uitest is "auth-dialog" or "auth-register" or "auth-reset")
+        {
+            _startupResolved = true;
+            ShowAuthWindow(uitest switch
+            {
+                "auth-register" => AuthPanelMode.Register,
+                "auth-reset" => AuthPanelMode.Reset,
+                _ => AuthPanelMode.Login,
+            });
+            return;
+        }
+        if (uitest is not null)
+        {
+            _startupResolved = true;
+            EnsureMainWindow().Show();
+            _ = RestoreAccountAsync();
+            ApplyUiTestHook(uitest);
+            return;
+        }
+
+        _ = StartInitialAuthFlowAsync();
+    }
+
+    private void ApplyUiTestHook(string? uitest)
+    {
         // QA 钩子：FT_UITEST=dropdown -> 启动后自动展开语言下拉框
         //（由环境变量控制，桌面繁忙时不需要注入输入事件）
-        var uitest = Environment.GetEnvironmentVariable("FT_UITEST");
         if (uitest == "caret")
         {
             var uiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
@@ -605,10 +599,11 @@ public partial class App : Application, IResultPresenter
                 uiTimer.Stop();
                 try
                 {
+                    if (_translation is not { } translation) return;
                     var origin = CapturedSelection.Empty(
                         FastTranslation.Platform.Windows.WindowsSelectionCapture.CurrentCursorPoint());
                     ShowLoading("charge", origin);
-                    var result = await _translation.TranslateAsync("charge", _settings);
+                    var result = await translation.TranslateAsync("charge", _settings);
                     Trace($"wordcard: ok={result.Succeeded} model={result.Model} dictionary={result.Dictionary is not null}");
                     ShowCard(result, origin);
                 }
@@ -643,10 +638,11 @@ public partial class App : Application, IResultPresenter
                     var wall = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
+                        if (_translation is not { } translation) return;
                         var loadStart = wall.ElapsedMilliseconds;
                         ShowLoading(samples[i], origin);
                         var loadEnd = wall.ElapsedMilliseconds;
-                        var result = await _translation.TranslateAsync(samples[i], _settings);
+                        var result = await translation.TranslateAsync(samples[i], _settings);
                         var callEnd = wall.ElapsedMilliseconds;
                         Trace($"translate hook [{i}]: loading={loadEnd - loadStart}ms call={callEnd - loadEnd}ms provider={result.ElapsedMs}ms ok={result.Succeeded} cache={result.FromCache} err={result.Error?.Code}/{result.Error?.Message}");
                         ShowCard(result, origin);
@@ -957,7 +953,7 @@ public partial class App : Application, IResultPresenter
                     }
                     else
                     {
-                        ToastWindow.Show("未登录：免费额度、单词本同步与语音翻译都用不了。", "去登录",
+                        ToastWindow.Show("未登录：翻译、单词本同步与语音翻译都用不了。", "去登录",
                             () => ShowPage(MainPageId.Account));
                     }
                 }
@@ -1144,7 +1140,14 @@ public partial class App : Application, IResultPresenter
 
     private void OnHotkey()
     {
-        if (!_captureEnabled) return;
+        if (!_captureEnabled || !_startupResolved) return;
+        // v185/v186：未登录时热键只负责把独立登录弹窗带到前台，不再去取词
+        if (_account is not { IsSignedIn: true })
+        {
+            ShowAuthWindow();
+            ToastWindow.Show("未登录：先登录后再使用。", "去登录", ShowAuthWindow);
+            return;
+        }
         // v110: 选框遮罩盖着屏幕时不能取词——读到的是遮罩本身，剪贴板兜底还会向遮罩发 Ctrl+C，
         // 而且任何因此亮出来的工具条都会落进待截画面。前台进程判断是第二道防线。
         if (_imageCoordinator is { IsPicking: true }) return;
@@ -1165,18 +1168,19 @@ public partial class App : Application, IResultPresenter
     /// <summary>三个入口（工具栏按钮 / 托盘菜单 / Ctrl+Alt+S）都只调这一个方法。</summary>
     private void RunScreenshotTranslation()
     {
-        var hasKey = false;
-        try { hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName)); }
-        catch { }
-        FastTranslation.Platform.Windows.WindowsSelectionCapture.Diag(
-            $"screenshot: requested, hasKey={hasKey}, coordinator={(_imageCoordinator is not null ? "set" : "NULL")}");
-        if (!hasKey)
+        if (!_startupResolved) return;
+        // v184：截图翻译（含 OCR）与文本翻译同一前置条件——必须登录。原来这里查的是
+        // 本机有没有自带 Key，而 v45 起图片已经能走网关，登录用户不配 Key 也被拦，
+        // 与账号模型矛盾；改成登录判定后，未登录连取图都不开始。
+        if (_account is not { IsSignedIn: true })
         {
-            // 和主窗口「配置 Key」按钮同一条既有路径：打开设置页去填，不另造提示框
-            _tray?.ShowBalloon("截图翻译", "还没有配置 API Key,请在设置里填写。");
-            ShowSettings();
+            _tray?.ShowBalloon("截图翻译", "先登录账号再翻译");
+            ToastWindow.Show("未登录：先登录后再翻译。", "去登录", ShowAuthWindow);
             return;
         }
+
+        FastTranslation.Platform.Windows.WindowsSelectionCapture.Diag(
+            $"screenshot: requested, coordinator={(_imageCoordinator is not null ? "set" : "NULL")}");
 
         var coordinator = _imageCoordinator!;
         if (coordinator.IsBusy)
@@ -1588,18 +1592,104 @@ public partial class App : Application, IResultPresenter
         });
     }
 
-    private void ShowMainWindow()
+    private MainWindow EnsureMainWindow()
     {
-        if (_mainWindow is null) return;
-        _mainWindow.Show();
-        if (_mainWindow.WindowState == WindowState.Minimized) _mainWindow.WindowState = WindowState.Normal;
-        _mainWindow.Activate();
+        if (_mainWindow is not null) return _mainWindow;
+        var window = new MainWindow(
+            _translation!,
+            _account!,
+            () => _settings,
+            _settingsService,
+            _secrets,
+            _hotkey!,
+            _documents!,
+            enabled =>
+            {
+                _captureEnabled = enabled;
+                _tray?.SetTooltip(enabled ? "Fast Translation — 取词已开启" : "Fast Translation — 已暂停");
+            },
+            () => _captureEnabled,
+            () => _updates?.CheckAsync(interactive: true) ?? Task.CompletedTask);
+        window.SettingsRequested += () => ShowPage(MainPageId.Settings);
+        window.ScreenshotRequested += RunScreenshotTranslation;
+        window.SpeechRequested += RunSpeechTranslation;
+        window.Closing += (_, args) =>
+        {
+            if (_reallyExiting) return;
+            args.Cancel = true;      // 关闭按钮是收进托盘；真正退出在 托盘 → 退出
+            window.Hide();
+        };
+        _mainWindow = window;
+        return window;
     }
 
-    private void ShowOnboarding()
+    private void ShowMainWindow()
     {
-        var window = new OnboardingWindow(_secrets, _settings, _settingsService);
-        window.ShowDialog();
+        if (Environment.GetEnvironmentVariable("FT_UITEST") is null)
+        {
+            if (!_startupResolved)
+            {
+                _activateAfterRestore = true;
+                return;
+            }
+            if (_account is not { IsSignedIn: true })
+            {
+                ShowAuthWindow();
+                return;
+            }
+        }
+        var window = EnsureMainWindow();
+        window.Show();
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+    }
+
+    private void ShowAuthWindow() => ShowAuthWindow(requestedMode: null);
+
+    private void ShowAuthWindow(AuthPanelMode? requestedMode)
+    {
+        if (_reallyExiting) return;
+        if (_authWindow is { } existing)
+        {
+            // 仅当调用方明确指定了模式（如 QA 探针）时才切页；普通唤起保留用户正在填写的注册/重置表单。
+            if (requestedMode is { } mode) existing.SetMode(mode);
+            if (!existing.IsVisible) existing.Show();
+            if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+            existing.Activate();
+            return;
+        }
+
+        var window = new AuthWindow(_account!, requestedMode ?? AuthPanelMode.Login);
+        window.Cancelled += () =>
+        {
+            if (ReferenceEquals(_authWindow, window)) _authWindow = null;
+            // OnExplicitShutdown 模式下关掉独立登录窗不会自动结束进程，未登录即退出以免残留在托盘。
+            if (!_reallyExiting && _account is not { IsSignedIn: true })
+            {
+                ExitApp();
+            }
+        };
+        _authWindow = window;
+        window.Show();
+        window.Activate();
+    }
+
+    private void EnterSignedInWindow(bool activate)
+    {
+        var shouldActivate = activate || _activateAfterRestore;
+        _activateAfterRestore = false;
+        _hasEnteredSignedInWindow = true;
+
+        var window = EnsureMainWindow();
+        window.SetLoginLocked(false);
+        var profile = _account?.Session?.Profile;
+        window.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
+        _ = window.RefreshReviewBadgeAsync();
+        window.ShowPage(MainPageId.Home);
+        if (shouldActivate || !window.IsVisible)
+        {
+            ShowMainWindow();
+        }
     }
 
     private void ShowNotice(UpdateCheckNotice notice) =>
@@ -1617,7 +1707,8 @@ public partial class App : Application, IResultPresenter
         {
             if (window.IsVisible && window.IsActive) return window;
         }
-        return _mainWindow is { IsVisible: true } ? _mainWindow : null;
+        if (_mainWindow is { IsVisible: true }) return _mainWindow;
+        return _authWindow is { IsVisible: true } ? _authWindow : null;
     }
 
     /// <summary>
@@ -1636,6 +1727,9 @@ public partial class App : Application, IResultPresenter
         var profile = _account?.Session?.Profile;
         _mainWindow?.RefreshAccountStatus(profile?.Email, profile?.PlanDisplay);
         _ = _mainWindow?.RefreshReviewBadgeAsync();
+        // 启动恢复期间 TryRestoreAsync 可能在最终定态前先触发一次临时会话写入，等 StartInitialAuthFlowAsync 统一落窗。
+        if (_startupRestoring) return;
+        ApplyLoginGate();
     }
 
     /// <summary>
@@ -1690,7 +1784,39 @@ public partial class App : Application, IResultPresenter
         Trace($"gateway marked down: {error.Message}");
     }
 
-    private async Task RestoreAccountAsync()
+    /// <summary>
+    /// v186：启动时先恢复本地会话再决定落哪个窗口——已登录直接打开主窗口首页，未登录只弹独立登录窗。
+    /// 这样未登录不会先闪一下主界面，也避免后台恢复期反复弹框。
+    /// </summary>
+    private async Task StartInitialAuthFlowAsync()
+    {
+        _startupRestoring = true;
+        try
+        {
+            await RestoreAccountCoreAsync();
+        }
+        finally
+        {
+            OnUiThread(() =>
+            {
+                _startupRestoring = false;
+                _startupResolved = true;
+                if (_reallyExiting) return;
+
+                if (_account is { IsSignedIn: true })
+                {
+                    EnterSignedInWindow(activate: true);
+                }
+                else
+                {
+                    _activateAfterRestore = false;
+                    ShowAuthWindow();
+                }
+            });
+        }
+    }
+
+    private async Task RestoreAccountCoreAsync()
     {
         if (_account is null) return;
         try
@@ -1701,21 +1827,55 @@ public partial class App : Application, IResultPresenter
         {
             Trace($"account restore: {ex}");
         }
-        // Core 一路 ConfigureAwait(false)，续跑可能已经不在 UI 线程上；提示条是窗口，必须调度回去
-        _ = Dispatcher.BeginInvoke(PromptSignInWhenSignedOut);
+    }
+
+    private async Task RestoreAccountAsync()
+    {
+        await RestoreAccountCoreAsync();
+        // Core 一路 ConfigureAwait(false)，续跑可能已经不在 UI 线程上；登录墙是窗口，必须调度回去
+        _ = Dispatcher.BeginInvoke(ApplyLoginGate);
     }
 
     /// <summary>
-    /// 启动时没登录态就给一条引导（用户反馈：进去什么提示都没有，不知道免费额度要用账号换）。
-    /// 判定点必须在 TryRestoreAsync **之后**：本地 token 还在读的时候算「未登录」会每次启动都瞎提示。
+    /// v185/v186：登录闸门。未登录时隐藏主窗口并弹独立登录弹窗；
+    /// 登录成功后关闭登录弹窗再打开主窗口首页（已进入主窗口后的资料/额度刷新不抢回首页）。
     /// </summary>
-    private void PromptSignInWhenSignedOut()
+    /// <remarks>
+    /// `FT_UITEST` 是只在本机探针里设置的截图钩子，它要能停在任意页取证；
+    /// 只有开发探针会带这个环境变量，普通启动不受影响。
+    /// </remarks>
+    private void ApplyLoginGate()
     {
-        if (_account is not { IsSignedIn: false }) return;
-        // 首次运行的引导窗正在收集 API Key，再压一条「先登录」只是噪音
-        if (!_settings.FirstRunCompleted) return;
-        ToastWindow.Show("未登录：免费额度、单词本同步与语音翻译都用不了。", "去登录",
-            () => ShowPage(MainPageId.Account));
+        if (Environment.GetEnvironmentVariable("FT_UITEST") is not null) return;
+        if (_reallyExiting) return;
+
+        if (_account is { IsSignedIn: true })
+        {
+            // 先关闭独立登录弹窗再开主窗口，避免两扇大窗在屏幕上重叠。
+            if (_authWindow is { } auth)
+            {
+                _authWindow = null;
+                auth.CloseProgrammatically();
+            }
+
+            if (!_hasEnteredSignedInWindow)
+            {
+                EnterSignedInWindow(activate: true);
+            }
+            else
+            {
+                _mainWindow?.SetLoginLocked(false);
+            }
+            return;
+        }
+
+        _hasEnteredSignedInWindow = false;
+        _toolbar?.Hide();
+        _card?.Hide();
+        _imageWindow?.Hide();
+        _mainWindow?.SetLoginLocked(true);
+        _mainWindow?.Hide();
+        ShowAuthWindow();
     }
 
     // 托盘「账号」与各处「先登录」引导的目的地：菜单项写的就是「账号」，落点必须是账号页(v98)
@@ -1731,8 +1891,22 @@ public partial class App : Application, IResultPresenter
     /// <summary>应用内每个目的地现在都是单窗口的一个页面了（设计 D13）。</summary>
     private void ShowPage(MainPageId page)
     {
+        if (Environment.GetEnvironmentVariable("FT_UITEST") is null)
+        {
+            if (!_startupResolved)
+            {
+                _activateAfterRestore = true;
+                return;
+            }
+            if (_account is not { IsSignedIn: true })
+            {
+                ShowAuthWindow();
+                return;
+            }
+        }
+        var window = EnsureMainWindow();
         ShowMainWindow();
-        _mainWindow?.ShowPage(page);
+        window.ShowPage(page);
         if (page == MainPageId.Speech) _ = RefreshSpeechQuotaHintAsync();
     }
 
@@ -1802,10 +1976,12 @@ public partial class App : Application, IResultPresenter
             OnSpeechResumeRequested();
             return;
         }
+        if (!_startupResolved) return;
         if (_account is not { IsSignedIn: true })
         {
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费，先登录账号再开始");
             _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
+            ToastWindow.Show("未登录：语音翻译按秒计费，先登录后再开始。", "去登录", ShowAuthWindow);
             return;
         }
         _mainWindow?.SetSpeechState("正在准备语音会话…", isError: false);
@@ -2011,6 +2187,7 @@ public partial class App : Application, IResultPresenter
         {
             _tray?.ShowBalloon("语音翻译", "语音翻译按秒计费，先登录账号再开始");
             _mainWindow?.SetSpeechState("先登录账号再开始", isError: true);
+            ToastWindow.Show("未登录：语音翻译按秒计费，先登录后再开始。", "去登录", ShowAuthWindow);
             return;
         }
         // 继续要走完整的预检：暂停这段时间日额度可能已经见底，那时 StartSpeechSessionAsync 会自己
@@ -2200,6 +2377,9 @@ public partial class App : Application, IResultPresenter
         // ObjectDisposedException；后台线程随进程退出即可。
         _gatewayProbeCts.Cancel();
         _tray?.Dispose();
+        var auth = _authWindow;
+        _authWindow = null;
+        auth?.CloseProgrammatically();
         _mainWindow?.Close();
         try { _mutex?.ReleaseMutex(); } catch { }
         Shutdown();

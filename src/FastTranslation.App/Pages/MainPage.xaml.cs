@@ -221,7 +221,11 @@ public partial class MainPage : UserControl
     public void RefreshKeyStatus()
     {
         var hasKey = !string.IsNullOrWhiteSpace(_secrets.LoadSecret(QwenMtProvider.ApiKeySecretName));
-        KeyStatus.Text = hasKey ? "API Key：已配置（本机加密保存）" : "API Key：未配置";
+        // v184：登录才是翻译的前置条件，自带 Key 只决定额度用尽后还能不能继续；
+        // 这行文案要说清两者的关系，否则「已配置 Key」会被读成「现在能翻译了」。
+        KeyStatus.Text = hasKey
+            ? "API Key：已配置（额度用尽后回落）"
+            : "API Key：未配置（登录后可用免费额度）";
         KeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
     }
 }
