@@ -878,9 +878,11 @@ tbody tr:hover td { background: #f8fbff; }
   /* 操作行的按钮多，标签压在上面一行比左右对齐更好点、更省宽度。 */
   .table-wrap:not(#usage-sources) td.cell-actions {
     flex-direction: column;
-    align-items: stretch;
+    /* 激活码页的「作废」按钮直接挂在单元格里，stretch 会把它拉满整行。 */
+    align-items: flex-start;
     gap: 8px;
   }
+  .table-wrap:not(#usage-sources) td.cell-actions .row-actions { width: 100%; }
   .table-wrap:not(#usage-sources) td.cell-actions::before {
     /* 这一行是纵排，flex-basis 会变成高度；不覆盖就会出现 84px 的空白。 */
     flex: 0 0 auto;
