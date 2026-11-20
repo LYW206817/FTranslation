@@ -13,7 +13,7 @@ namespace FastTranslation.App;
 public partial class UpdateWindow : Window
 {
     private readonly UpdateManifest _manifest;
-    private readonly bool _selfInstallable;
+    private bool _canInstallInApp;
     private CancellationTokenSource? _download;
 
     /// <param name="selfInstallable">
@@ -26,7 +26,7 @@ public partial class UpdateWindow : Window
         InitializeComponent();
         WindowChrome.Apply(this);
         _manifest = manifest;
-        _selfInstallable = selfInstallable;
+        _canInstallInApp = selfInstallable;
 
         Headline.Text = $"发现新版本 {manifest.Version}";
         Subline.Text = selfInstallable
@@ -36,8 +36,7 @@ public partial class UpdateWindow : Window
         StatusText.Text = selfInstallable ? $"安装包 {manifest.SizeBytes / 1024 / 1024.0:F1} MB" : string.Empty;
         if (!selfInstallable)
         {
-            ApplyButton.Content = "打开下载页";
-            LaterButton.Content = "关闭";
+            UseManualDownload();
         }
         Closed += (_, _) => _download?.Cancel();
     }
@@ -47,7 +46,7 @@ public partial class UpdateWindow : Window
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
-        if (!_selfInstallable)
+        if (!_canInstallInApp)
         {
             OpenDownloadPage();
             return;
@@ -79,8 +78,9 @@ public partial class UpdateWindow : Window
                 {
                     UpdateLog.Write($"installer signature rejected for {_manifest.Version}");
                     StatusText.Text = "安装包签名验证失败，请从官方下载页获取。";
-                    ApplyButton.IsEnabled = true;
-                    LaterButton.IsEnabled = true;
+                    Subline.Text = "请从官方下载页获取新版本。";
+                    // 同一个包重下仍会被信任校验拒绝，主按钮切到已有的固定官方下载入口。
+                    UseManualDownload();
                     return;
                 }
                 _download.Token.ThrowIfCancellationRequested();
@@ -110,6 +110,15 @@ public partial class UpdateWindow : Window
         {
             Progress.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void UseManualDownload()
+    {
+        _canInstallInApp = false;
+        ApplyButton.Content = "打开下载页";
+        ApplyButton.IsEnabled = true;
+        LaterButton.Content = "关闭";
+        LaterButton.IsEnabled = true;
     }
 
     private void OpenDownloadPage()
