@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;
 using FastTranslation.Core;
 
 namespace FastTranslation.Platform.Windows;
@@ -7,13 +8,14 @@ namespace FastTranslation.Platform.Windows;
 /// <summary>
 /// T13：替换式写回，采用 M0 验证过的三重校验：
 /// 1. 前台窗口仍然是源窗口(绝不能让第三个应用收到粘贴)
-/// 2. 锚点处元素的 UIA RuntimeId 仍然一致
+/// 2. 当前键盘焦点仍属于保存了选区的 UIA 元素
 /// 3. 选区归一化后的文本仍与捕获时一致
 /// 纯文本允许临时粘贴；剪贴板不可暂存时使用 Unicode 输入，校验失败则交由界面提示。
 /// 终端/只读/管理员窗口在上游就被拒绝。
 /// </summary>
 public sealed class WriteBackService : IWriteBack
 {
+    private const int UnicodeBatchLength = 128;
     private readonly UiaSelectionReader _reader;
     private readonly Action<string>? _log;
 
@@ -26,7 +28,16 @@ public sealed class WriteBackService : IWriteBack
     public async Task<WriteBackOutcome> ReplaceAsync(CapturedSelection source, string replacement, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(replacement)) return WriteBackOutcome.Failed;
+        if (!CanVerifySource(source)) return WriteBackOutcome.AbortedValidation;
+        // 等完共用锁再读选区，避免排队期间用户移动光标后仍按旧校验结果写回。
+        await ClipboardService.OperationGate.WaitAsync(cancellationToken);
+        try { return await ReplaceCoreAsync(source, replacement, cancellationToken); }
+        finally { ClipboardService.OperationGate.Release(); }
+    }
 
+    private async Task<WriteBackOutcome> ReplaceCoreAsync(
+        CapturedSelection source, string replacement, CancellationToken cancellationToken)
+    {
         // 校验 1：前台窗口就是源窗口
         try
         {
@@ -39,37 +50,14 @@ public sealed class WriteBackService : IWriteBack
         catch { return WriteBackOutcome.AbortedForeground; }
         Diag("replace: start");
 
-        // 校验 2+3：锚点处是同一个元素(RuntimeId)、选中文本也相同。
-        // 当 UIA 无法重新读到选区时(VSCode/Monaco 这类编辑器)，降级为只校验前台，
-        // 而不是直接拒绝——用户是显式点击的，
-        // 粘贴仍然落在这个依旧选中着文本的源窗口里。
-        var current = _reader.ReadAt(source.Anchor);
-        var canVerifyText = current is not null && !string.IsNullOrEmpty(current.Text);
-        if (canVerifyText)
+        if (!SelectionStillMatches(source))
         {
-            var expected = NormalizeForCompare(source.Text);
-            var actual = NormalizeForCompare(current!.Text);
-            if (!string.Equals(expected, actual, StringComparison.Ordinal))
-            {
-                Diag("replace abort: selection changed");
-                return Aborted(source);
-            }
-            if (source.SourceElementRuntimeId is not null && current.RuntimeId is not null &&
-                !RuntimeIdEquals(source.SourceElementRuntimeId, current.RuntimeId))
-            {
-                Diag("replace abort: runtime id changed");
-                return Aborted(source);
-            }
-        }
-        else
-        {
-            Diag("replace: fg-only validation");
+            return WriteBackOutcome.AbortedValidation;
         }
 
-        var outcome = await PasteOrTypeAsync(source.SourceWindowHandle, replacement, cancellationToken);
+        var outcome = await PasteOrTypeAsync(source, replacement, null, cancellationToken);
         if (outcome != WriteBackOutcome.Replaced) return outcome;
-        if (source.Method == CaptureMethod.UiAutomation && canVerifyText
-            && !await VerifyLandedAsync(source.SourceWindowHandle, replacement, cancellationToken))
+        if (!await VerifyLandedAsync(source.SourceWindowHandle, replacement, cancellationToken))
         {
             return WriteBackOutcome.Failed;
         }
@@ -78,9 +66,18 @@ public sealed class WriteBackService : IWriteBack
 
     public async Task<WriteBackOutcome> InsertAsync(CapturedSelection source, string text, CancellationToken cancellationToken)
     {
-        Diag("insert: start");
         if (string.IsNullOrEmpty(text)) return WriteBackOutcome.Failed;
+        if (!CanVerifySource(source)) return WriteBackOutcome.AbortedValidation;
+        // 塌缩选区需要与后续粘贴在同一次持锁区间；否则排队会把译文送到新的光标位置。
+        await ClipboardService.OperationGate.WaitAsync(cancellationToken);
+        try { return await InsertCoreAsync(source, text, cancellationToken); }
+        finally { ClipboardService.OperationGate.Release(); }
+    }
 
+    private async Task<WriteBackOutcome> InsertCoreAsync(
+        CapturedSelection source, string text, CancellationToken cancellationToken)
+    {
+        Diag("insert: start");
         try
         {
             if (NativeMethods.GetForegroundWindow() != (IntPtr)source.SourceWindowHandle)
@@ -91,74 +88,54 @@ public sealed class WriteBackService : IWriteBack
         }
         catch { return WriteBackOutcome.AbortedForeground; }
 
-        // UIA 能读到时校验；否则带着仅前台校验继续(VSCode 这类)
-        var current = _reader.ReadAt(source.Anchor);
-        var canVerifyText = current is not null && !string.IsNullOrEmpty(current.Text);
-        if (canVerifyText && current is not null)
+        var expectedCaret = ReadExpectedCaret(source);
+        if (expectedCaret is null) return WriteBackOutcome.AbortedValidation;
+        if (!TrySelectCaret(expectedCaret))
         {
-            if (!string.Equals(NormalizeForCompare(source.Text), NormalizeForCompare(current.Text), StringComparison.Ordinal))
+            if (ValidateInputTarget(source, null) is { } failure) return failure;
+            var right = new[]
             {
-                Diag("insert abort: text mismatch");
-                return Aborted(source);
+                KeyInput(0x27, down: true), // VK_RIGHT：provider 不支持选择退化范围时才试方向键。
+                KeyInput(0x27, down: false),
+            };
+            if (NativeMethods.SendInput((uint)right.Length, right, Marshal.SizeOf<NativeMethods.INPUT>()) != right.Length)
+            {
+                return WriteBackOutcome.Failed;
             }
-            Diag("insert: validation ok");
-        }
-        else
-        {
-            Diag("insert: selection not verifiable via UIA (fg-only validation)");
+            await Task.Delay(140, cancellationToken);
         }
 
-        var right = new[]
+        var outcome = await PasteOrTypeAsync(source, text, expectedCaret, cancellationToken);
+        if (outcome != WriteBackOutcome.Replaced)
         {
-            KeyInput(0x27, down: true), // VK_RIGHT：把选区塌缩到末尾
-            KeyInput(0x27, down: false),
-        };
-        NativeMethods.SendInput((uint)right.Length, right, Marshal.SizeOf<NativeMethods.INPUT>());
-        await Task.Delay(140, cancellationToken);
-
-        // 塌缩后选区必须是退化的；还能读到非空文本说明编辑器
-        // 没有按预期行动——宁可中止也不要粘错位置
-        var collapsed = _reader.ReadAt(source.Anchor);
-        Diag("insert: after collapse read=" + (collapsed is null ? "null" : (collapsed.Text.Length + "ch")));
-        if (collapsed is not null && !string.IsNullOrEmpty(collapsed.Text))
-        {
-            _log?.Invoke("insert abort: selection did not collapse");
-            return Aborted(source);
+            _log?.Invoke("insert stopped: " + outcome);
+            return outcome;
         }
 
-        var outcome = await PasteOrTypeAsync(source.SourceWindowHandle, text, cancellationToken);
-        if (outcome != WriteBackOutcome.Replaced) return outcome;
-        if (source.Method == CaptureMethod.UiAutomation && canVerifyText
-            && !await VerifyLandedAsync(source.SourceWindowHandle, text, cancellationToken))
+        if (!await VerifyLandedAsync(source.SourceWindowHandle, text, cancellationToken))
         {
             return WriteBackOutcome.Failed;
         }
         return WriteBackOutcome.Inserted;
     }
 
-    private static async Task<WriteBackOutcome> PasteOrTypeAsync(long windowHandle, string text, CancellationToken cancellationToken)
+    private async Task<WriteBackOutcome> PasteOrTypeAsync(
+        CapturedSelection source, string text, TextPatternRange? expectedCaret, CancellationToken cancellationToken)
     {
-        await ClipboardService.OperationGate.WaitAsync(cancellationToken);
         ClipboardService.TemporaryClipboardText? temporary = null;
         try
         {
-            if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle)
-            {
-                return WriteBackOutcome.AbortedForeground;
-            }
+            if (ValidateInputTarget(source, expectedCaret) is { } beforeStage) return beforeStage;
 
             temporary = ClipboardService.TryStageText(text);
             if (temporary is null)
             {
-                return TryUnicodeType(text, windowHandle) ? WriteBackOutcome.Replaced : WriteBackOutcome.Failed;
+                return await TryUnicodeTypeAsync(source, text, expectedCaret, cancellationToken);
             }
 
             // 目标程序需要时间看到 OLE 数据；等待期间外部复制或切窗会使原来的粘贴计划失效。
             await Task.Delay(60, cancellationToken);
-            if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle)
-            {
-                return WriteBackOutcome.AbortedForeground;
-            }
+            if (ValidateInputTarget(source, expectedCaret) is { } afterStage) return afterStage;
             if (!temporary.IsCurrent)
             {
                 return WriteBackOutcome.AbortedValidation;
@@ -171,21 +148,19 @@ public sealed class WriteBackService : IWriteBack
                 KeyInput(NativeMethods.VK_V, down: false),
                 KeyInput(NativeMethods.VK_CONTROL, down: false),
             };
-            var sent = NativeMethods.SendInput((uint)keys.Length, keys, Marshal.SizeOf<NativeMethods.INPUT>()) == keys.Length;
-            if (!sent) sent = TryUnicodeType(text, windowHandle);
-            return sent ? WriteBackOutcome.Replaced : WriteBackOutcome.Failed;
+            var sent = NativeMethods.SendInput((uint)keys.Length, keys, Marshal.SizeOf<NativeMethods.INPUT>());
+            if (sent == keys.Length) return WriteBackOutcome.Replaced;
+            // 部分按键可能已经触发粘贴，继续键入会把同一段译文写两遍。
+            if (sent != 0) return WriteBackOutcome.Failed;
+            return await TryUnicodeTypeAsync(source, text, expectedCaret, cancellationToken);
         }
         finally
         {
-            try
+            if (temporary is not null)
             {
-                if (temporary is not null)
-                {
-                    await Task.Delay(400, CancellationToken.None);
-                    temporary.Restore();
-                }
+                await Task.Delay(400, CancellationToken.None);
+                temporary.Restore();
             }
-            finally { ClipboardService.OperationGate.Release(); }
         }
     }
 
@@ -200,33 +175,135 @@ public sealed class WriteBackService : IWriteBack
         return false;
     }
 
-    // 用户方向：失败绝不能动剪贴板——由卡片上的提示来解释。
-    private static WriteBackOutcome Aborted(CapturedSelection source) => WriteBackOutcome.AbortedValidation;
+    private static bool CanVerifySource(CapturedSelection source) =>
+        source is { Method: CaptureMethod.UiAutomation, IsWritable: true, SourceElementRuntimeId.Length: > 0 };
 
-    private static bool TryUnicodeType(string text, long windowHandle)
+    private bool SelectionStillMatches(CapturedSelection source)
+    {
+        var current = _reader.ReadAt(source.Anchor);
+        // UIA 原来能读到的选区消失，常见原因是用户把选区折成了光标。
+        return current is { Text.Length: > 0, RuntimeId: { } actual }
+            && source.SourceElementRuntimeId is { } expected
+            && RuntimeIdEquals(expected, actual)
+            && string.Equals(NormalizeForCompare(source.Text), NormalizeForCompare(current.Text), StringComparison.Ordinal);
+    }
+
+    private static AutomationElement? FindFocusedTarget(CapturedSelection source)
+    {
+        if (source.SourceElementRuntimeId is not { } expected) return null;
+        try
+        {
+            // 选区所在的控件可能失焦后仍保留高亮，锚点匹配不足以确认键盘事件的接收控件。
+            var element = AutomationElement.FocusedElement;
+            for (var level = 0; level < 6 && element is not null; level++)
+            {
+                if (RuntimeIdEquals(expected, element.GetRuntimeId())) return element;
+                element = TreeWalker.ControlViewWalker.GetParent(element);
+            }
+        }
+        catch (Exception error) when (error is COMException or ElementNotAvailableException or InvalidOperationException)
+        {
+            Diag("write-back: focused UIA element unavailable");
+        }
+        return null;
+    }
+
+    private static TextPatternRange? ReadExpectedCaret(CapturedSelection source)
     {
         try
         {
-            foreach (var ch in text)
-            {
-                if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle) return false;
-                var down = new NativeMethods.INPUT
-                {
-                    type = NativeMethods.INPUT_KEYBOARD,
-                    u = new NativeMethods.INPUTUNION { ki = new NativeMethods.KEYBDINPUT { wScan = (ushort)ch, dwFlags = NativeMethods.KEYEVENTF_UNICODE } },
-                };
-                var up = new NativeMethods.INPUT
-                {
-                    type = NativeMethods.INPUT_KEYBOARD,
-                    u = new NativeMethods.INPUTUNION { ki = new NativeMethods.KEYBDINPUT { wScan = (ushort)ch, dwFlags = NativeMethods.KEYEVENTF_UNICODE | NativeMethods.KEYEVENTF_KEYUP } },
-                };
-                if (NativeMethods.SendInput(2, new[] { down, up }, Marshal.SizeOf<NativeMethods.INPUT>()) != 2) return false;
-                Thread.Sleep(2);
-            }
+            var range = ReadFocusedRange(source);
+            if (range is null || !string.Equals(NormalizeForCompare(source.Text), NormalizeForCompare(range.GetText(-1)),
+                StringComparison.Ordinal)) return null;
+            var end = range.Clone();
+            end.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
+            return end;
+        }
+        catch (Exception error) when (error is COMException or ElementNotAvailableException or InvalidOperationException)
+        {
+            Diag("insert: selected UIA range unavailable");
+            return null;
+        }
+    }
+
+    private static TextPatternRange? ReadFocusedRange(CapturedSelection source)
+    {
+        var target = FindFocusedTarget(source);
+        if (target is null || !target.TryGetCurrentPattern(TextPattern.Pattern, out var value)
+            || value is not TextPattern pattern) return null;
+        return pattern.GetSelection() is [var selection] ? selection : null;
+    }
+
+    private static bool TrySelectCaret(TextPatternRange expectedCaret)
+    {
+        try
+        {
+            // 双向文本里 Right 是视觉方向，UIA 的范围末尾才是原选区的逻辑末尾。
+            expectedCaret.Select();
             return true;
         }
-        catch { return false; }
+        catch (Exception error) when (error is COMException or ElementNotAvailableException or InvalidOperationException)
+        {
+            return false;
+        }
     }
+
+    private WriteBackOutcome? ValidateInputTarget(CapturedSelection source, TextPatternRange? expectedCaret)
+    {
+        if (NativeMethods.GetForegroundWindow() != (IntPtr)source.SourceWindowHandle) return WriteBackOutcome.AbortedForeground;
+        if (expectedCaret is null)
+        {
+            return FindFocusedTarget(source) is not null && SelectionStillMatches(source)
+                ? null : WriteBackOutcome.AbortedValidation;
+        }
+        try
+        {
+            // 只证明选区折叠还不够，用户也可能在原控件里把光标移到了别的字符。
+            var actual = ReadFocusedRange(source);
+            if (actual is not null
+                && actual.CompareEndpoints(TextPatternRangeEndpoint.Start, expectedCaret, TextPatternRangeEndpoint.Start) == 0
+                && actual.CompareEndpoints(TextPatternRangeEndpoint.End, expectedCaret, TextPatternRangeEndpoint.End) == 0) return null;
+        }
+        catch (Exception error) when (error is COMException or ElementNotAvailableException or InvalidOperationException or ArgumentException)
+        {
+            Diag("insert: collapsed UIA range unavailable");
+        }
+        return WriteBackOutcome.AbortedValidation;
+    }
+
+    private async Task<WriteBackOutcome> TryUnicodeTypeAsync(
+        CapturedSelection source, string text, TextPatternRange? expectedCaret, CancellationToken cancellationToken)
+    {
+        if (ValidateInputTarget(source, expectedCaret) is { } failure) return failure;
+        var inputSize = Marshal.SizeOf<NativeMethods.INPUT>();
+        for (var offset = 0; offset < text.Length;)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (NativeMethods.GetForegroundWindow() != (IntPtr)source.SourceWindowHandle) return WriteBackOutcome.AbortedForeground;
+            if (FindFocusedTarget(source) is null) return WriteBackOutcome.AbortedValidation;
+
+            var length = Math.Min(UnicodeBatchLength, text.Length - offset);
+            if (offset + length < text.Length && char.IsSurrogatePair(text, offset + length - 1)) length--;
+            var inputs = new NativeMethods.INPUT[length * 2];
+            for (var index = 0; index < length; index++)
+            {
+                var character = text[offset + index];
+                inputs[index * 2] = UnicodeKey(character, NativeMethods.KEYEVENTF_UNICODE);
+                inputs[index * 2 + 1] = UnicodeKey(character, NativeMethods.KEYEVENTF_UNICODE | NativeMethods.KEYEVENTF_KEYUP);
+            }
+            if (NativeMethods.SendInput((uint)inputs.Length, inputs, inputSize) != inputs.Length) return WriteBackOutcome.Failed;
+            offset += length;
+            // 大段文本分批交给 Windows，中间让 Dispatcher 处理输入与取消，避免用户切窗时整段继续发送。
+            if (offset < text.Length) await Task.Delay(1, cancellationToken);
+        }
+        return WriteBackOutcome.Replaced;
+    }
+
+    private static NativeMethods.INPUT UnicodeKey(char character, uint flags) => new()
+    {
+        type = NativeMethods.INPUT_KEYBOARD,
+        u = new NativeMethods.INPUTUNION { ki = new NativeMethods.KEYBDINPUT { wScan = character, dwFlags = flags } },
+    };
 
     private static NativeMethods.INPUT KeyInput(ushort vk, bool down) => new()
     {

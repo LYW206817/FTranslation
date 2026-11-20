@@ -195,6 +195,20 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern uint GetClipboardSequenceNumber();
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetClipboardOwner();
+
+    [DllImport("ole32.dll")]
+    public static extern int OleSetClipboard(
+        [MarshalAs(UnmanagedType.Interface)] System.Runtime.InteropServices.ComTypes.IDataObject? data);
+
+    [DllImport("ole32.dll")]
+    public static extern int OleIsCurrentClipboard(
+        [MarshalAs(UnmanagedType.Interface)] System.Runtime.InteropServices.ComTypes.IDataObject data);
+
+    [DllImport("ole32.dll")]
+    public static extern int OleFlushClipboard();
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool OpenClipboard(IntPtr hWndNewOwner);

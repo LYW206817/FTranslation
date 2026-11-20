@@ -189,7 +189,7 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         return new CapturedSelection(
             uia.Text, rects, point, CaptureMethod.UiAutomation,
             !string.IsNullOrEmpty(sourceProcessName) ? sourceProcessName : GetProcessName(sourceWindow),
-            sourceWindow, uia.RuntimeId, uia.IsWritable);
+            sourceWindow, uia.RuntimeId, uia.IsWritable && uia.RuntimeId is { Length: > 0 });
     }
 
     public Task<CapturedSelection> ReadSelectionAsync(ScreenPoint point, CancellationToken cancellationToken)
@@ -206,7 +206,7 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         return Task.FromResult(new CapturedSelection(
             uia.Text, rects, point, CaptureMethod.UiAutomation,
             GetProcessName(uia.SourceWindowHandle), uia.SourceWindowHandle,
-            uia.RuntimeId, uia.IsWritable));
+            uia.RuntimeId, uia.IsWritable && uia.RuntimeId is { Length: > 0 }));
     }
 
     public async Task<CapturedSelection> ReadViaClipboardAsync(
@@ -218,30 +218,31 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         // 会毁掉图片/文件内容，bugbot P1)，然后同步发出 Ctrl+C
         await ClipboardService.OperationGate.WaitAsync(cancellationToken);
         System.Windows.IDataObject? backup = null;
+        ClipboardService.ClipboardCopy? clipboardCopy = null;
         try
         {
-            backup = ClipboardService.SnapshotClipboard();
             var beforeSeq = ClipboardService.GetSequence();
-            if (!ClipboardService.SendCtrlC())
+            backup = ClipboardService.SnapshotClipboard();
+            // 排队时用户可能切换了前台。继续使用触发时记录的窗口，避免误复制到别处。
+            if (beforeSeq != ClipboardService.GetSequence() || !ClipboardService.SendCopyToSource(sourceWindowHandle))
             {
                 return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
             }
             // 用 Win32 在工作线程上轮询(不需要 STA)——以前的 Thread.Sleep 循环
             // 跑在 UI 线程上，每次点击都把它冻住最多 1.5 秒(bugbot P1)
-            var text = await Task.Run(() => ClipboardService.PollNewTextWin32(1500, beforeSeq), cancellationToken);
-            return string.IsNullOrEmpty(text)
+            clipboardCopy = await Task.Run(() => ClipboardService.PollSourceCopy(1500, beforeSeq, sourceWindowHandle));
+            cancellationToken.ThrowIfCancellationRequested();
+            return clipboardCopy?.Text is not { Length: > 0 } text
                 ? CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle)
                 : new CapturedSelection(
-                    // Ctrl+C 成功 => 源是一个编辑器；在那里用粘贴做替换/插入是可行的
-                    // (VSCode/Monaco 不暴露 UIA 选区，校验降级为仅前台)。
-                    text!, Array.Empty<ScreenRect>(), anchor, CaptureMethod.ClipboardFallback,
-                    GetProcessName(sourceWindowHandle), sourceWindowHandle, null, IsWritable: true);
+                    // Ctrl+C 只能证明复制成功，没有可复核的元素和选区供写回使用。
+                    text, Array.Empty<ScreenRect>(), anchor, CaptureMethod.ClipboardFallback,
+                    GetProcessName(sourceWindowHandle), sourceWindowHandle, null, IsWritable: false);
         }
         finally
         {
-            // v143：轮询被取消或 COM 抛异常时也要还原。原写法在 await 之后才还原，
-            // 取消一次取词就把用户的剪贴板永久换成了 Ctrl+C 抓到的文字。
-            try { ClipboardService.RestoreClipboard(backup); }
+            // 复制之后用户可能已经重新复制。只恢复本次观测到的来源剪贴板，且恢复前再次核验。
+            try { clipboardCopy?.RestoreIfCurrent(backup, sourceWindowHandle); }
             finally { ClipboardService.OperationGate.Release(); }
         }
     }

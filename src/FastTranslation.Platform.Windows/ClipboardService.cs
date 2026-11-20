@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ComDataObject = System.Runtime.InteropServices.ComTypes.IDataObject;
 using Wpf = System.Windows;
 
 namespace FastTranslation.Platform.Windows;
@@ -12,7 +13,7 @@ public static class ClipboardService
 {
     internal static SemaphoreSlim OperationGate { get; } = new(1, 1);
 
-    private static bool SendCopyToSource(long sourceWindowHandle)
+    internal static bool SendCopyToSource(long sourceWindowHandle)
     {
         try
         {
@@ -63,6 +64,11 @@ public static class ClipboardService
         {
             try { Wpf.Clipboard.SetDataObject(data); return; }
             catch (COMException) when (attempt < 2) { Thread.Sleep(40); }
+            catch (COMException)
+            {
+                WindowsSelectionCapture.Diag("copy fallback: clipboard restore was unavailable");
+                return;
+            }
         }
     }
 
@@ -87,8 +93,7 @@ public static class ClipboardService
             }
 
             var owner = new Wpf.DataObject(Wpf.DataFormats.UnicodeText, text);
-            Wpf.Clipboard.SetDataObject(owner);
-            return new TemporaryClipboardText(owner, previous, GetSequence());
+            return TrySetClipboardOnce(owner) ? new TemporaryClipboardText(owner, previous) : null;
         }
         catch (ExternalException)
         {
@@ -100,9 +105,10 @@ public static class ClipboardService
     internal static bool IsPlainTextFormat(string format) =>
         format is "UnicodeText" or "Text" or "OEMText" or "System.String" or "Locale";
 
-    internal sealed class TemporaryClipboardText(Wpf.DataObject owner, string? previous, uint sequence)
+    internal sealed class TemporaryClipboardText(Wpf.DataObject owner, string? previous)
     {
-        internal bool IsCurrent => GetSequence() == sequence && Wpf.Clipboard.IsCurrent(owner);
+        // 用与 OleSetClipboard 相同的 COM 封送核验，WPF 仅识别它自己包装的对象。
+        internal bool IsCurrent => NativeMethods.OleIsCurrentClipboard(owner) == 0;
 
         internal void Restore()
         {
@@ -110,8 +116,16 @@ public static class ClipboardService
             {
                 // v201: 延时期间用户可能已重新复制。检查 OLE 所有权，避免把新内容覆盖掉。
                 if (!IsCurrent) return;
-                if (previous is null) Wpf.Clipboard.Clear();
-                else Wpf.Clipboard.SetText(previous);
+                if (previous is null)
+                {
+                    TrySetClipboardOnce(null);
+                    return;
+                }
+                var restored = new Wpf.DataObject(Wpf.DataFormats.UnicodeText, previous);
+                if (TrySetClipboardOnce(restored) && NativeMethods.OleIsCurrentClipboard(restored) == 0)
+                {
+                    NativeMethods.OleFlushClipboard();
+                }
             }
             catch (ExternalException)
             {
@@ -120,22 +134,57 @@ public static class ClipboardService
         }
     }
 
+    // WPF 的写入封装在剪贴板被占用时会长时间重试。只尝试一次，避免覆盖用户稍后完成的复制。
+    private static bool TrySetClipboardOnce(ComDataObject? data) => NativeMethods.OleSetClipboard(data) == 0;
+
     /// <summary>通过 SendInput 发送 Ctrl+C(前台窗口必须已经是源窗口)。</summary>
     public static bool SendCtrlC() => SendCopyToSource(NativeMethods.GetForegroundWindow());
 
     /// <summary>用 Win32 轮询新的剪贴板文本(不需要 STA/WPF——任意线程都安全)。
     /// 超时内序列号始终没有前进时返回 null。</summary>
     public static string? PollNewTextWin32(int timeoutMs, uint beforeSeq)
+        => PollClipboardChange(timeoutMs, beforeSeq, null)?.Text;
+
+    internal static ClipboardCopy? PollSourceCopy(int timeoutMs, uint beforeSeq, long sourceWindowHandle)
+        => PollClipboardChange(timeoutMs, beforeSeq, sourceWindowHandle);
+
+    internal sealed record ClipboardCopy(string? Text, uint Sequence)
+    {
+        internal void RestoreIfCurrent(System.Windows.IDataObject? backup, long sourceWindowHandle)
+        {
+            if (backup is null) return;
+            var data = backup as ComDataObject ?? new Wpf.DataObject(backup);
+            if (Sequence != GetSequence() || !ClipboardBelongsTo(sourceWindowHandle)) return;
+            TrySetClipboardOnce(data);
+        }
+    }
+
+    private static ClipboardCopy? PollClipboardChange(int timeoutMs, uint beforeSeq, long? sourceWindowHandle)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
+        ClipboardCopy? lastCopy = null;
         while (Environment.TickCount64 < deadline)
         {
             Thread.Sleep(120);
-            if (NativeMethods.GetClipboardSequenceNumber() == beforeSeq) continue;
+            var sequence = GetSequence();
+            if (sequence == beforeSeq) continue;
+            if (sourceWindowHandle is { } source && !ClipboardBelongsTo(source)) return null;
             var text = TryGetTextWin32();
-            if (!string.IsNullOrEmpty(text)) return text;
+            if (sequence != GetSequence()) continue;
+            lastCopy = new ClipboardCopy(text, sequence);
+            if (!string.IsNullOrEmpty(text)) return lastCopy;
         }
-        return null;
+        return lastCopy;
+    }
+
+    private static bool ClipboardBelongsTo(long sourceWindowHandle)
+    {
+        var owner = NativeMethods.GetClipboardOwner();
+        if (owner == IntPtr.Zero) return false;
+        // OLE 可用同进程的隐藏窗口作为所有者，直接比较 HWND 会误拒绝正规复制。
+        NativeMethods.GetWindowThreadProcessId(owner, out var ownerProcess);
+        NativeMethods.GetWindowThreadProcessId((IntPtr)sourceWindowHandle, out var sourceProcess);
+        return ownerProcess != 0 && ownerProcess == sourceProcess;
     }
 
     private static string? TryGetTextWin32()
