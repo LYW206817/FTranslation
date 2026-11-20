@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace FastTranslation.Core.Documents;
@@ -16,6 +17,9 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
     private static readonly XName[] NonTextRunChildren = [W + "drawing", W + "pict", W + "object", W + "fldChar"];
 
     private const string DocumentPart = "word/document.xml";
+    private const int MaxEntries = 4_096;
+    private const long MaxExpandedBytes = 64L * 1024 * 1024;
+    private const long MaxXmlBytes = 8L * 1024 * 1024;
 
     /// <inheritdoc />
     public DocumentFormat Format => DocumentFormat.Docx;
@@ -25,7 +29,7 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
     {
         ArgumentNullException.ThrowIfNull(path);
         // 解析是纯同步的 CPU/IO 活：放到线程池，别让调用方（UI 线程）在几百段文档上僵住。
-        return await Task.Run(() => Load(path), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => Load(path, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -38,21 +42,40 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(outputPath);
         ArgumentNullException.ThrowIfNull(segments);
-        // 源文件只读：先复制再改副本，中途失败也留着一份完好的原稿。
-        File.Copy(sourcePath, outputPath, overwrite: true);
-        await Task.Run(() => Write(outputPath, segments, cancellationToken), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(outputPath), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The output file must differ from the source.", nameof(outputPath));
+        }
+
+        var temporary = outputPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            // 产物完整写出才替换目标，取消或解析失败时保留已有输出。
+            await Task.Run(() => Write(sourcePath, temporary, segments, cancellationToken), cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporary, outputPath, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (IOException) { /* 清理失败不能盖掉原本的写入异常。 */ }
+            catch (UnauthorizedAccessException) { /* 同上，文件可能已经被其他程序占用。 */ }
+        }
     }
 
-    private static IReadOnlyList<DocumentSegment> Load(string path)
+    private static IReadOnlyList<DocumentSegment> Load(string path, CancellationToken cancellationToken)
     {
         using var archive = ZipFile.OpenRead(path);
+        ValidateArchive(archive);
         var segments = new List<DocumentSegment>();
         foreach (var entry in ContentParts(archive))
         {
-            var document = LoadPart(entry);
+            var document = LoadPart(entry, cancellationToken);
             var ordinal = -1;
             foreach (var paragraph in document.Descendants(W + "p"))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ordinal++;
                 var source = ExtractText(paragraph);
                 if (source.Length == 0) continue;
@@ -64,20 +87,31 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
         return segments;
     }
 
-    private static void Write(string outputPath, IReadOnlyList<DocumentSegment> segments, CancellationToken cancellationToken)
+    private static void Write(string sourcePath, string outputPath, IReadOnlyList<DocumentSegment> segments, CancellationToken cancellationToken)
     {
-        using var archive = ZipFile.Open(outputPath, ZipArchiveMode.Update);
-        // 只处理真的被翻译过或失败过的段：Skipped 什么都不做（原文已经是对的）。
+        using var source = ZipFile.OpenRead(sourcePath);
+        ValidateArchive(source);
+        // Update 模式打开部件时会先缓冲展开内容；顺序重建可在复制和解析时执行限制。
+        using var output = ZipFile.Open(outputPath, ZipArchiveMode.Create);
         var groups = segments
             .Where(s => s.Status is SegmentStatus.Done or SegmentStatus.Failed)
-            .GroupBy(s => PartNameOf(s.Path), StringComparer.Ordinal);
-        foreach (var group in groups)
+            .ToLookup(s => PartNameOf(s.Path), StringComparer.Ordinal);
+        foreach (var entry in source.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (archive.GetEntry(group.Key) is not { } entry) continue;
-            var document = LoadPart(entry);
+            var outputEntry = output.CreateEntry(entry.FullName);
+            outputEntry.LastWriteTime = entry.LastWriteTime;
+            outputEntry.ExternalAttributes = entry.ExternalAttributes;
+            using var destination = outputEntry.Open();
+            if (!IsContentPart(entry.FullName) || !groups.Contains(entry.FullName))
+            {
+                CopyPart(entry, destination, cancellationToken);
+                continue;
+            }
+
+            var document = LoadPart(entry, cancellationToken);
             var paragraphs = document.Descendants(W + "p").ToList();
-            foreach (var segment in group)
+            foreach (var segment in groups[entry.FullName])
             {
                 if (ReplacementFor(segment) is not { } replacement) continue;
                 // 序号必须与解析时一致：段落序号取该 part 内所有 w:p 的原始位置，
@@ -87,7 +121,7 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
                 Apply(paragraphs[ordinal], replacement);
             }
 
-            SavePart(entry, document);
+            document.Save(destination, SaveOptions.DisableFormatting);
         }
     }
 
@@ -153,20 +187,52 @@ public sealed class DocxDocumentTranslator : IDocumentTranslator
             || stem.StartsWith("footer", StringComparison.Ordinal);
     }
 
-    private static XDocument LoadPart(ZipArchiveEntry entry)
+    private static void ValidateArchive(ZipArchive archive)
     {
-        using var stream = entry.Open();
-        // PreserveWhitespace：xml:space="preserve" 的段落里，空格本身就是内容。
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
+        if (archive.Entries.Count > MaxEntries)
+        {
+            throw new InvalidDataException("The DOCX has too many ZIP entries.");
+        }
+
+        var remaining = MaxExpandedBytes;
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.Length > remaining || (IsContentPart(entry.FullName) && entry.Length > MaxXmlBytes))
+            {
+                throw new InvalidDataException("The expanded DOCX exceeds the supported size.");
+            }
+            remaining -= entry.Length;
+        }
     }
 
-    private static void SavePart(ZipArchiveEntry entry, XDocument document)
+    private static XDocument LoadPart(ZipArchiveEntry entry, CancellationToken cancellationToken)
     {
-        using var stream = entry.Open();
-        // v72: Update 模式下 Open() 不裁掉旧内容，只写新内容更短时会残留旧字节，
-        // 生成的 docx 直接打不开（Word 报"内容有问题"）。必须先显式截断。
-        stream.SetLength(0);
-        document.Save(stream, SaveOptions.DisableFormatting);
+        using var bytes = new MemoryStream();
+        CopyPart(entry, bytes, cancellationToken);
+        bytes.Position = 0;
+        using var xml = XmlReader.Create(bytes, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            MaxCharactersInDocument = MaxXmlBytes,
+        });
+        return XDocument.Load(xml, LoadOptions.PreserveWhitespace);
+    }
+
+    private static void CopyPart(ZipArchiveEntry entry, Stream destination, CancellationToken cancellationToken)
+    {
+        using var source = entry.Open();
+        var remaining = entry.Length;
+        Span<byte> buffer = stackalloc byte[8 * 1024];
+        int read;
+        while ((read = source.Read(buffer)) > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // ZIP 目录中的展开长度不能单独作为限制，复制时也要根据实际读到的字节核对。
+            if (read > remaining) throw new InvalidDataException("The ZIP entry exceeds its declared length.");
+            remaining -= read;
+            destination.Write(buffer[..read]);
+        }
+        if (remaining != 0) throw new InvalidDataException("The ZIP entry is truncated.");
     }
 
     private static string ParagraphPath(string partName, int ordinal) =>

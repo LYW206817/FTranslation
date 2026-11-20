@@ -101,6 +101,21 @@ public sealed class DocxDocumentTranslatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Cancelled_write_keeps_an_existing_output()
+    {
+        var input = CopyFixture();
+        var output = Path.Combine(_dir, "existing.docx");
+        var prior = new byte[] { 1, 2, 3 };
+        await File.WriteAllBytesAsync(output, prior);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Translator.WriteBackAsync(input, output, [], cancellation.Token));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(output));
+    }
+
+    [Fact]
     public async Task WriteBack_does_not_touch_source_file()
     {
         var input = CopyFixture();
