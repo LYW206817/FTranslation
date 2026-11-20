@@ -335,6 +335,11 @@ chmod 600 /var/lib/fasttranslation/fasttranslation.db
    ```bash
    bash /usr/local/bin/ft-provision-probe.sh
    ```
+   生产开着 `RequireEmailVerification` 时，注册要带一次性验证码，脚本会直接报 `code_missing`：
+   - 探针邮箱填一个你能收信的地址（`FT_PROBE_EMAIL`）；
+   - `curl -X POST http://127.0.0.1:5080/api/v1/auth/code -H 'Content-Type: application/json' -d '{"email":"<探针邮箱>"}'` 收码；
+   - 把码填进 `monitor.env` 的 `FT_PROBE_CODE`，再跑上面的脚本，跑完删掉 `FT_PROBE_CODE` 这一行。
+   账号已存在时注册返回 409，脚本继续升档并验证登录，不需要验证码。
 4. 手工跑一次，确认飞书群收到：
    ```bash
    /usr/local/bin/ft-probe.sh

@@ -2,6 +2,7 @@
 # 一次性创建合成探测账号：注册 → 升 standard 10 年 → 验证登录。
 # 读 /etc/fasttranslation/monitor.env 里的探针邮箱/密码，AdminToken 从生产配置读。
 # 幂等：账号已存在时注册返回 409，脚本继续升档并验证登录。
+# 生产开着 RequireEmailVerification 时，注册要带一次性验证码（FT_PROBE_CODE）。
 set -euo pipefail
 
 ENV_FILE=${FT_MONITOR_ENV:-/etc/fasttranslation/monitor.env}
@@ -16,6 +17,9 @@ FT_BASE_URL=${FT_BASE_URL%/}
 FT_CONFIG=${FT_CONFIG:-/opt/fasttranslation/appsettings.Production.json}
 FT_PROBE_EMAIL=${FT_PROBE_EMAIL:-probe@example.com}
 FT_PROBE_PASSWORD=${FT_PROBE_PASSWORD:-}
+# 可选：生产开着 RequireEmailVerification 时，注册必须带一次性验证码。
+# 先 POST /api/v1/auth/code，把收到的码填进 monitor.env 再跑本脚本；建好账号后删掉这行。
+FT_PROBE_CODE=${FT_PROBE_CODE:-}
 
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
@@ -24,15 +28,23 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
-register_body=$(jq -n --arg e "$FT_PROBE_EMAIL" --arg p "$FT_PROBE_PASSWORD" \
-	'{email:$e,password:$p,deviceFingerprint:"ft-synthetic-probe",deviceName:"synthetic-probe"}')
+register_body=$(jq -n --arg e "$FT_PROBE_EMAIL" --arg p "$FT_PROBE_PASSWORD" --arg c "$FT_PROBE_CODE" \
+	'{email:$e,password:$p,deviceFingerprint:"ft-synthetic-probe",deviceName:"synthetic-probe"}
+	 + (if $c == "" then {} else {code:$c} end)')
 http_code=$(curl -sS --max-time 15 -o "$tmp" -w '%{http_code}' \
 	-X POST "$FT_BASE_URL/api/v1/auth/register" \
 	-H 'Content-Type: application/json' -d "$register_body") || http_code=000
 case "$http_code" in
 	200) echo "probe account registered: $FT_PROBE_EMAIL" ;;
 	409) echo "probe account already exists; checking the plan and password" ;;
-	*) echo "register failed (http $http_code): $(head -c 200 "$tmp")" >&2; exit 1 ;;
+	*)
+		echo "register failed (http $http_code): $(head -c 200 "$tmp")" >&2
+		# 4xx 且 body 提到验证码：多半是生产开着邮箱验证但没填 FT_PROBE_CODE。
+		if [ -z "$FT_PROBE_CODE" ] && grep -q 'code_' "$tmp"; then
+			echo "这台部署要求邮箱验证：先 POST /api/v1/auth/code 收码，把码填进 FT_PROBE_CODE 再重跑。" >&2
+		fi
+		exit 1
+		;;
 esac
 
 admin=$(jq -r '.Server.AdminToken // empty' "$FT_CONFIG")
