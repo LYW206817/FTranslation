@@ -67,6 +67,7 @@
 ```
 
 - `costMicros` 与 `budgetMicros` 以微元为单位（`1e-6` 元），保持整数账本。
+- 支出与用量汇总按 UTC 日和来源做匿名聚合。注销清理个人流水，已结算用量与成本继续参与统计和预算熔断。活跃账号指标只统计仍有个人流水的账号。
 - `buckets` 是今日的日预算桶：`costMicros` 为该桶今日（UTC）已花费，`budgetMicros` 为该桶的熔断上限，`0` 表示该桶未设上限。桶与网关的熔断一一对应（见 `2026-10-28-account-and-billing-design.md` §7.4.1），页面与告警都按桶比较，不要跨桶相加。
 - `bySource[].source` 取值：`gateway`（免费账号的文本/图片/OCR）、`gateway_paid`（会员的同类请求，v191 起；此前的历史行仍记在 `gateway`）、`speech`。
 - `bySource` 是所选窗口的汇总，历史行不会因改名而迁移；与 `buckets`（只管今日）口径不同。
@@ -132,12 +133,14 @@
 
 - 计数器是进程内状态，重启清零；不持久化，也不写用户文本。
 - `byReason` 使用现有网关错误 token（如 `rate_limited`、`budget_exhausted`、`quota_exhausted`）。
+- HTTP 网关在读请求体之前执行账号限频与并发限制，触发时均返回 `rate_limited`。文本端点重建非流式上游请求并设置输出上限，即使调用方省略该参数也适用。
 
 ## 4. 禁用语义
 
 - `users.disabled = 1` 后：
   - 所有 Bearer 端点返回 401；认证处理器验签后每次查库按 `disabled` 拒绝，所以不用等 access token 过期。
   - 所有 refresh token 立即吊销；启用后用户必须重新登录。
+  - 访问令牌绑定登录会话。移除设备结束该设备的会话，改密、找回密码和禁用结束账号既有会话。升级前的旧会话需要重新登录。
 - 网关原有的 `403 {"error":"account_disabled"}` 保留为二道防线。
 - 禁用/启用本身是幂等的管理动作；重复调用不会报错。
 

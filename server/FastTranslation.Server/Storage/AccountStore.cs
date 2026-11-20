@@ -149,15 +149,23 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
-    /// <summary>禁用/解禁账号。禁用时由调用方同时吊销 refresh token。</summary>
+    /// <summary>禁用与会话吊销同事务提交，解禁只恢复登录能力。</summary>
     public bool SetDisabled(Guid userId, bool disabled)
     {
         using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "UPDATE users SET disabled = $disabled WHERE id = $id";
         command.Parameters.AddWithValue("$disabled", disabled ? 1 : 0);
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
-        return command.ExecuteNonQuery() > 0;
+        var changed = command.ExecuteNonQuery() > 0;
+        if (changed && disabled)
+        {
+            RevokeAllRefreshTokens(connection, transaction, userId);
+        }
+        transaction.Commit();
+        return changed;
     }
 
     /// <summary>
@@ -174,20 +182,30 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
-    public bool SetPasswordHash(Guid userId, string passwordHash)
+    /// <summary>仅在凭证仍有效时更换密码，并在同一事务内结束旧会话。</summary>
+    public bool SetPasswordHash(Guid userId, string expectedHash, string passwordHash)
     {
         using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE users SET password_hash = $hash WHERE id = $id";
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE users SET password_hash = $hash WHERE id = $id AND password_hash = $expected AND disabled = 0";
         command.Parameters.AddWithValue("$hash", passwordHash);
+        command.Parameters.AddWithValue("$expected", expectedHash);
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
-        return command.ExecuteNonQuery() > 0;
+        if (command.ExecuteNonQuery() == 0)
+        {
+            return false;
+        }
+        RevokeAllRefreshTokens(connection, transaction, userId);
+        transaction.Commit();
+        return true;
     }
 
     /// <summary>
     /// 彻底删除账号及其个人数据。设备、单词本、月度用量与 refresh token 靠外键
-    /// 级联；<c>usage_events</c> 刻意没有外键（它要独立于账号保留一段时间做对账），
-    /// 所以必须显式删。兑换码只把 <c>redeemed_by</c> 置空，码本身留作审计。
+    /// 级联；<c>usage_events</c> 没有外键，必须显式删除。匿名日成本独立保留，
+    /// 否则注销会让已付给上游的支出退出熔断统计。兑换码清除账号关联，保留码本身供审计。
     /// </summary>
     public bool DeleteUser(Guid userId, string email)
     {
@@ -223,10 +241,10 @@ public sealed class AccountStore(ServerDatabase database)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COALESCE(SUM(cost_micros), 0) FROM usage_events WHERE created_at >= $since AND source = $source";
-        command.Parameters.AddWithValue("$since", database.NowUnix - (database.NowUnix % 86_400));
+        command.CommandText = "SELECT cost_micros FROM gateway_daily_costs WHERE day = $day AND source = $source";
+        command.Parameters.AddWithValue("$day", QuotaCycle.StartOfUtcDay(database.NowUnix));
         command.Parameters.AddWithValue("$source", source);
-        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        return command.ExecuteScalar() is long cost ? cost : 0L;
     }
 
     /// <summary>返回该指纹对应的设备；账号未达设备上限时会创建。</summary>
@@ -446,199 +464,154 @@ public sealed class AccountStore(ServerDatabase database)
     /// 未知账号的用量本来就是 0，不会因为这条回退产生额度。
     /// </summary>
     private string QuotaPeriodKey(SqliteConnection connection, SqliteTransaction? transaction, Guid userId)
+        => QuotaCycle.Key(ReadQuotaAnchor(connection, transaction, userId) ?? 0L, database.NowUnix);
+
+    private static long? ReadQuotaAnchor(SqliteConnection connection, SqliteTransaction? transaction, Guid userId)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "SELECT quota_anchor_at FROM users WHERE id = $id";
         command.Parameters.AddWithValue("$id", userId.ToString("D"));
-        var anchor = command.ExecuteScalar() is long value ? value : 0L;
-        return QuotaCycle.Key(anchor, database.NowUnix);
+        return command.ExecuteScalar() as long?;
     }
 
-    /// <summary>
-    /// 在放行上游请求之前原子占用额度，防止并发请求各自读到同一旧用量后全部放行。
-    /// 检查与占用在同一条条件 UPDATE 里完成，事务的第一条写语句先拿到 SQLite 写锁，
-    /// 后面的「读-算-占」因此对同库的其它请求串行化。
-    /// </summary>
-    public QuotaPolicy.Decision TryReserveQuota(Guid userId, Guid deviceId, int chars, PlanTier tier)
+    /// <summary>在 SQLite 写事务内检查余额并为本次请求占位。</summary>
+    public QuotaPolicy.Decision TryReserveQuota(Guid userId, Guid deviceId, int chars, PlanTier tier, out Guid reservationId)
     {
-        if (chars < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(chars), "chars must not be negative");
-        }
-
-        var quotaMonthly = Plans.MonthlyQuota(tier);
-        var quotaDaily = Plans.DailyQuota(tier);
-
+        reservationId = default;
         using var connection = database.Open();
-        // 周期键在开事务前读一次；账号锚点只在开通/续费时变，单笔请求沿用当下的周期即可。
-        var periodStart = QuotaPeriodKey(connection, null, userId);
-        using var transaction = connection.BeginTransaction();
-
-        // 先插入零行：deferred 事务只有遇到写操作才加锁，先写才能锁住后面的检查。
-        using (var seed = connection.CreateCommand())
+        // v198: 读余额到写入凭据期间持有写锁，拒绝结果也取自同一快照。
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var now = database.NowUnix;
+        var anchor = ReadQuotaAnchor(connection, transaction, userId);
+        if (anchor is null || deviceId == Guid.Empty)
         {
-            seed.Transaction = transaction;
-            seed.CommandText = """
-                INSERT INTO usage_monthly (user_id, month, chars, reserved) VALUES ($userId, $month, 0, 0)
-                ON CONFLICT(user_id, month) DO NOTHING;
-                INSERT INTO usage_daily (device_id, day, chars, reserved) VALUES ($deviceId, $day, 0, 0)
-                ON CONFLICT(device_id, day) DO NOTHING;
-                """;
-            seed.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            seed.Parameters.AddWithValue("$month", periodStart);
-            seed.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            seed.Parameters.AddWithValue("$day", database.TodayKey);
-            seed.ExecuteNonQuery();
+            return QuotaPolicy.Evaluate(tier, 0, 0, chars) with { Allowed = false, Reason = "account_disabled" };
         }
 
-        using (var monthly = connection.CreateCommand())
+        var month = QuotaCycle.Key(anchor.Value, now);
+        var day = UtcDayKey(now);
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        command.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+        command.Parameters.AddWithValue("$month", month);
+        command.Parameters.AddWithValue("$day", day);
+        command.CommandText = """
+            SELECT
+                COALESCE((SELECT chars FROM usage_monthly WHERE user_id = $userId AND month = $month), 0)
+                + COALESCE((SELECT SUM(chars) FROM quota_reservations WHERE user_id = $userId AND month = $month), 0),
+                COALESCE((SELECT chars FROM usage_daily WHERE device_id = $deviceId AND day = $day), 0)
+                + COALESCE((SELECT SUM(chars) FROM quota_reservations WHERE device_id = $deviceId AND day = $day), 0)
+            """;
+        QuotaPolicy.Decision decision;
+        using (var reader = command.ExecuteReader())
         {
-            monthly.Transaction = transaction;
-            monthly.CommandText = """
-                UPDATE usage_monthly SET reserved = reserved + $chars
-                WHERE user_id = $userId AND month = $month
-                  AND chars + reserved + $chars <= $quota
-                """;
-            monthly.Parameters.AddWithValue("$chars", chars);
-            monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", periodStart);
-            monthly.Parameters.AddWithValue("$quota", quotaMonthly);
-            if (monthly.ExecuteNonQuery() == 0)
-            {
-                transaction.Rollback();
-                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId, periodStart);
-                return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
-            }
+            reader.Read();
+            decision = QuotaPolicy.Evaluate(tier, reader.GetInt32(0), reader.GetInt32(1), chars);
         }
 
-        if (quotaDaily is { } dailyQuota)
+        if (!decision.Allowed)
         {
-            using var daily = connection.CreateCommand();
-            daily.Transaction = transaction;
-            daily.CommandText = """
-                UPDATE usage_daily SET reserved = reserved + $chars
-                WHERE device_id = $deviceId AND day = $day
-                  AND chars + reserved + $chars <= $quota
-                """;
-            daily.Parameters.AddWithValue("$chars", chars);
-            daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            daily.Parameters.AddWithValue("$day", database.TodayKey);
-            daily.Parameters.AddWithValue("$quota", dailyQuota);
-            if (daily.ExecuteNonQuery() == 0)
-            {
-                transaction.Rollback();
-                var (usedMonthly, usedDaily) = ReadUsageIncludingReserved(connection, null, userId, deviceId, periodStart);
-                return QuotaPolicy.Evaluate(tier, usedMonthly, usedDaily, chars);
-            }
+            return decision;
         }
 
-        var (monthlyUsed, dailyUsed) = ReadUsageIncludingReserved(connection, transaction, userId, deviceId, periodStart);
+        var id = Guid.NewGuid();
+        command.CommandText = """
+            INSERT INTO quota_reservations (id, user_id, device_id, month, day, chars)
+            VALUES ($id, $userId, $deviceId, $month, $day, $chars)
+            """;
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$chars", chars);
+        command.ExecuteNonQuery();
         transaction.Commit();
-        // requested=0：占用已经发生，这里只需要「还剩多少」的决策对象。
-        return QuotaPolicy.Evaluate(tier, monthlyUsed, dailyUsed, 0);
+        reservationId = id;
+        return decision;
     }
 
-    /// <summary>请求未记账就失败（上游拒绝/异常）时退回预留额度。</summary>
-    /// <remarks>
-    /// 只按当前周期/日键退回。请求跨过日界或周期起点时旧桶的预留会留在那一行，但旧桶
-    /// 已不再被读取（新请求只查当前键），不会影响后续额度判断。
-    /// </remarks>
-    public void ReleaseQuota(Guid userId, Guid deviceId, int chars)
+    /// <summary>释放该请求的剩余额度，重复释放没有副作用。</summary>
+    public void ReleaseQuota(Guid reservationId)
     {
-        if (chars <= 0) return;
         using var connection = database.Open();
-        var periodStart = QuotaPeriodKey(connection, null, userId);
-        using var transaction = connection.BeginTransaction();
-
-        using (var monthly = connection.CreateCommand())
-        {
-            monthly.Transaction = transaction;
-            monthly.CommandText = """
-                UPDATE usage_monthly SET reserved = MAX(0, reserved - $chars)
-                WHERE user_id = $userId AND month = $month
-                """;
-            monthly.Parameters.AddWithValue("$chars", chars);
-            monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", periodStart);
-            monthly.ExecuteNonQuery();
-        }
-
-        using (var daily = connection.CreateCommand())
-        {
-            daily.Transaction = transaction;
-            daily.CommandText = """
-                UPDATE usage_daily SET reserved = MAX(0, reserved - $chars)
-                WHERE device_id = $deviceId AND day = $day
-                """;
-            daily.Parameters.AddWithValue("$chars", chars);
-            daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            daily.Parameters.AddWithValue("$day", database.TodayKey);
-            daily.ExecuteNonQuery();
-        }
-
-        transaction.Commit();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM quota_reservations WHERE id = $id";
+        command.Parameters.AddWithValue("$id", reservationId.ToString("D"));
+        command.ExecuteNonQuery();
     }
 
-    private (int MonthlyChars, int DailyChars) ReadUsageIncludingReserved(
-        SqliteConnection connection,
-        SqliteTransaction? transaction,
-        Guid userId,
-        Guid deviceId,
-        string periodStart)
+    private static string UtcDayKey(long now) =>
+        DateTimeOffset.FromUnixTimeSeconds(now).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static (string Month, string Day)? ConsumeQuota(
+        SqliteConnection connection, SqliteTransaction transaction, Guid reservationId, int chars, bool complete)
     {
-        int monthly = 0;
-        using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
-                SELECT chars + reserved FROM usage_monthly
-                WHERE user_id = $userId AND month = $month
-                """;
-            command.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            command.Parameters.AddWithValue("$month", periodStart);
-            monthly = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
-        }
-
-        int daily = 0;
-        using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
-                SELECT chars + reserved FROM usage_daily
-                WHERE device_id = $deviceId AND day = $day
-                """;
-            command.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            command.Parameters.AddWithValue("$day", database.TodayKey);
-            daily = command.ExecuteScalar() is { } value ? Convert.ToInt32(value, CultureInfo.InvariantCulture) : 0;
-        }
-
-        return (monthly, daily);
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.Parameters.AddWithValue("$id", reservationId.ToString("D"));
+        command.Parameters.AddWithValue("$chars", chars);
+        // v198: 语音增量用实耗替换预留，翻译一次结算后直接作废凭据，重入时不会重复扣费。
+        command.CommandText = complete
+            ? "DELETE FROM quota_reservations WHERE id = $id RETURNING month, day"
+            : "UPDATE quota_reservations SET chars = MAX(0, chars - $chars) WHERE id = $id RETURNING month, day";
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? (reader.GetString(0), reader.GetString(1)) : null;
     }
 
     /// <summary>
     /// 记一笔用量。<paramref name="source"/> 是预算桶名（<see cref="Gateway.GatewayBuckets"/>），
     /// 没有默认值：漏传就会把会员或语音的账记进免费桶，熔断与展示都会错。
     /// </summary>
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source, int reservedChars = 0)
+    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut,
+        long costMicros, long now, string source, Guid? reservationId = null, bool completeReservation = true)
     {
         using var connection = database.Open();
-        var periodStart = QuotaPeriodKey(connection, null, userId);
         using var transaction = connection.BeginTransaction();
+        using var entry = connection.CreateCommand();
+        entry.Transaction = transaction;
+        entry.Parameters.AddWithValue("$chars", chars);
+        entry.Parameters.AddWithValue("$tokensIn", tokensIn);
+        entry.Parameters.AddWithValue("$tokensOut", tokensOut);
+        entry.Parameters.AddWithValue("$cost", costMicros);
+        entry.Parameters.AddWithValue("$source", source);
+        entry.Parameters.AddWithValue("$now", now);
+
+        var anchor = ReadQuotaAnchor(connection, transaction, userId);
+        if (anchor is null)
+        {
+            // v197: 请求在用户注销前已发给上游时，仍需入成本账，但不能重建个人记录。
+            entry.CommandText = """
+                INSERT INTO gateway_daily_costs (day, source, requests, chars, tokens_in, tokens_out, cost_micros)
+                VALUES ($now - ($now % 86400), $source, 1, $chars, $tokensIn, $tokensOut, $cost)
+                ON CONFLICT(day, source) DO UPDATE SET
+                    requests = requests + 1,
+                    chars = chars + excluded.chars,
+                    tokens_in = tokens_in + excluded.tokens_in,
+                    tokens_out = tokens_out + excluded.tokens_out,
+                    cost_micros = cost_micros + excluded.cost_micros
+                """;
+            entry.ExecuteNonQuery();
+            transaction.Commit();
+            return;
+        }
+
+        var window = reservationId is { } id
+            ? ConsumeQuota(connection, transaction, id, chars, completeReservation)
+            : (QuotaCycle.Key(anchor.Value, now), UtcDayKey(now));
+        if (window is not { } quotaWindow)
+        {
+            return;
+        }
 
         using (var monthly = connection.CreateCommand())
         {
             monthly.Transaction = transaction;
             monthly.CommandText = """
                 INSERT INTO usage_monthly (user_id, month, chars) VALUES ($userId, $month, $chars)
-                ON CONFLICT(user_id, month) DO UPDATE SET
-                    chars = chars + excluded.chars,
-                    reserved = MAX(0, reserved - $reserved)
+                ON CONFLICT(user_id, month) DO UPDATE SET chars = chars + excluded.chars
                 """;
             monthly.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            monthly.Parameters.AddWithValue("$month", periodStart);
+            monthly.Parameters.AddWithValue("$month", quotaWindow.Item1);
             monthly.Parameters.AddWithValue("$chars", chars);
-            monthly.Parameters.AddWithValue("$reserved", reservedChars);
             monthly.ExecuteNonQuery();
         }
 
@@ -647,35 +620,22 @@ public sealed class AccountStore(ServerDatabase database)
             daily.Transaction = transaction;
             daily.CommandText = """
                 INSERT INTO usage_daily (device_id, day, chars) VALUES ($deviceId, $day, $chars)
-                ON CONFLICT(device_id, day) DO UPDATE SET
-                    chars = chars + excluded.chars,
-                    reserved = MAX(0, reserved - $reserved)
+                ON CONFLICT(device_id, day) DO UPDATE SET chars = chars + excluded.chars
                 """;
             daily.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            daily.Parameters.AddWithValue("$day", database.TodayKey);
+            daily.Parameters.AddWithValue("$day", quotaWindow.Item2);
             daily.Parameters.AddWithValue("$chars", chars);
-            daily.Parameters.AddWithValue("$reserved", reservedChars);
             daily.ExecuteNonQuery();
         }
 
-        using (var entry = connection.CreateCommand())
-        {
-            entry.Transaction = transaction;
-            entry.CommandText = """
-                INSERT INTO usage_events (user_id, device_id, model, chars, tokens_in, tokens_out, cost_micros, source, created_at)
-                VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, $cost, $source, $now)
-                """;
-            entry.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            entry.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
-            entry.Parameters.AddWithValue("$model", model);
-            entry.Parameters.AddWithValue("$chars", chars);
-            entry.Parameters.AddWithValue("$tokensIn", tokensIn);
-            entry.Parameters.AddWithValue("$tokensOut", tokensOut);
-            entry.Parameters.AddWithValue("$cost", costMicros);
-        entry.Parameters.AddWithValue("$source", source);
-            entry.Parameters.AddWithValue("$now", now);
-            entry.ExecuteNonQuery();
-        }
+        entry.CommandText = """
+            INSERT INTO usage_events (user_id, device_id, model, chars, tokens_in, tokens_out, cost_micros, source, created_at)
+            VALUES ($userId, $deviceId, $model, $chars, $tokensIn, $tokensOut, $cost, $source, $now)
+            """;
+        entry.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        entry.Parameters.AddWithValue("$deviceId", deviceId.ToString("D"));
+        entry.Parameters.AddWithValue("$model", model);
+        entry.ExecuteNonQuery();
 
         transaction.Commit();
     }
@@ -697,26 +657,76 @@ public sealed class AccountStore(ServerDatabase database)
         command.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// 消费一个 refresh token（一次性轮换）。返回所属账号与设备；设备为 null
-    /// 表示 v102 之前签发的旧令牌，轮换后也继续保持 null。无效时返回 null。
-    /// </summary>
-    public RefreshTokenOwner? ConsumeRefreshToken(string tokenHash)
+    /// <summary>仅为仍有效的账号、密码与设备创建登录链。</summary>
+    public bool CreateSession(UserRecord user, Guid deviceId, Guid sessionId, string tokenHash, long expiresAt)
     {
         using var connection = database.Open();
-        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        // 登录校验后的并发改密或移除设备不能拿着旧快照创建有效会话。
+        command.CommandText = """
+            INSERT INTO refresh_tokens (id, user_id, device_id, session_id, token_hash, created_at, expires_at)
+            SELECT $id, u.id, d.id, $session, $hash, $now, $expires
+            FROM users u JOIN devices d ON d.user_id = u.id
+            WHERE u.id = $user AND d.id = $device AND u.disabled = 0 AND d.deleted_at IS NULL
+              AND u.password_hash = $password
+            """;
+        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("D"));
+        command.Parameters.AddWithValue("$user", user.Id.ToString("D"));
+        command.Parameters.AddWithValue("$device", deviceId.ToString("D"));
+        command.Parameters.AddWithValue("$session", sessionId.ToString("D"));
+        command.Parameters.AddWithValue("$hash", tokenHash);
+        command.Parameters.AddWithValue("$now", database.NowUnix);
+        command.Parameters.AddWithValue("$expires", expiresAt);
+        command.Parameters.AddWithValue("$password", user.PasswordHash);
+        return command.ExecuteNonQuery() == 1;
+    }
+
+    /// <summary>返回这条登录链当前绑定的有效设备。</summary>
+    public Guid? FindSessionDevice(Guid userId, Guid sessionId)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.id FROM refresh_tokens r JOIN devices d ON d.id = r.device_id
+            JOIN users u ON u.id = r.user_id
+            WHERE r.session_id = $session AND u.id = $user AND r.revoked_at IS NULL
+              AND r.expires_at > $now AND u.disabled = 0 AND d.deleted_at IS NULL
+            """;
+        command.Parameters.AddWithValue("$user", userId.ToString("D"));
+        command.Parameters.AddWithValue("$session", sessionId.ToString("D"));
+        command.Parameters.AddWithValue("$now", database.NowUnix);
+        return Guid.TryParse(command.ExecuteScalar() as string, out var deviceId) ? deviceId : null;
+    }
+
+    /// <summary>一次性消费刷新令牌。</summary>
+    public RefreshTokenOwner? ConsumeRefreshToken(string tokenHash) => ExchangeRefreshToken(tokenHash, null, 0);
+
+    /// <summary>在同一事务内作废旧令牌并写入同一登录链的替代令牌。</summary>
+    public RefreshTokenOwner? RotateRefreshToken(string tokenHash, string replacementHash, long expiresAt)
+        => ExchangeRefreshToken(tokenHash, replacementHash, expiresAt);
+
+    private RefreshTokenOwner? ExchangeRefreshToken(string tokenHash, string? replacementHash, long expiresAt)
+    {
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
 
         Guid userId;
         Guid? deviceId;
+        Guid? sessionId;
         using (var select = connection.CreateCommand())
         {
             select.Transaction = transaction;
             select.CommandText = """
-                SELECT user_id, device_id FROM refresh_tokens
+                SELECT user_id, device_id, session_id FROM refresh_tokens
                 WHERE token_hash = $hash AND revoked_at IS NULL AND expires_at > $now
+                  AND ($consume = 1 OR EXISTS (
+                      SELECT 1 FROM users u JOIN devices d ON d.user_id = u.id
+                      WHERE u.id = refresh_tokens.user_id AND d.id = refresh_tokens.device_id
+                        AND u.disabled = 0 AND d.deleted_at IS NULL))
                 """;
             select.Parameters.AddWithValue("$hash", tokenHash);
             select.Parameters.AddWithValue("$now", database.NowUnix);
+            select.Parameters.AddWithValue("$consume", replacementHash is null ? 1 : 0);
 
             using (var reader = select.ExecuteReader())
             {
@@ -727,7 +737,13 @@ public sealed class AccountStore(ServerDatabase database)
                 }
 
                 deviceId = reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1));
+                sessionId = reader.IsDBNull(2) ? null : Guid.Parse(reader.GetString(2));
             }
+        }
+
+        if (replacementHash is not null && sessionId is null)
+        {
+            return null;
         }
 
         using (var revoke = connection.CreateCommand())
@@ -739,14 +755,38 @@ public sealed class AccountStore(ServerDatabase database)
             revoke.ExecuteNonQuery();
         }
 
+        if (replacementHash is not null)
+        {
+            using var replace = connection.CreateCommand();
+            replace.Transaction = transaction;
+            // v200: 设备移除或改密必须排在整个轮换前或后，否则会漏掉尚未写入的替代凭据。
+            replace.CommandText = """
+                INSERT INTO refresh_tokens (id, user_id, device_id, session_id, token_hash, created_at, expires_at)
+                SELECT $id, user_id, device_id, session_id, $newHash, $now, $expires
+                FROM refresh_tokens WHERE token_hash = $oldHash
+                """;
+            replace.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("D"));
+            replace.Parameters.AddWithValue("$newHash", replacementHash);
+            replace.Parameters.AddWithValue("$oldHash", tokenHash);
+            replace.Parameters.AddWithValue("$now", database.NowUnix);
+            replace.Parameters.AddWithValue("$expires", expiresAt);
+            replace.ExecuteNonQuery();
+        }
+
         transaction.Commit();
-        return new RefreshTokenOwner(userId, deviceId);
+        return new RefreshTokenOwner(userId, deviceId, sessionId);
     }
 
     public int RevokeAllRefreshTokens(Guid userId)
     {
         using var connection = database.Open();
+        return RevokeAllRefreshTokens(connection, null, userId);
+    }
+
+    private int RevokeAllRefreshTokens(SqliteConnection connection, SqliteTransaction? transaction, Guid userId)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "UPDATE refresh_tokens SET revoked_at = $now WHERE user_id = $userId AND revoked_at IS NULL";
         command.Parameters.AddWithValue("$userId", userId.ToString("D"));
         command.Parameters.AddWithValue("$now", database.NowUnix);
@@ -841,15 +881,15 @@ public sealed class AccountStore(ServerDatabase database)
         return (total, free, light, standard, max, active);
     }
 
-    /// <summary>管理端的全局时间窗聚合；cost 仍以微元为单位。</summary>
+    /// <summary>管理端从 UTC 日起点聚合匿名用量，成本以微元为单位。</summary>
     public (long Requests, long Chars, long TokensIn, long TokensOut, long CostMicros) ReadUsageTotals(long fromUnix)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(tokens_in), 0),
+            SELECT COALESCE(SUM(requests), 0), COALESCE(SUM(chars), 0), COALESCE(SUM(tokens_in), 0),
                    COALESCE(SUM(tokens_out), 0), COALESCE(SUM(cost_micros), 0)
-            FROM usage_events WHERE created_at >= $from
+            FROM gateway_daily_costs WHERE day >= $from
             """;
         command.Parameters.AddWithValue("$from", fromUnix);
         using var reader = command.ExecuteReader();
@@ -867,8 +907,8 @@ public sealed class AccountStore(ServerDatabase database)
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT source, COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(cost_micros), 0)
-            FROM usage_events WHERE created_at >= $from
+            SELECT source, SUM(requests), SUM(chars), SUM(cost_micros)
+            FROM gateway_daily_costs WHERE day >= $from
             GROUP BY source ORDER BY source
             """;
         command.Parameters.AddWithValue("$from", fromUnix);
@@ -892,9 +932,9 @@ public sealed class AccountStore(ServerDatabase database)
         using var connection = database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT strftime('%Y-%m-%d', created_at, 'unixepoch') AS day,
-                   COUNT(*), COALESCE(SUM(chars), 0), COALESCE(SUM(cost_micros), 0)
-            FROM usage_events WHERE created_at >= $from
+            SELECT strftime('%Y-%m-%d', day, 'unixepoch'),
+                   SUM(requests), SUM(chars), SUM(cost_micros)
+            FROM gateway_daily_costs WHERE day >= $from
             GROUP BY day ORDER BY day
             """;
         command.Parameters.AddWithValue("$from", fromUnix);
@@ -1044,6 +1084,6 @@ public sealed class AccountStore(ServerDatabase database)
 public sealed record DeviceResult(bool Succeeded, DeviceRecord? Device, string? Error);
 
 /// <summary>一条 refresh token 属于哪个账号、哪台设备（旧令牌没有设备）。</summary>
-public sealed record RefreshTokenOwner(Guid UserId, Guid? DeviceId);
+public sealed record RefreshTokenOwner(Guid UserId, Guid? DeviceId, Guid? SessionId);
 
 public sealed record VerificationRecord(string CodeHash, long ExpiresAt, int Attempts, long LastSentAt, string Purpose);

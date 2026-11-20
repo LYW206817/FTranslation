@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace FastTranslation.Server.Gateway;
 
 /// <summary>上游返回的原样内容。网关只负责转发，不负责改写。</summary>
-public sealed record GatewayResponse(int StatusCode, string Body)
+public sealed record GatewayResponse(int StatusCode, string Body, bool OutcomeUnknown = false)
 {
     public bool Succeeded => StatusCode is >= 200 and < 300;
 }
@@ -14,7 +14,7 @@ public sealed record GatewayResponse(int StatusCode, string Body)
 /// 唯一持有开发者 DashScope Key 的地方。它把调用方的请求体连同
 /// 该 Key 一起转发，绝不让 Key（或上游 URL）到达客户端。
 /// </summary>
-public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler? handler = null) : IDisposable
+public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler? handler = null, CancellationToken stopping = default) : IDisposable
 {
     private readonly HttpClient _http = new(handler ?? new SocketsHttpHandler())
     {
@@ -81,6 +81,7 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
 
     private async Task<GatewayResponse> SendAsync(string url, string body, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -89,22 +90,18 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
 
         try
         {
+            // 入站断开不等于上游停止计费。转发后仍由 HttpClient 超时和服务生命周期收口，
+            // 有成功响应就结算；超时等未知结果交给诊断和供应商对账。
             using var response = await _http
-                .SendAsync(request, HttpCompletionOption.ResponseContentRead, ct)
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, stopping)
                 .ConfigureAwait(false);
-            var text = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var text = await response.Content.ReadAsStringAsync(stopping).ConfigureAwait(false);
             return new GatewayResponse((int)response.StatusCode, text);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // 调用方主动取消（客户端断开）不是上游故障：继续抛出，让上层按取消处理，
-            // 不要记成 502 污染网关健康统计。
-            throw;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             // 上游不可达：按网关故障上报，绝不能当成额度事件。
-            return new GatewayResponse(StatusCodes.Status502BadGateway, string.Empty);
+            return new GatewayResponse(StatusCodes.Status502BadGateway, string.Empty, OutcomeUnknown: true);
         }
     }
 

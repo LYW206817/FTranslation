@@ -43,13 +43,13 @@ public sealed class TokenService
 
     public TimeSpan AccessTokenLifetime { get; }
 
-    public string CreateAccessToken(Guid userId, string email, string plan, out DateTimeOffset expiresAt)
+    public string CreateAccessToken(Guid userId, string email, string plan, out DateTimeOffset expiresAt, Guid? sessionId = null)
     {
         var now = _time.GetUtcNow();
         expiresAt = now + AccessTokenLifetime;
 
         var header = Base64Url.EncodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}"u8);
-        var payload = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>(StringComparer.Ordinal)
+        var claims = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["iss"] = Issuer,
             ["aud"] = Audience,
@@ -59,7 +59,12 @@ public sealed class TokenService
             ["iat"] = now.ToUnixTimeSeconds(),
             ["exp"] = expiresAt.ToUnixTimeSeconds(),
             ["jti"] = Guid.NewGuid().ToString("N"),
-        }, JsonOptions));
+        };
+        if (sessionId is { } sid)
+        {
+            claims["sid"] = sid.ToString("D");
+        }
+        var payload = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(claims, JsonOptions));
 
         var signingInput = header + "." + payload;
         return signingInput + "." + Base64Url.EncodeToString(Sign(signingInput));
@@ -134,7 +139,8 @@ public sealed class TokenService
                 userId,
                 GetString(root, "email") ?? string.Empty,
                 GetString(root, "plan") ?? "free",
-                exp);
+                exp,
+                Guid.TryParse(GetString(root, "sid"), out var sid) ? sid : null);
             return true;
         }
     }
@@ -159,4 +165,4 @@ public sealed class TokenService
     }
 }
 
-public readonly record struct AccessTokenPrincipal(Guid UserId, string Email, string Plan, long ExpiresAtUnix);
+public readonly record struct AccessTokenPrincipal(Guid UserId, string Email, string Plan, long ExpiresAtUnix, Guid? SessionId);

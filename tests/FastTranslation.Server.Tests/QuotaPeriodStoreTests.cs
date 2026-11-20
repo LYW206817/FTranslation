@@ -61,6 +61,19 @@ public sealed class QuotaPeriodStoreTests : IDisposable
     }
 
     [Fact]
+    public void Ending_yesterdays_request_preserves_todays_reservation()
+    {
+        var (user, device) = NewUser();
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_000, PlanTier.Free, out var yesterday).Allowed);
+        _clock.Advance(TimeSpan.FromDays(1));
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free, out _).Allowed);
+
+        _store.ReleaseQuota(yesterday);
+
+        Assert.False(_store.TryReserveQuota(user.Id, device.Id, 1_000, PlanTier.Free, out _).Allowed);
+    }
+
+    [Fact]
     public void Activation_from_free_starts_a_new_period()
     {
         var (user, device) = NewUser();

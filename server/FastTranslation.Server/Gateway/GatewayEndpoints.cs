@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -16,26 +17,53 @@ namespace FastTranslation.Server.Gateway;
 /// </summary>
 public static class GatewayEndpoints
 {
-    /// <summary>桌面客户端的设备指纹从这里传。可选；匿名记录复用同一个设备。</summary>
+    /// <summary>旧客户端用于设备列表展示的指纹头。</summary>
     public const string DeviceHeaderName = "X-FT-Device";
-
-    private const string AnonymousFingerprint = "gateway-anonymous";
 
     // v130: 绝对上限之外再按输入长度收紧。翻译输出通常与输入同量级，给 2 倍余量；
     // 极短文本至少留 64 token，否则「你好」这类请求会被自己的长度上限误杀。
     private const int OutputTokensPerInputChar = 2;
 
     private const int MinOutputTokenAllowance = 64;
+    private const int MaxScreenshotSide = 8_192;
+    private const int OcrOutputTokens = 4_096;
+    private const int OcrTokenSide = 32;
 
-    private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros, string Source);
+    private readonly record struct Reservation(Guid UserId, Guid DeviceId, Guid QuotaId, long EstimatedCostMicros, string Source);
 
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/v1").WithTags("gateway").RequireAuthorization();
+        var group = app.MapGroup("/v1").WithTags("gateway").RequireAuthorization()
+            .AddEndpointFilter(LimitBeforeReadingAsync);
 
         group.MapPost("/chat/completions", ChatCompletions);
         group.MapPost("/image", Image);
         group.MapPost("/ocr", Ocr);
+    }
+
+    private static async ValueTask<object?> LimitBeforeReadingAsync(
+        EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
+    {
+        var context = invocation.HttpContext;
+        var services = context.RequestServices;
+        var gateway = services.GetRequiredService<GatewayOptions>();
+        var diagnostics = services.GetRequiredService<GatewayDiagnostics>();
+        diagnostics.RecordGatewayRequest();
+        if (!gateway.IsConfigured)
+        {
+            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
+        }
+
+        // v199: 大请求在读取与解码前就需要占用名额，否则账号限频保护不到读包的内存。
+        var limiter = services.GetRequiredService<GatewayRateLimiter>();
+        var capacity = services.GetRequiredService<GatewayRequestCapacity>();
+        if (!limiter.TryAcquire(context.User.GetUserId(), gateway.RequestsPerMinute) || !capacity.TryEnter())
+        {
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
+        }
+
+        try { return await next(invocation); }
+        finally { capacity.Exit(); }
     }
 
     private static async Task<IResult> ChatCompletions(
@@ -44,29 +72,24 @@ public static class GatewayEndpoints
         [FromServices] GatewayOptions gateway,
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
-        [FromServices] GatewayRateLimiter limiter,
         [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        diagnostics.RecordGatewayRequest();
-        if (!gateway.IsConfigured)
-        {
-            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
-        }
-
         var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxChatBodyBytes, ct);
         if (tooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
         }
-        if (body is null)
+        if (ReadObject(body) is not { } root)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
-        var (model, chars) = ReadChatShape(body);
+        var model = ReadString(root, "model") ?? string.Empty;
+        var message = ReadChatText(root);
+        var chars = message?.Length ?? 0;
         if (chars <= 0)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "text_required");
@@ -82,20 +105,42 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
         }
 
-        var maxTokens = ReadMaxTokens(body);
-        // v130: 4096 的平顶仍允许「10 字符输入配 4096 输出」——额度只按输入字符扣，
-        // 单笔真实成本可以远超这笔额度。按输入长度给相对上限，把输出/输入比压回
-        // 额度倍率能覆盖的量级；桌面端不传 max_tokens，不受这条影响。
+        if (!TryReadMaxTokens(root, out var maxTokens))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
+        }
+
+        // v199: 省略长度时上游使用模型自身上限，因此也必须写入服务端算出的输出上限。
         var outputLimit = Math.Min(gateway.MaxOutputTokens,
             Math.Max(MinOutputTokenAllowance, chars * OutputTokensPerInputChar));
-        if (maxTokens is { } requestedTokens && requestedTokens > outputLimit)
+        if (maxTokens > outputLimit)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "max_tokens_too_large");
         }
 
-        var outputTokens = maxTokens is { } requestedOutput && requestedOutput > 0 ? requestedOutput : 0;
-        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
-            Pricing.QuotaChars(model, chars), Pricing.EstimateTextCostMicros(model, chars, outputTokens), out var reservation);
+        var outputTokens = maxTokens > 0 ? maxTokens : outputLimit;
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = model,
+            ["messages"] = new[] { new { role = "user", content = message } },
+            ["max_tokens"] = outputTokens,
+            ["stream"] = false,
+        };
+        var estimateChars = Encoding.UTF8.GetByteCount(message ?? string.Empty);
+        if (root.TryGetProperty("translation_options", out var translationOptions))
+        {
+            if (translationOptions.ValueKind != JsonValueKind.Object)
+            {
+                return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
+            }
+            var options = translationOptions.EnumerateObject()
+                .Where(property => property.Name is "source_lang" or "target_lang" or "terms" or "tm_list" or "domains")
+                .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal);
+            payload["translation_options"] = options;
+            estimateChars += Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(options));
+        }
+        var refusal = Intent(context, principal, store, database, gateway, budget, diagnostics,
+            Pricing.QuotaChars(model, chars), Pricing.EstimateTextCostMicros(model, estimateChars, outputTokens), out var reservation);
         if (refusal is not null)
         {
             return refusal;
@@ -104,16 +149,16 @@ public static class GatewayEndpoints
         var settled = false;
         try
         {
-            var response = await upstream.SendChatAsync(body, ct);
+            var response = await upstream.SendChatAsync(JsonSerializer.Serialize(payload), ct);
             if (!response.Succeeded)
             {
                 // 上游拒绝：透传状态码，让客户端现有的分类逻辑继续工作，
                 // 并且不为这次根本没拿到的翻译向账号收费。
-                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                diagnostics.RecordGatewayFailure(response.OutcomeUnknown ? "upstream_outcome_unknown" : $"upstream_{response.StatusCode}");
                 return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
             }
 
-            var tokensIn = EstimateInputTokens(chars);
+            var tokensIn = EstimateInputTokens(estimateChars);
             var tokensOut = 0L;
             if (DashScopeGateway.TryReadUsage(response.Body, out var reportedIn, out var reportedOut))
             {
@@ -134,7 +179,7 @@ public static class GatewayEndpoints
                 Pricing.TextCostMicros(model, tokensIn, tokensOut),
                 database.NowUnix,
                 source: reservation.Value.Source,
-                reservedChars: reservation.Value.Chars);
+                reservationId: reservation.Value.QuotaId);
             budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
@@ -144,8 +189,8 @@ public static class GatewayEndpoints
         {
             if (!settled && reservation is { } held)
             {
-                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release(held.Source, held.EstimatedCostMicros);
+                try { store.ReleaseQuota(held.QuotaId); }
+                finally { budget.Release(held.Source, held.EstimatedCostMicros); }
             }
         }
     }
@@ -162,38 +207,46 @@ public static class GatewayEndpoints
         [FromServices] GatewayOptions gateway,
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
-        [FromServices] GatewayRateLimiter limiter,
         [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        diagnostics.RecordGatewayRequest();
-        if (!gateway.IsConfigured)
-        {
-            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
-        }
-
         var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
         if (tooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
         }
-        if (body is null)
+        if (body is null || ReadObject(body) is not { } root)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
         // 图片请求必须落到价目表里的图像模型；客户端省略时用图像默认，
         // 不能回落到 gateway.Model（那是文本模型）。
-        var model = ReadImageModel(body) ?? Pricing.DefaultImageModel;
+        var model = ReadString(root, "model") ?? Pricing.DefaultImageModel;
         if (!Pricing.IsImageModel(model))
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
         }
+        if (!root.TryGetProperty("input", out var input)
+            || ReadString(input, "image_url") is not { } imageUrl || !TryReadPngSize(imageUrl, out _, out _))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
+        }
+        var payload = JsonSerializer.Serialize(new
+        {
+            model,
+            input = new
+            {
+                image_url = imageUrl,
+                source_lang = ReadString(input, "source_lang") ?? "auto",
+                target_lang = ReadString(input, "target_lang"),
+            },
+        });
 
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
+        var refusal = Intent(context, principal, store, database, gateway, budget, diagnostics,
             quotaChars, Pricing.ImageCostMicros(model), out var reservation);
         if (refusal is not null)
         {
@@ -203,10 +256,10 @@ public static class GatewayEndpoints
         var settled = false;
         try
         {
-            var response = await upstream.SendImageAsync(body, ct);
+            var response = await upstream.SendImageAsync(payload, ct);
             if (!response.Succeeded)
             {
-                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                diagnostics.RecordGatewayFailure(response.OutcomeUnknown ? "upstream_outcome_unknown" : $"upstream_{response.StatusCode}");
                 return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
             }
 
@@ -220,7 +273,7 @@ public static class GatewayEndpoints
                 Pricing.ImageCostMicros(model),
                 database.NowUnix,
                 source: reservation.Value.Source,
-                reservedChars: reservation.Value.Chars);
+                reservationId: reservation.Value.QuotaId);
             budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
@@ -230,14 +283,14 @@ public static class GatewayEndpoints
         {
             if (!settled && reservation is { } held)
             {
-                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release(held.Source, held.EstimatedCostMicros);
+                try { store.ReleaseQuota(held.QuotaId); }
+                finally { budget.Release(held.Source, held.EstimatedCostMicros); }
             }
         }
     }
 
     /// <summary>
-    /// 截图 OCR。请求体原样转发到多模态端点；与
+    /// 截图 OCR。由网关为一张 PNG 截图构造多模态请求；与
     /// <see cref="ChatCompletions"/> 的区别在于载荷是一张图而不是文本，因此没有
     /// 需要管制的字符上限，额度按一次截图扣费（与
     /// <see cref="Image"/> 相同折算）。但成本是真实的 token 记账：模型按视觉 token 计费，
@@ -249,33 +302,24 @@ public static class GatewayEndpoints
         [FromServices] GatewayOptions gateway,
         [FromServices] AccountStore store,
         [FromServices] ServerDatabase database,
-        [FromServices] GatewayRateLimiter limiter,
         [FromServices] GatewayBudgetGuard budget,
         [FromServices] GatewayDiagnostics diagnostics,
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        diagnostics.RecordGatewayRequest();
-        if (!gateway.IsConfigured)
-        {
-            return Fail(diagnostics, StatusCodes.Status503ServiceUnavailable, "gateway_disabled");
-        }
-
         var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
         if (tooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
         }
-        if (body is null)
+        if (body is null || ReadObject(body) is not { } root)
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
         }
 
         var configuredModel = string.IsNullOrWhiteSpace(gateway.OcrModel) ? "qwen-vl-ocr" : gateway.OcrModel.Trim();
-        // OCR 请求体原样转发；客户端若在 body 里塞了别的 model，上游会照它跑，
-        // 而账本按服务端的 OcrModel 记，成本与额度会脱节。只接受 OCR 模型或
-        // 服务端配置的模型，并按其实际名字记账。
-        var requestedModel = ReadImageModel(body);
+        // 价目表和上游必须使用同一个模型，包括客户端没有显式填写的情况。
+        var requestedModel = ReadString(root, "model");
         var model = requestedModel ?? configuredModel;
         if (requestedModel is { } requested
             && !Pricing.IsOcrModel(requested)
@@ -283,12 +327,25 @@ public static class GatewayEndpoints
         {
             return Fail(diagnostics, StatusCodes.Status400BadRequest, "model_not_allowed");
         }
+        if (ReadOcrImage(root) is not { } image || !TryReadPngSize(image, out var width, out var height))
+        {
+            return Fail(diagnostics, StatusCodes.Status400BadRequest, "body_invalid");
+        }
+        var payload = JsonSerializer.Serialize(new
+        {
+            model,
+            input = new { messages = new[] { new { role = "user", content = new[] { new { image } } } } },
+            parameters = new { max_tokens = OcrOutputTokens },
+        });
 
         // 从额度角度看，一次 OCR 与一次图片翻译定价相同：两者都是输入一张图。
         // 截图流程会同时调用 /v1/image，两个 1,000 合起来就是「每张截图 2,000 字符起」。
         var quotaChars = gateway.ImageQuotaChars > 0 ? gateway.ImageQuotaChars : 1000;
-        var refusal = Intent(context, principal, store, database, gateway, limiter, budget, diagnostics,
-            quotaChars, Pricing.EstimateVisionCostMicros(model, quotaChars), out var reservation);
+        // 每边向上取整后估计视觉块，再留出固定的请求开销。额度仍按截图一次计算。
+        var estimatedInput = Math.Max(quotaChars,
+            ((width + OcrTokenSide - 1) / OcrTokenSide) * ((height + OcrTokenSide - 1) / OcrTokenSide) + 64);
+        var refusal = Intent(context, principal, store, database, gateway, budget, diagnostics,
+            quotaChars, Pricing.TextCostMicros(model, estimatedInput, OcrOutputTokens), out var reservation);
         if (refusal is not null)
         {
             return refusal;
@@ -297,15 +354,15 @@ public static class GatewayEndpoints
         var settled = false;
         try
         {
-            var response = await upstream.SendOcrAsync(body, ct);
+            var response = await upstream.SendOcrAsync(payload, ct);
             if (!response.Succeeded)
             {
                 // 与 chat 同规则：原样透传上游状态码，绝不为拒绝计费。
-                diagnostics.RecordGatewayFailure($"upstream_{response.StatusCode}");
+                diagnostics.RecordGatewayFailure(response.OutcomeUnknown ? "upstream_outcome_unknown" : $"upstream_{response.StatusCode}");
                 return Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
             }
 
-            var tokensIn = (long)quotaChars;
+            var tokensIn = (long)estimatedInput;
             var tokensOut = 0L;
             if (DashScopeGateway.TryReadVisionUsage(response.Body, out var reportedIn, out var reportedOut) && reportedIn > 0)
             {
@@ -323,7 +380,7 @@ public static class GatewayEndpoints
                 Pricing.TextCostMicros(model, tokensIn, tokensOut),
                 database.NowUnix,
                 source: reservation.Value.Source,
-                reservedChars: reservation.Value.Chars);
+                reservationId: reservation.Value.QuotaId);
             budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
@@ -333,8 +390,8 @@ public static class GatewayEndpoints
         {
             if (!settled && reservation is { } held)
             {
-                store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release(held.Source, held.EstimatedCostMicros);
+                try { store.ReleaseQuota(held.QuotaId); }
+                finally { budget.Release(held.Source, held.EstimatedCostMicros); }
             }
         }
     }
@@ -349,7 +406,6 @@ public static class GatewayEndpoints
         AccountStore store,
         ServerDatabase database,
         GatewayOptions gateway,
-        GatewayRateLimiter limiter,
         GatewayBudgetGuard budget,
         GatewayDiagnostics diagnostics,
         int chars,
@@ -358,11 +414,6 @@ public static class GatewayEndpoints
     {
         reservation = null;
         var userId = principal.GetUserId();
-
-        if (!limiter.TryAcquire(userId, gateway.RequestsPerMinute))
-        {
-            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
-        }
 
         // v191: 免费用户把日预算烧穿后，已付费的会员也跟着 429——两类账号共用一个桶。
         // 现在按「有效档位」分桶（订阅到期的与免费同桶，和额度口径一致）；档位要先于预算闸门
@@ -385,11 +436,12 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status403Forbidden, "account_disabled");
         }
 
-        var (deviceId, _) = Device(context, principal, store);
+        var deviceId = principal.GetDeviceId();
+        Guid quotaId;
         QuotaPolicy.Decision decision;
         try
         {
-            decision = store.TryReserveQuota(userId, deviceId, chars, tier);
+            decision = store.TryReserveQuota(userId, deviceId, chars, tier, out quotaId);
         }
         catch (Exception)
         {
@@ -407,81 +459,21 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
         }
 
-        reservation = new Reservation(userId, deviceId, chars, estimatedCostMicros, source);
+        reservation = new Reservation(userId, deviceId, quotaId, estimatedCostMicros, source);
         return null;
     }
 
-    internal static (Guid DeviceId, Guid UserId) Device(
-        HttpContext context,
-        ClaimsPrincipal principal,
-        AccountStore store)
+    private static JsonElement? ReadObject(string? body)
     {
-        var userId = principal.GetUserId();
-        var fingerprint = context.Request.Headers[DeviceHeaderName].ToString().Trim();
-        if (fingerprint.Length == 0)
+        if (body is null)
         {
-            fingerprint = AnonymousFingerprint;
+            return null;
         }
 
-        if (store.FindDeviceByFingerprint(userId, fingerprint) is { } known)
-        {
-            return (known.Id, userId);
-        }
-
-        // RegisterDevice 会遵守每账号设备上限；这里被拒绝也不能中断
-        // 翻译，所以超限的客户端直接记到匿名设备行上。
-        var registered = store.RegisterDevice(userId, fingerprint, string.Empty);
-        if (registered.Device is { } device)
-        {
-            return (device.Id, userId);
-        }
-
-        // v127: 匿名行不一定存在（桌面端每次请求都带指纹）。这时必须退回到账号已有
-        // 的一台设备，绝不能返回 Guid.Empty：usage_daily 对 devices 有外键，记账会
-        // 抛异常返回 500，而上游翻译已经调用、成本已经发生。
-        var fallback = store.FindDeviceByFingerprint(userId, AnonymousFingerprint)
-            ?? store.ListDevices(userId).FirstOrDefault();
-        return (fallback?.Id ?? Guid.Empty, userId);
-    }
-
-    private static (string Model, int Chars) ReadChatShape(string body)
-    {
         try
         {
-            using var document = JsonDocument.Parse(body);
-            var root = document.RootElement;
-            var model = root.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.String
-                ? modelElement.GetString() ?? string.Empty
-                : string.Empty;
-
-            var chars = 0;
-            if (root.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var message in messages.EnumerateArray())
-                {
-                    if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
-                    {
-                        chars += content.GetString()?.Length ?? 0;
-                    }
-                }
-            }
-
-            return (model, chars);
-        }
-        catch (JsonException)
-        {
-            return (string.Empty, 0);
-        }
-    }
-
-    private static string? ReadImageModel(string body)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(body);
-            return document.RootElement.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String
-                ? model.GetString()
-                : null;
+            using var document = JsonDocument.Parse(body, new JsonDocumentOptions { AllowDuplicateProperties = false });
+            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
         }
         catch (JsonException)
         {
@@ -489,34 +481,71 @@ public static class GatewayEndpoints
         }
     }
 
-    /// <summary>
-    /// Qwen-MT 对每次请求固定收取约 45 token 的前导开销，与长度无关，所以只按
-    /// 字符数会严重低报成本。这里补上这块开销，仅在
-    /// 上游响应没有 usage 块时使用。
-    /// </summary>
+    private static string? ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static string? ReadChatText(JsonElement root)
+    {
+        if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array
+            || messages.GetArrayLength() != 1 || ReadString(messages[0], "role") != "user")
+        {
+            return null;
+        }
+
+        return ReadString(messages[0], "content");
+    }
+
+    private static string? ReadOcrImage(JsonElement root)
+    {
+        if (!root.TryGetProperty("input", out var input) || input.ValueKind != JsonValueKind.Object
+            || !input.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array
+            || messages.GetArrayLength() != 1 || ReadString(messages[0], "role") != "user"
+            || !messages[0].TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array
+            || content.GetArrayLength() != 1)
+        {
+            return null;
+        }
+        return ReadString(content[0], "image") ?? ReadString(content[0], "image_url");
+    }
+
+    private static bool TryReadPngSize(string value, out int width, out int height)
+    {
+        width = height = 0;
+        const string prefix = "data:image/png;base64,";
+        Span<byte> header = stackalloc byte[24];
+        if (!value.StartsWith(prefix, StringComparison.Ordinal) || value.Length < prefix.Length + 32
+            || !Convert.TryFromBase64Chars(value.AsSpan(prefix.Length, 32), header, out var written)
+            || written != header.Length || !header[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
+            || !header[12..16].SequenceEqual("IHDR"u8))
+        {
+            return false;
+        }
+        // 只读头部即可估算预算，无需在服务端解码整幅大图。
+        width = BinaryPrimitives.ReadInt32BigEndian(header[16..20]);
+        height = BinaryPrimitives.ReadInt32BigEndian(header[20..24]);
+        return width is > 0 and <= MaxScreenshotSide && height is > 0 and <= MaxScreenshotSide;
+    }
+
+    /// <summary>缺少上游用量时补入固定的前导 Token，避免低估短句成本。</summary>
     private static long EstimateInputTokens(int chars) => chars + 45L;
 
-    private static int? ReadMaxTokens(string body)
+    private static bool TryReadMaxTokens(JsonElement root, out int tokens)
     {
-        try
+        tokens = 0;
+        foreach (var name in new[] { "max_tokens", "max_completion_tokens" })
         {
-            using var document = JsonDocument.Parse(body);
-            foreach (var name in new[] { "max_tokens", "max_completion_tokens" })
+            if (!root.TryGetProperty(name, out var value))
             {
-                if (document.RootElement.TryGetProperty(name, out var value)
-                    && value.ValueKind == JsonValueKind.Number
-                    && value.TryGetInt32(out var tokens)
-                    && tokens > 0)
-                {
-                    return tokens;
-                }
+                continue;
             }
-            return null;
+            if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var count) || count < 0)
+            {
+                return false;
+            }
+            tokens = Math.Max(tokens, count);
         }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return true;
     }
 
     private static async Task<(string? Body, bool TooLarge)> ReadBodyAsync(

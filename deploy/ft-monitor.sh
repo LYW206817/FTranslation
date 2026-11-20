@@ -77,7 +77,7 @@ check_budget() {
 		ft_alert_once "$key" ok "[FastTranslation] 预算检查（${label}）：未设上限" || true
 		return 0
 	fi
-	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE source = '$source' AND created_at >= strftime('%s','now','start of day');")
+	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM gateway_daily_costs WHERE source = '$source' AND day = unixepoch('now','start of day');")
 	percent=$(( used * 100 / budget ))
 	if [ "$percent" -ge "$FT_BUDGET_ALERT_PERCENT" ]; then
 		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：今日已用 $(yuan "$used") 元（${percent}%），预算 $(yuan "$budget") 元" || true
@@ -89,7 +89,7 @@ check_budget() {
 # 每日摘要用的一行「今日成本 / 上限」。
 bucket_today() {
 	local source=$1 config_path=$2 used budget
-	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE source = '$source' AND created_at >= strftime('%s','now','start of day');")
+	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM gateway_daily_costs WHERE source = '$source' AND day = unixepoch('now','start of day');")
 	budget=$(config_micros "$config_path")
 	case "$budget" in
 		missing) printf '%s 元（未配置上限）' "$(yuan "$used")" ;;
@@ -157,14 +157,14 @@ digest() {
 	yesterday=$(sql "SELECT strftime('%s','now','start of day','-1 day');")
 	new_users=$(sql "SELECT COUNT(*) FROM users WHERE created_at >= $yesterday AND created_at < $midnight;")
 	active=$(sql "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE created_at >= strftime('%s','now','-30 days');")
-	rows=$(sql "SELECT COUNT(*) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
-	chars=$(sql "SELECT COALESCE(SUM(chars),0) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
-	cost=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
+	rows=$(sql "SELECT COALESCE(SUM(requests),0) FROM gateway_daily_costs WHERE day = $yesterday;")
+	chars=$(sql "SELECT COALESCE(SUM(chars),0) FROM gateway_daily_costs WHERE day = $yesterday;")
+	cost=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM gateway_daily_costs WHERE day = $yesterday;")
 	today_free=$(bucket_today gateway '.Server.Gateway.DailyBudgetMicros')
 	today_paid=$(bucket_today gateway_paid '.Server.Gateway.PaidDailyBudgetMicros')
 	today_speech=$(bucket_today speech '.Server.Gateway.Speech.DailyBudgetMicros')
 	oldest=$(sql "SELECT COALESCE(strftime('%Y-%m', MIN(created_at), 'unixepoch'), '-') FROM usage_events;" | head -1)
-	by_source=$(sql "SELECT source || ': ' || COUNT(*) || ' 次 / ' || COALESCE(SUM(chars),0) || ' 字符 / ' || printf('%.2f', COALESCE(SUM(cost_micros),0)/1000000.0) || ' 元' FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight GROUP BY source;")
+	by_source=$(sql "SELECT source || ': ' || requests || ' 次 / ' || chars || ' 字符 / ' || printf('%.2f', cost_micros/1000000.0) || ' 元' FROM gateway_daily_costs WHERE day = $yesterday ORDER BY source;")
 
 	text=$(printf '[FastTranslation] 每日摘要 %s (UTC)\n新增注册: %s\n30 天活跃: %s\n昨日请求: %s\n昨日字符: %s\n昨日成本: %s 元\n今日成本: 免费 %s · 会员 %s · 语音 %s\n最早 usage_events 月份: %s\n%s' \
 		"$(date -u +%F)" "$new_users" "$active" "$rows" "$chars" \

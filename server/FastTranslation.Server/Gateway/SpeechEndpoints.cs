@@ -3,6 +3,7 @@ using System.Security.Claims;
 using FastTranslation.Server.Api;
 using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
+using Microsoft.Data.Sqlite;
 
 namespace FastTranslation.Server.Gateway;
 
@@ -12,6 +13,8 @@ namespace FastTranslation.Server.Gateway;
 /// </summary>
 public static class SpeechEndpoints
 {
+    private static readonly TimeSpan SessionCheckInterval = TimeSpan.FromSeconds(5);
+
     public static void MapSpeechEndpoints(this IEndpointRouteBuilder app)
     {
         app.Map("/v1/asr", SpeechAsync)
@@ -55,7 +58,7 @@ public static class SpeechEndpoints
 
         // 额度按秒折字符:按最小会话(MinSeconds×QuotaCharsPerSecond)预检,连最短会话都讲不起就别进来。
         var requestedChars = gateway.Speech.MinSeconds * gateway.Speech.QuotaCharsPerSecond;
-        var (deviceId, _) = GatewayEndpoints.Device(context, principal, store);
+        var deviceId = principal.GetDeviceId();
         var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
         var usage = store.ReadUsage(userId, deviceId);
         var decision = QuotaPolicy.Evaluate(tier, usage.MonthlyChars, usage.DailyChars, requestedChars);
@@ -81,7 +84,7 @@ public static class SpeechEndpoints
         // 会话讲完之前把剩余额度花掉，语音结束时记账就会超发。实耗由中继按秒记账，
         // 结束时把剩余预留退回。
         var reservedChars = checked(sessionSeconds * gateway.Speech.QuotaCharsPerSecond);
-        var reservation = store.TryReserveQuota(userId, deviceId, reservedChars, tier);
+        var reservation = store.TryReserveQuota(userId, deviceId, reservedChars, tier, out var quotaId);
         if (!reservation.Allowed)
         {
             var reason = reservation.Reason ?? "quota_exhausted";
@@ -93,28 +96,29 @@ public static class SpeechEndpoints
         }
 
         var estimatedCostMicros = Pricing.EstimateSpeechCostMicros(gateway.Speech.Model, sessionSeconds);
-        if (!budget.TryReserve(GatewayBuckets.Speech, gateway.Speech.DailyBudgetMicros, estimatedCostMicros))
-        {
-            store.ReleaseQuota(userId, deviceId, reservedChars);
-            diagnostics.RecordSpeechFailure("budget_exhausted");
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            await context.Response.WriteAsJsonAsync(new ErrorResponse("budget_exhausted"));
-            return;
-        }
-
-        // 同一账号的并发会话上限:限流器只数请求数,拦不住 40 条并发 WS 各自讲满额度(v81)。
-        if (!sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser))
-        {
-            store.ReleaseQuota(userId, deviceId, reservedChars);
-            budget.Release(GatewayBuckets.Speech, estimatedCostMicros);
-            diagnostics.RecordSpeechFailure("speech_busy");
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
-            return;
-        }
-
+        var budgetHeld = false;
+        var sessionEntered = false;
         try
         {
+            budgetHeld = budget.TryReserve(GatewayBuckets.Speech, gateway.Speech.DailyBudgetMicros, estimatedCostMicros);
+            if (!budgetHeld)
+            {
+                diagnostics.RecordSpeechFailure("budget_exhausted");
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                await context.Response.WriteAsJsonAsync(new ErrorResponse("budget_exhausted"));
+                return;
+            }
+
+            // 限频不能代替并发限制，长连接占用资源直到会话结束。
+            sessionEntered = sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser);
+            if (!sessionEntered)
+            {
+                diagnostics.RecordSpeechFailure("speech_busy");
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
+                return;
+            }
+
             if (!context.WebSockets.IsWebSocketRequest)
             {
                 // 闸门全过但没带升级头:HTTP 测试与客户端的升级前探测都从这条 400 收口。
@@ -124,8 +128,18 @@ public static class SpeechEndpoints
 
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
             var speechGateway = new DashScopeSpeechGateway(gateway.Speech, gateway.ApiKey);
-            await speechGateway.RelayAsync(socket, userId, deviceId, store, database, sessionSeconds,
-                context.RequestAborted);
+            using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            var authorizer = WatchSessionAsync(store, diagnostics, userId, principal.GetSessionId(), connectionLifetime);
+            try
+            {
+                await speechGateway.RelayAsync(socket, userId, deviceId, store, database, sessionSeconds,
+                    quotaId, connectionLifetime.Token);
+            }
+            finally
+            {
+                connectionLifetime.Cancel();
+                await authorizer;
+            }
         }
         catch (Exception)
         {
@@ -135,9 +149,39 @@ public static class SpeechEndpoints
         }
         finally
         {
-            sessions.Exit(userId);
-            store.ReleaseQuota(userId, deviceId, reservedChars);
-            budget.Release(GatewayBuckets.Speech, estimatedCostMicros);
+            try { store.ReleaseQuota(quotaId); }
+            finally
+            {
+                if (sessionEntered) sessions.Exit(userId);
+                if (budgetHeld) budget.Release(GatewayBuckets.Speech, estimatedCostMicros);
+            }
+        }
+    }
+
+    private static async Task WatchSessionAsync(AccountStore store, GatewayDiagnostics diagnostics,
+        Guid userId, Guid sessionId, CancellationTokenSource lifetime)
+    {
+        // 已升级的连接不会再经过 Bearer 中间件，需要在会话结束前主动跟随撤销。
+        using var timer = new PeriodicTimer(SessionCheckInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+            {
+                if (store.FindSessionDevice(userId, sessionId) is null)
+                {
+                    lifetime.Cancel();
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // 客户端退出或会话结束，主动停止轮询。
+        }
+        catch (SqliteException)
+        {
+            diagnostics.RecordSpeechFailure("session_check_failed");
+            lifetime.Cancel();
         }
     }
 }

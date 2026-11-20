@@ -69,10 +69,6 @@ public static class Pricing
     public static long EstimateTextCostMicros(string model, int chars, int outputTokens = 0) =>
         TextCostMicros(model, chars + 45L, outputTokens > 0 ? outputTokens : chars);
 
-    /// <summary>视觉/OCR 的预算估算：按额度字符折算输入与输出 token，只用于并发闸门。</summary>
-    public static long EstimateVisionCostMicros(string model, int quotaChars) =>
-        TextCostMicros(model, quotaChars, quotaChars / 2);
-
     /// <summary>语音预算估算：POC 实测约 40 输入 token/音频秒、按 10 输出 token/秒留余量。</summary>
     public static long EstimateSpeechCostMicros(string model, int seconds) =>
         TextCostMicros(model, seconds * 40L, seconds * 10L);

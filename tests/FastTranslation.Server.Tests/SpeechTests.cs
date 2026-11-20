@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
@@ -346,7 +346,7 @@ public class DashScopeSpeechRelayTests
                 _ => Task.FromResult<WebSocket>(upstreamRelay));
 
             // 硬顶 1 秒:到点服务端必须主动告诉客户端「为什么停了」,不能只断连接
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 1, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 1, null, CancellationToken.None);
             await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
             await upstreamTest.ReceiveTextAsync();   // run-task
 
@@ -401,7 +401,7 @@ public class DashScopeSpeechRelayTests
             var gateway = new DashScopeSpeechGateway(options, "test-key",
                 _ => Task.FromResult<WebSocket>(upstreamRelay));
 
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, null, CancellationToken.None);
 
             // 客户端发 start → relay 向上游发 run-task(带模型与采样率)。
             // v81:客户端只报采样率,不再把「翻译目标语言」当识别语种提示发过去。
@@ -496,7 +496,7 @@ public class DashScopeSpeechRelayTests
             var gateway = new DashScopeSpeechGateway(options, "test-key",
                 _ => Task.FromResult<WebSocket>(upstreamRelay));
 
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, null, CancellationToken.None);
             await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
             Assert.Contains("\"action\":\"run-task\"", await upstreamTest.ReceiveTextAsync());
 
@@ -555,7 +555,7 @@ public class DashScopeSpeechRelayTests
             var gateway = new DashScopeSpeechGateway(options, "test-key",
                 _ => Task.FromResult<WebSocket>(upstreamRelay));
 
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, null, CancellationToken.None);
             await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":16000}");
             await upstreamTest.ReceiveTextAsync();
 
@@ -625,7 +625,7 @@ public class DashScopeSpeechRelayTests
                 return Task.FromResult<WebSocket>(FakeWebSocket.CreatePair().RelaySide);
             });
 
-            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, CancellationToken.None);
+            var relay = gateway.RelayAsync(clientRelay, user.Id, device, store, database, 600, null, CancellationToken.None);
             await clientTest.SendTextAsync("{\"type\":\"start\",\"sampleRate\":1.5}");
             clientTest.Abort();
 

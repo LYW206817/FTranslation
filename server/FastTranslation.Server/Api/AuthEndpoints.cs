@@ -139,10 +139,10 @@ public static class AuthEndpoints
             return Results.BadRequest(new ErrorResponse(codeError));
         }
 
-        store.SetPasswordHash(user.Id, PasswordHasher.Hash(request.NewPassword ?? string.Empty));
-        // 密码换了，所有 refresh token 作废，其他设备必须重新登录；已签发的 access token
-        // 是无状态 HS256，无法逐个吊销，最多再活 30 分钟（与改密码接口同一口径）。
-        store.RevokeAllRefreshTokens(user.Id);
+        if (!store.SetPasswordHash(user.Id, user.PasswordHash, PasswordHasher.Hash(request.NewPassword ?? string.Empty)))
+        {
+            return Results.BadRequest(new ErrorResponse("reset_invalid"));
+        }
         return Results.Ok(new MessageResponse("password_reset"));
     }
 
@@ -186,7 +186,7 @@ public static class AuthEndpoints
             return Results.BadRequest(new ErrorResponse(device.Error!));
         }
 
-        return Results.Ok(IssueTokens(store, tokens, options, database, user, registered));
+        return IssueTokens(store, tokens, options, database, user, registered);
     }
 
     private static IResult Login(
@@ -215,7 +215,7 @@ public static class AuthEndpoints
             return Results.BadRequest(new ErrorResponse(device.Error!));
         }
 
-        return Results.Ok(IssueTokens(store, tokens, options, database, user, registered));
+        return IssueTokens(store, tokens, options, database, user, registered);
     }
 
     private static IResult Refresh(
@@ -230,7 +230,10 @@ public static class AuthEndpoints
             return Results.BadRequest(new ErrorResponse("refresh_token_required"));
         }
 
-        if (store.ConsumeRefreshToken(TokenService.HashRefreshToken(request.RefreshToken)) is not { } owner)
+        var refreshToken = TokenService.CreateRefreshToken();
+        var expires = database.NowUnix + (options.RefreshTokenDays * 86_400L);
+        if (store.RotateRefreshToken(TokenService.HashRefreshToken(request.RefreshToken), TokenService.HashRefreshToken(refreshToken), expires)
+            is not { SessionId: { } sessionId } owner)
         {
             return Results.Json(new ErrorResponse("refresh_token_invalid"), statusCode: StatusCodes.Status401Unauthorized);
         }
@@ -241,15 +244,7 @@ public static class AuthEndpoints
             return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
         }
 
-        // 轮换后每条登录链上只保留一个有效的 refresh token。
-        var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt);
-        var refreshToken = TokenService.CreateRefreshToken();
-        // 轮换后的令牌继续跟着原设备，移除设备时才能把整条登录链一起吊销。
-        store.SaveRefreshToken(
-            user.Id,
-            TokenService.HashRefreshToken(refreshToken),
-            database.NowUnix + (options.RefreshTokenDays * 86_400L),
-            owner.DeviceId);
+        var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt, sessionId);
 
         return Results.Ok(new AuthResponse(
             accessToken,
@@ -265,7 +260,7 @@ public static class AuthEndpoints
         return Results.Ok(new MessageResponse("logged_out"));
     }
 
-    internal static AuthResponse IssueTokens(
+    internal static IResult IssueTokens(
         AccountStore store,
         TokenService tokens,
         ServerOptions options,
@@ -273,20 +268,21 @@ public static class AuthEndpoints
         UserRecord user,
         DeviceRecord device)
     {
-        var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt);
+        var sessionId = Guid.NewGuid();
         var refreshToken = TokenService.CreateRefreshToken();
-        store.SaveRefreshToken(
-            user.Id,
-            TokenService.HashRefreshToken(refreshToken),
-            database.NowUnix + (options.RefreshTokenDays * 86_400L),
-            device.Id);
+        if (!store.CreateSession(user, device.Id, sessionId, TokenService.HashRefreshToken(refreshToken),
+            database.NowUnix + (options.RefreshTokenDays * 86_400L)))
+        {
+            return Results.Json(new ErrorResponse("credentials_invalid"), statusCode: StatusCodes.Status401Unauthorized);
+        }
+        var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt, sessionId);
 
-        return new AuthResponse(
+        return Results.Ok(new AuthResponse(
             accessToken,
             refreshToken,
             SecondsUntil(expiresAt, database),
             ToAccountDto(user, database),
-            ToUsageDto(store.ReadUsage(user.Id, device.Id), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix)));
+            ToUsageDto(store.ReadUsage(user.Id, device.Id), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix))));
     }
 
     private static int SecondsUntil(DateTimeOffset expiresAt, ServerDatabase database)

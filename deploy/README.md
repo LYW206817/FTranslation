@@ -362,6 +362,8 @@ tail -f /var/log/ft-monitor.log
 
 `ft-probe.sh` 和 `ft-monitor.sh` 都从 `/etc/fasttranslation/monitor.env` 读配置；真实 webhook 和探针密码只放那里，不进仓库。`ft-monitor.sh` 用 `sqlite3 -readonly` 读生产库（WAL 下不阻塞写入），并用 `jq` 读 `appsettings.Production.json` 里三个预算桶的键——`Server:Gateway:DailyBudgetMicros`（免费）、`PaidDailyBudgetMicros`（会员）、`Speech:DailyBudgetMicros`（语音）——逐桶比对今日成本，`0` 表示该桶不设上限；某个键缺失时告警「无法比对」而不是当作不限——缺键等于这一桶没在监控。`bootstrap.sh` 会安装 `jq`。
 
+包含匿名成本账的版本需要同时更新服务端和 `ft-monitor.sh`。服务端首次启动会从存量流水回填，并以后续流水维护匿名日汇总；先确认服务正常启动，再执行新脚本的预算检查。登录会话升级后，旧桌面客户端的存量令牌需要重新登录。
+
 ## 运营后台
 
 `admin/` 是一个没有任何构建步骤的静态页：登录后看概览、7/30 天用量、账号（改套餐 / 禁用）、激活码（生成 / 作废）和网关健康。它由 `install.sh` 复制到 `/var/www/fasttranslation-admin`，Caddy 用独立的 `/admin/*` root 提供，和官网的整目录同步互不影响。

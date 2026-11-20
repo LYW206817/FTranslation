@@ -144,6 +144,10 @@ public class AccountDeviceTests : IClassFixture<ServerFactory>
         var laptop = Assert.Single(list.Devices, device => device.Name == "laptop");
         (await DeleteAsync(client, laptop.Id, "fp-first")).EnsureSuccessStatusCode();
 
+        using var removedClient = _factory.CreateClient();
+        removedClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", second.AccessToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await removedClient.GetAsync("/api/v1/account/me")).StatusCode);
+
         // 被移除设备的 refresh token 随即失效
         var refresh = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(second.RefreshToken));
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);

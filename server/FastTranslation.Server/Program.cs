@@ -39,10 +39,12 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Gatew
 builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Payment);
 builder.Services.AddSingleton<PaymentQrProvider>();
 builder.Services.AddSingleton<GatewayRateLimiter>();
+builder.Services.AddSingleton<GatewayRequestCapacity>();
 builder.Services.AddSingleton<GatewayBudgetGuard>();
 builder.Services.AddSingleton<SpeechSessionLimiter>();
 builder.Services.AddSingleton<GatewayDiagnostics>();
-builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>()));
+builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<GatewayOptions>(),
+    stopping: sp.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping));
 
 builder.Services.AddSingleton<AccountStore>();
 builder.Services.AddSingleton<OrderStore>();
@@ -72,7 +74,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 var app = builder.Build();
 
-app.Services.GetRequiredService<ServerDatabase>().Initialize();
+var database = app.Services.GetRequiredService<ServerDatabase>();
+database.Initialize();
+database.RecoverQuotaReservations();
 
 // 必须先于限流与认证：后面读 RemoteIpAddress 的代码要看到真实客户端 IP。
 app.UseForwardedHeaders();

@@ -102,6 +102,8 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         // 客户端自己的 Bearer 令牌绝不能转发出去;开发者 Key 会替换它。
         Assert.Equal(GatewayFactory.UpstreamKey, call.Authorization);
         Assert.Contains("translation_options", call.Body);
+        using var payload = JsonDocument.Parse(call.Body);
+        Assert.InRange(payload.RootElement.GetProperty("max_tokens").GetInt32(), 1, 64);
     }
 
     [Fact]

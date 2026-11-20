@@ -141,6 +141,7 @@ public sealed class QwenMtProvider : ITranslationProvider
         var payload = new
         {
             model = request.Model,
+            stream = false,
             messages = new object[]
             {
                 new { role = "user", content = request.Text },

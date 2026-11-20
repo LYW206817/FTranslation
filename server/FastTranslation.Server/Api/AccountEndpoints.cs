@@ -147,10 +147,13 @@ public static class AccountEndpoints
             return Results.BadRequest(new ErrorResponse(device.Error!));
         }
 
-        store.SetPasswordHash(user.Id, PasswordHasher.Hash(next));
-        store.RevokeAllRefreshTokens(user.Id);
+        var passwordHash = PasswordHasher.Hash(next);
+        if (!store.SetPasswordHash(user.Id, user.PasswordHash, passwordHash))
+        {
+            return Results.BadRequest(new ErrorResponse("password_mismatch"));
+        }
 
-        return Results.Ok(AuthEndpoints.IssueTokens(store, tokens, options, database, user, registered));
+        return AuthEndpoints.IssueTokens(store, tokens, options, database, user with { PasswordHash = passwordHash }, registered);
     }
 
     /// <summary>
@@ -222,7 +225,6 @@ public static class AccountEndpoints
     /// </summary>
     private static IResult RemoveDevice(
         Guid id,
-        HttpContext context,
         ClaimsPrincipal principal,
         AccountStore store)
     {
@@ -232,8 +234,7 @@ public static class AccountEndpoints
             return Results.NotFound(new ErrorResponse("device_missing"));
         }
 
-        var fingerprint = CallerFingerprint(context);
-        if (fingerprint.Length > 0 && string.Equals(device.Fingerprint, fingerprint, StringComparison.Ordinal))
+        if (id == principal.GetDeviceId())
         {
             return Results.BadRequest(new ErrorResponse("device_is_current"));
         }
@@ -391,10 +392,6 @@ public static class AdminEndpoints
         }
 
         store.SetDisabled(user.Id, disabled);
-        if (disabled)
-        {
-            store.RevokeAllRefreshTokens(user.Id);
-        }
 
         // 不记录 token / 密码；只记录动作与目标邮箱，供单操作员事后对账。
         loggerFactory.CreateLogger("Admin").LogInformation(

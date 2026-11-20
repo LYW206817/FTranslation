@@ -120,20 +120,20 @@ public sealed class OrderStore(ServerDatabase database)
     public enum SubmitResult { Ok, NotPending, DuplicateRef }
 
     /// <summary>
-    /// 提交交易单号。先去重再条件更新；唯一索引是最后一道防线，并发下后写的那笔
-    /// 会撞 SQLITE_CONSTRAINT_UNIQUE，也按重复单号处理。
+    /// 提交交易单号时原子登记摘要，账号注销后仍能执行去重。
     /// </summary>
     public SubmitResult Submit(Guid id, Guid userId, string method, string paymentRef, long now)
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
 
-        using (var duplicate = connection.CreateCommand())
+        using (var claim = connection.CreateCommand())
         {
-            duplicate.Transaction = transaction;
-            duplicate.CommandText = "SELECT 1 FROM orders WHERE payment_ref = $ref AND payment_ref <> '' LIMIT 1";
-            duplicate.Parameters.AddWithValue("$ref", paymentRef);
-            if (duplicate.ExecuteScalar() is not null)
+            claim.Transaction = transaction;
+            // 摘要不关联账号或订单，删除个人数据时不会遗失去重事实。
+            claim.CommandText = "INSERT OR IGNORE INTO order_payment_references (digest) VALUES ($digest)";
+            claim.Parameters.AddWithValue("$digest", ServerDatabase.OrderPaymentDigest(connection, transaction, paymentRef));
+            if (claim.ExecuteNonQuery() == 0)
             {
                 transaction.Rollback();
                 return SubmitResult.DuplicateRef;

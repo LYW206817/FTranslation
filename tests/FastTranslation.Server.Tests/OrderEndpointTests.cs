@@ -160,6 +160,28 @@ public class OrderEndpointTests : IClassFixture<ServerFactory>, IClassFixture<Or
     }
 
     [Fact]
+    public async Task Payment_reference_survives_account_deletion_as_a_deduplication_record()
+    {
+        var (first, auth) = await RegisterAsync();
+        var (second, _) = await RegisterAsync();
+        using var owner = first;
+        using var next = second;
+        var firstOrder = (await (await CreateOrderAsync(owner, "standard", "monthly"))
+            .Content.ReadFromJsonAsync<OrderDto>())!;
+        var nextOrder = (await (await CreateOrderAsync(next, "standard", "monthly"))
+            .Content.ReadFromJsonAsync<OrderDto>())!;
+        const string reference = "420000901010101010";
+
+        (await SubmitAsync(owner, firstOrder.Id, "wechat", reference)).EnsureSuccessStatusCode();
+        (await owner.PostAsJsonAsync("/api/v1/account/delete", new DeleteAccountRequest("password123", auth.Account.Email)))
+            .EnsureSuccessStatusCode();
+
+        var result = await SubmitAsync(next, nextOrder.Id, "wechat", reference);
+        Assert.Equal(HttpStatusCode.Conflict, result.StatusCode);
+        Assert.Equal("payment_ref_used", (await result.Content.ReadFromJsonAsync<ErrorResponse>())?.Error);
+    }
+
+    [Fact]
     public async Task ConfirmOrder_IsIdempotentAndExtendsThePlanOnce()
     {
         var (client, _) = await RegisterAsync();

@@ -25,6 +25,8 @@ public sealed class BearerAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string UserIdClaim = "sub";
+    public const string DeviceIdClaim = "device";
+    public const string SessionIdClaim = "sid";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -40,17 +42,17 @@ public sealed class BearerAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Invalid or expired access token."));
         }
 
-        // v120: 禁用必须对已签发的 access token 立即生效，不能等它自然过期；
-        // 验签后查一次库，把 disabled 账号当作认证失败。
-        var user = store.FindUserById(principal.UserId);
-        if (user is null || user.Disabled)
+        // v200: 设备移除与改密必须撤销旧访问令牌，验签后按登录链查询活跃设备。
+        if (principal.SessionId is not { } sessionId || store.FindSessionDevice(principal.UserId, sessionId) is not { } deviceId)
         {
-            return Task.FromResult(AuthenticateResult.Fail("Account is disabled."));
+            return Task.FromResult(AuthenticateResult.Fail("Session is no longer active."));
         }
 
         var claims = new[]
         {
             new Claim(UserIdClaim, principal.UserId.ToString("D")),
+            new Claim(DeviceIdClaim, deviceId.ToString("D")),
+            new Claim(SessionIdClaim, sessionId.ToString("D")),
             new Claim("email", principal.Email),
             new Claim("plan", principal.Plan),
         };
@@ -65,4 +67,10 @@ public static class ClaimsPrincipalExtensions
 {
     public static Guid GetUserId(this ClaimsPrincipal principal)
         => Guid.Parse(principal.FindFirstValue(BearerAuthenticationHandler.UserIdClaim)!);
+
+    public static Guid GetDeviceId(this ClaimsPrincipal principal)
+        => Guid.Parse(principal.FindFirstValue(BearerAuthenticationHandler.DeviceIdClaim)!);
+
+    public static Guid GetSessionId(this ClaimsPrincipal principal)
+        => Guid.Parse(principal.FindFirstValue(BearerAuthenticationHandler.SessionIdClaim)!);
 }

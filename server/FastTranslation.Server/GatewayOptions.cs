@@ -45,6 +45,9 @@ public sealed class GatewayOptions
     /// <summary>每账号每分钟请求数——失控的客户端不能靠循环烧掉整个月额度。</summary>
     public int RequestsPerMinute { get; set; } = 40;
 
+    /// <summary>HTTP 网关的全站并发上限，从读取请求体开始计算。</summary>
+    public int MaxConcurrentRequests { get; set; } = 16;
+
     /// <summary>允许转发的最大文本长度，与客户端自身的 5000 字符上限一致。</summary>
     public int MaxRequestChars { get; set; } = 5_000;
 

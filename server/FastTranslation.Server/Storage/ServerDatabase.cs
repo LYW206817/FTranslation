@@ -1,5 +1,8 @@
 ﻿using Microsoft.Data.Sqlite;
 
+using System.Security.Cryptography;
+using System.Text;
+
 namespace FastTranslation.Server.Storage;
 
 /// <summary>
@@ -67,6 +70,8 @@ public sealed class ServerDatabase
         // 让生产库停留在旧结构上，随后下面的读取就会开始抛异常。
         EnsureColumn(connection, "users", "plan_expires_at", "INTEGER");
         EnsureColumn(connection, "usage_events", "cost_micros", "INTEGER NOT NULL DEFAULT 0");
+        InitializeDailyCosts(connection);
+        InitializeOrderPaymentReferences(connection);
 
         // v129: 额度闸门「先读后写」在多请求并发时会各自读到同一个旧用量，全部放行。
         // reserved 是已放行但尚未记账的在途请求占用；检查与占用在一条条件 UPDATE 里
@@ -111,6 +116,15 @@ public sealed class ServerDatabase
         // 没有设备维度，移除后旧设备仍能续期；加一列把每轮登录绑到设备上。
         // 旧行为 NULL，升级前发出的令牌不受影响（只能等它自然过期）。
         EnsureColumn(connection, "refresh_tokens", "device_id", "TEXT");
+        EnsureColumn(connection, "refresh_tokens", "session_id", "TEXT");
+        using (var sessionIndex = connection.CreateCommand())
+        {
+            sessionIndex.CommandText = """
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_refresh_tokens_active_session
+                ON refresh_tokens(session_id) WHERE revoked_at IS NULL AND session_id IS NOT NULL
+                """;
+            sessionIndex.ExecuteNonQuery();
+        }
 
         // v107: 验证码现在有两个用途（注册 / 重置密码）。主键仍是 email：同一邮箱
         // 同时只保留一个有效码，后请求的覆盖先请求的，避免两套码并存后被交叉使用。
@@ -163,6 +177,106 @@ public sealed class ServerDatabase
         using var usageTimeIndex = connection.CreateCommand();
         usageTimeIndex.CommandText = "CREATE INDEX IF NOT EXISTS ix_usage_events_time ON usage_events(created_at)";
         usageTimeIndex.ExecuteNonQuery();
+    }
+
+    /// <summary>单实例重新启动后回收上一进程遗留的额度预留。</summary>
+    public void RecoverQuotaReservations()
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // v198: 单实例启动前没有活跃请求，所有存量凭据都已失去所有者。旧列也清理，便于回退。
+        command.CommandText = """
+            DELETE FROM quota_reservations;
+            UPDATE usage_monthly SET reserved = 0 WHERE reserved > 0;
+            UPDATE usage_daily SET reserved = 0 WHERE reserved > 0;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void InitializeDailyCosts(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT 1 FROM sqlite_schema WHERE type = 'trigger' AND name = 'record_gateway_daily_cost'
+            """;
+        if (command.ExecuteScalar() is not null)
+        {
+            transaction.Commit();
+            return;
+        }
+
+        // v197: 回填与触发器同事务提交，重启不会重复计费；回退到旧服务时流水仍会更新成本。
+        command.CommandText = """
+            CREATE TABLE gateway_daily_costs (
+                day INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                requests INTEGER NOT NULL,
+                chars INTEGER NOT NULL,
+                tokens_in INTEGER NOT NULL,
+                tokens_out INTEGER NOT NULL,
+                cost_micros INTEGER NOT NULL,
+                PRIMARY KEY (day, source)
+            );
+            INSERT INTO gateway_daily_costs (day, source, requests, chars, tokens_in, tokens_out, cost_micros)
+            SELECT created_at - (created_at % 86400) AS day, source, COUNT(*), SUM(chars),
+                   SUM(tokens_in), SUM(tokens_out), SUM(cost_micros)
+            FROM usage_events GROUP BY day, source;
+            CREATE TRIGGER record_gateway_daily_cost AFTER INSERT ON usage_events
+            BEGIN
+                INSERT INTO gateway_daily_costs (day, source, requests, chars, tokens_in, tokens_out, cost_micros)
+                VALUES (NEW.created_at - (NEW.created_at % 86400), NEW.source, 1, NEW.chars,
+                        NEW.tokens_in, NEW.tokens_out, NEW.cost_micros)
+                ON CONFLICT(day, source) DO UPDATE SET
+                    requests = requests + 1,
+                    chars = chars + excluded.chars,
+                    tokens_in = tokens_in + excluded.tokens_in,
+                    tokens_out = tokens_out + excluded.tokens_out,
+                    cost_micros = cost_micros + excluded.cost_micros;
+            END;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    internal static byte[] OrderPaymentDigest(SqliteConnection connection, SqliteTransaction transaction, string reference)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT secret FROM order_payment_identity WHERE id = 1";
+        var secret = (byte[]?)command.ExecuteScalar()
+            ?? throw new InvalidOperationException("Payment deduplication is not initialized.");
+        return HMACSHA256.HashData(secret, Encoding.UTF8.GetBytes(reference));
+    }
+
+    private static void InitializeOrderPaymentReferences(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // 专用随机密钥跟随数据库备份，重启或轮换登录签名密钥时仍能比对历史摘要。
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS order_payment_identity (
+                id INTEGER PRIMARY KEY CHECK (id = 1), secret BLOB NOT NULL
+            );
+            INSERT OR IGNORE INTO order_payment_identity (id, secret) VALUES (1, randomblob(32));
+            CREATE TABLE IF NOT EXISTS order_payment_references (digest BLOB PRIMARY KEY NOT NULL);
+            SELECT secret FROM order_payment_identity WHERE id = 1;
+            """;
+        var secret = (byte[]?)command.ExecuteScalar()
+            ?? throw new InvalidOperationException("Payment deduplication is not initialized.");
+        connection.CreateFunction<string, byte[]>("order_payment_digest",
+            reference => HMACSHA256.HashData(secret, Encoding.UTF8.GetBytes(reference)), isDeterministic: true);
+        command.CommandText = """
+            INSERT OR IGNORE INTO order_payment_references (digest)
+            SELECT order_payment_digest(payment_ref) FROM orders WHERE payment_ref <> '';
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     /// <summary>仅当表存在且尚未包含该列时才添加。</summary>
@@ -243,6 +357,17 @@ public sealed class ServerDatabase
             chars     INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (device_id, day)
         );
+
+        CREATE TABLE IF NOT EXISTS quota_reservations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            month TEXT NOT NULL,
+            day TEXT NOT NULL,
+            chars INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_quota_reservations_month ON quota_reservations(user_id, month);
+        CREATE INDEX IF NOT EXISTS ix_quota_reservations_day ON quota_reservations(device_id, day);
 
         CREATE TABLE IF NOT EXISTS usage_events (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

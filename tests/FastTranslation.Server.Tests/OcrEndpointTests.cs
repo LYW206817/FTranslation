@@ -42,7 +42,7 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
                         new
                         {
                             role = "user",
-                            content = new object[] { new { image_url = "data:image/png;base64,AAAA" } },
+                            content = new object[] { new { image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH1sAAAAASUVORK5CYII=" } },
                         },
                     },
                 },
@@ -166,7 +166,8 @@ public class OcrEndpointTests : IClassFixture<GatewayFactory>, IClassFixture<Ser
         Assert.Equal("http://upstream.test/ocr", call.Url);
         // 客户端的 Bearer 令牌绝不能泄漏到上游;开发者 Key 会替换它。
         Assert.Equal(GatewayFactory.UpstreamKey, call.Authorization);
-        Assert.Contains("image_url", call.Body);
+        Assert.Contains("\"image\"", call.Body);
+        Assert.Contains("max_tokens", call.Body);
     }
 
     [Fact]

@@ -133,7 +133,26 @@ public sealed class AccountStoreTests : IDisposable
         Assert.Null(_store.ConsumeRefreshToken("delete-token-hash"));
         Assert.Null(_store.FindVerificationCode(user.Email));
         Assert.Equal(0, notes.CountLive(user.Id));
-        Assert.Equal(0L, _store.ReadTodayCostMicros("gateway"));
+        Assert.Equal(500L, _store.ReadTodayCostMicros("gateway"));
+        Assert.Equal(500L, _store.ReadUsageTotals(_database.NowUnix / 86_400 * 86_400).CostMicros);
+    }
+
+    [Fact]
+    public void Usage_completed_after_account_deletion_retains_only_aggregate_cost()
+    {
+        var user = CreateUser("closed-account@example.com");
+        var device = _store.RegisterDevice(user.Id, "device", "pc").Device!;
+        Assert.True(_store.DeleteUser(user.Id, user.Email));
+
+        var now = _database.NowUnix;
+        _store.RecordUsage(user.Id, device.Id, 12, "qwen-mt-flash", 1, 1, 34, now, "gateway");
+        _database.Initialize();
+
+        var day = QuotaCycle.StartOfUtcDay(now);
+        Assert.Equal(34L, _store.ReadTodayCostMicros("gateway"));
+        Assert.Equal(34L, Assert.Single(_store.ReadUsageBySource(day)).CostMicros);
+        Assert.Equal(34L, Assert.Single(_store.ReadUsageByDay(day)).CostMicros);
+        Assert.Equal(0, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
     }
 
     [Fact]
@@ -164,10 +183,11 @@ public sealed class AccountStoreTests : IDisposable
         using var barrier = new Barrier(2);
 
         var decisions = new QuotaPolicy.Decision[2];
+        var reservations = new Guid[2];
         var tasks = Enumerable.Range(0, 2).Select(index => Task.Run(() =>
         {
             barrier.SignalAndWait();
-            decisions[index] = _store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free);
+            decisions[index] = _store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free, out reservations[index]);
         })).ToArray();
         await Task.WhenAll(tasks);
 
@@ -176,7 +196,7 @@ public sealed class AccountStoreTests : IDisposable
         Assert.All(decisions.Where(decision => !decision.Allowed),
             decision => Assert.False(string.IsNullOrEmpty(decision.Reason)));
 
-        _store.ReleaseQuota(user.Id, device.Id, 1_500);
+        _store.ReleaseQuota(Assert.Single(reservations, id => id != Guid.Empty));
     }
 
     [Fact]
@@ -185,16 +205,16 @@ public sealed class AccountStoreTests : IDisposable
         var user = CreateUser("reserve-settle@example.com");
         var device = _store.RegisterDevice(user.Id, "fp-settle", "pc").Device!;
 
-        var reserved = _store.TryReserveQuota(user.Id, device.Id, 120, PlanTier.Free);
+        var reserved = _store.TryReserveQuota(user.Id, device.Id, 120, PlanTier.Free, out var quotaId);
         Assert.True(reserved.Allowed);
         _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix,
-            "gateway", reservedChars: 120);
+            "gateway", reservationId: quotaId);
 
         Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
         Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).DailyChars);
         // 预留已转成实际用量，第二笔仍能继续用剩余额度。
-        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_000, PlanTier.Free).Allowed);
-        _store.ReleaseQuota(user.Id, device.Id, 1_000);
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_000, PlanTier.Free, out var next).Allowed);
+        _store.ReleaseQuota(next);
     }
 
     [Fact]
@@ -203,12 +223,12 @@ public sealed class AccountStoreTests : IDisposable
         var user = CreateUser("reserve-release@example.com");
         var device = _store.RegisterDevice(user.Id, "fp-release", "pc").Device!;
 
-        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free).Allowed);
-        _store.ReleaseQuota(user.Id, device.Id, 1_500);
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free, out var first).Allowed);
+        _store.ReleaseQuota(first);
 
         Assert.Equal(0, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
-        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free).Allowed);
-        _store.ReleaseQuota(user.Id, device.Id, 1_500);
+        Assert.True(_store.TryReserveQuota(user.Id, device.Id, 1_500, PlanTier.Free, out var next).Allowed);
+        _store.ReleaseQuota(next);
     }
 
     [Fact]

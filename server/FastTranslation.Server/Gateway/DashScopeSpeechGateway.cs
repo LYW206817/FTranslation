@@ -19,6 +19,7 @@ public sealed class DashScopeSpeechGateway
 {
     /// <summary>DashScope 一帧 result-generated 里报的用量(会话累计)。</summary>
     private readonly record struct AsrUsage(int DurationSeconds, long InputTokens, long OutputTokens);
+    private static readonly TimeSpan ClientShutdownGrace = TimeSpan.FromSeconds(2);
 
     private readonly SpeechOptions _options;
     private readonly string _apiKey;
@@ -48,7 +49,7 @@ public sealed class DashScopeSpeechGateway
 
     /// <param name="sessionSeconds">本次会话允许的最长秒数(已按剩余额度截断,见 SpeechQuota)。</param>
     public async Task<SpeechRelayResult> RelayAsync(WebSocket client, Guid userId, Guid deviceId,
-        AccountStore store, ServerDatabase database, int sessionSeconds, CancellationToken requestAborted)
+        AccountStore store, ServerDatabase database, int sessionSeconds, Guid? quotaId, CancellationToken requestAborted)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
         // 会话硬顶:到点我们自己断,防止客户端消失后上游连接挂着烧钱(设计 §6.1)。
@@ -88,7 +89,7 @@ public sealed class DashScopeSpeechGateway
                 var cost = Pricing.TextCostMicros(_options.Model, deltaIn, deltaOut);
                 store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), _options.Model,
                     (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
-                    cost, database.NowUnix, source: GatewayBuckets.Speech);
+                    cost, database.NowUnix, source: GatewayBuckets.Speech, reservationId: quotaId, completeReservation: false);
                 billedSeconds = seconds;
                 billedIn = tokensIn;
                 billedOut = tokensOut;
@@ -204,7 +205,13 @@ public sealed class DashScopeSpeechGateway
             {
                 try
                 {
-                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "finished", CancellationToken.None);
+                    // v198: 关闭握手需要等客户端响应，超时后必须让端点归还会话和预算。
+                    using var grace = new CancellationTokenSource(ClientShutdownGrace);
+                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "finished", grace.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    client.Abort();
                 }
                 catch (Exception)
                 {
@@ -225,8 +232,9 @@ public sealed class DashScopeSpeechGateway
         try
         {
             var json = "{\"type\":\"error\",\"code\":\"" + code + "\",\"message\":\"" + message + "\"}";
+            using var grace = new CancellationTokenSource(ClientShutdownGrace);
             await client.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true,
-                CancellationToken.None).ConfigureAwait(false);
+                grace.Token).ConfigureAwait(false);
         }
         catch (Exception)
         {
