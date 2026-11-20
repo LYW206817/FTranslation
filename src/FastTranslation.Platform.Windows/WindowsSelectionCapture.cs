@@ -216,10 +216,12 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
             return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
         // 调用方(UI 线程)：先完整快照剪贴板(所有格式——只备份文本
         // 会毁掉图片/文件内容，bugbot P1)，然后同步发出 Ctrl+C
-        var backup = ClipboardService.SnapshotClipboard();
-        var beforeSeq = ClipboardService.GetSequence();
+        await ClipboardService.OperationGate.WaitAsync(cancellationToken);
+        System.Windows.IDataObject? backup = null;
         try
         {
+            backup = ClipboardService.SnapshotClipboard();
+            var beforeSeq = ClipboardService.GetSequence();
             if (!ClipboardService.SendCtrlC())
             {
                 return CapturedSelection.Failed(anchor, GetProcessName(sourceWindowHandle), sourceWindowHandle);
@@ -239,7 +241,8 @@ public sealed class WindowsSelectionCapture : ISelectionCapture, IDisposable
         {
             // v143：轮询被取消或 COM 抛异常时也要还原。原写法在 await 之后才还原，
             // 取消一次取词就把用户的剪贴板永久换成了 Ctrl+C 抓到的文字。
-            ClipboardService.RestoreClipboard(backup);
+            try { ClipboardService.RestoreClipboard(backup); }
+            finally { ClipboardService.OperationGate.Release(); }
         }
     }
 

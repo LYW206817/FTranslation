@@ -39,4 +39,7 @@
     <!-- 限制 GC 堆：托盘工具要把私有工作集压小 -->
     <RuntimeHostConfigurationOption Include="System.GC.HeapHardLimitPercent" Value="20" />
   </ItemGroup>
+  <ItemGroup Condition="'$(FastTranslationUpdateManifestPublicKey)' != ''">
+    <AssemblyMetadata Include="UpdateManifestPublicKey" Value="$(FastTranslationUpdateManifestPublicKey)" />
+  </ItemGroup>
 </Project>

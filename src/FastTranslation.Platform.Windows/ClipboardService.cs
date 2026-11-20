@@ -10,6 +10,8 @@ namespace FastTranslation.Platform.Windows;
 /// </summary>
 public static class ClipboardService
 {
+    internal static SemaphoreSlim OperationGate { get; } = new(1, 1);
+
     private static bool SendCopyToSource(long sourceWindowHandle)
     {
         try
@@ -65,6 +67,58 @@ public static class ClipboardService
     }
 
     public static uint GetSequence() => NativeMethods.GetClipboardSequenceNumber();
+
+    internal static TemporaryClipboardText? TryStageText(string text)
+    {
+        var before = GetSequence();
+        try
+        {
+            var source = Wpf.Clipboard.GetDataObject();
+            var formats = source?.GetFormats(autoConvert: false) ?? [];
+            if (formats.Any(format => !IsPlainTextFormat(format)))
+            {
+                return null;
+            }
+
+            var previous = source?.GetData(Wpf.DataFormats.UnicodeText) as string;
+            if ((formats.Length > 0 && previous is null) || GetSequence() != before)
+            {
+                return null;
+            }
+
+            var owner = new Wpf.DataObject(Wpf.DataFormats.UnicodeText, text);
+            Wpf.Clipboard.SetDataObject(owner);
+            return new TemporaryClipboardText(owner, previous, GetSequence());
+        }
+        catch (ExternalException)
+        {
+            // 剪贴板正被别的进程使用时，写回仍可走无需暂存的 Unicode 输入。
+            return null;
+        }
+    }
+
+    internal static bool IsPlainTextFormat(string format) =>
+        format is "UnicodeText" or "Text" or "OEMText" or "System.String" or "Locale";
+
+    internal sealed class TemporaryClipboardText(Wpf.DataObject owner, string? previous, uint sequence)
+    {
+        internal bool IsCurrent => GetSequence() == sequence && Wpf.Clipboard.IsCurrent(owner);
+
+        internal void Restore()
+        {
+            try
+            {
+                // v201: 延时期间用户可能已重新复制。检查 OLE 所有权，避免把新内容覆盖掉。
+                if (!IsCurrent) return;
+                if (previous is null) Wpf.Clipboard.Clear();
+                else Wpf.Clipboard.SetText(previous);
+            }
+            catch (ExternalException)
+            {
+                // 其他进程正在操作剪贴板时不再重试覆盖，用户的新操作优先。
+            }
+        }
+    }
 
     /// <summary>通过 SendInput 发送 Ctrl+C(前台窗口必须已经是源窗口)。</summary>
     public static bool SendCtrlC() => SendCopyToSource(NativeMethods.GetForegroundWindow());

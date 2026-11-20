@@ -1,10 +1,30 @@
 using FastTranslation.Core;
 using Xunit;
 
+using System.Security.Cryptography;
+
 namespace FastTranslation.Core.Tests;
 
 public class UpdateManifestTests
 {
+    [Fact]
+    public void A_manifest_requires_the_embedded_key_and_a_matching_signature()
+    {
+        Assert.True(UpdateManifest.TryParse(Json(), out var manifest, out var error), error);
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var key = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
+        Assert.False(manifest.VerifySignature(key));
+        var signed = manifest with
+        {
+            Signature = Convert.ToBase64String(signer.SignData(manifest.GetSigningPayload(),
+                HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
+        };
+
+        Assert.True(signed.VerifySignature(key));
+        Assert.False(signed.VerifySignature(null));
+        Assert.False((signed with { Notes = "revised release notes" }).VerifySignature(key));
+    }
+
     private const string Sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     private static string Json(

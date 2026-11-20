@@ -23,6 +23,10 @@ dotnet publish src/FastTranslation.App/FastTranslation.App.csproj -c Release -r 
 
 ## 发布一个版本(完整顺序)
 
+应用内安装要求构建时通过 `FastTranslationUpdateManifestPublicKey` 嵌入发布公钥，格式为 Base64 编码的 P-256 SubjectPublicKeyInfo。发布时先完成安装包的 Authenticode 签名，再以最终包计算长度和 SHA-256。使用受控签名环境对 `UpdateManifest.GetSigningPayload()` 返回的字节作 ECDSA SHA-256 签名，并把 DER 签名的 Base64 写入清单的 `signature` 字段。所有清单源发布同一份内容，校验时需要同时验证签名与安装包。
+
+发布前用嵌入实际公钥的构建检查签名有效、更新包证书链有效，并验证旧清单只显示固定的官方下载入口。缺少发布公钥或受信安装包时走人工下载，不开启应用内安装。
+
 1. 提交并推送代码;记下 `git rev-parse HEAD` 的**完整 40 位 sha**。
 2. 读用户环境变量 `GITHUB RELEASE` 取令牌 → 写到 `$env:TEMP` 的临时 header 文件(`Authorization: Bearer <tok>`),见「令牌操作」。
 3. 主仓库建 Release:`POST https://api.github.com/repos/LYW206817/FTranslation/releases`,body 用 node 生成 JSON 文件再 `curl --data-binary @file`(PowerShell 拼 JSON 会被 `$`/`@` 吃掉)。`target_commitish` **必须传完整 40 位 sha**,短 sha 会被拒。

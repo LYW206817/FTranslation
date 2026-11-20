@@ -1916,7 +1916,9 @@ public partial class App : Application, IResultPresenter
     /// </summary>
     private void PresentUpdate(UpdateManifest manifest, ReleaseVersion currentVersion)
     {
-        var window = new UpdateWindow(manifest, currentVersion, UpdateCoordinator.IsInstalledCopy());
+        // v202: 无签名或尚未嵌入发布公钥时，只允许打开固定的官方下载页。
+        var window = new UpdateWindow(manifest, currentVersion,
+            UpdateCoordinator.IsInstalledCopy() && UpdateCoordinator.IsPublisherManifest(manifest));
         if (DialogOwner() is { } owner)
         {
             window.Owner = owner;
@@ -1932,7 +1934,7 @@ public partial class App : Application, IResultPresenter
         var installer = window.DownloadedPath;
         if (string.IsNullOrEmpty(installer) || _updates is null) return;
 
-        if (!_updates.ApplyUpdate(installer, out var error))
+        if (!_updates.ApplyUpdate(manifest, installer, out var error))
         {
             UpdateLog.Write($"apply failed: {error}");
             _tray?.ShowBalloon("更新失败", "无法启动安装程序，请到下载页手动更新。");

@@ -74,12 +74,14 @@ public sealed class UpdateChecker
     private readonly HttpClient _http;
     private readonly IReadOnlyList<string> _manifestUrls;
     private readonly ReleaseVersion _currentVersion;
+    private readonly string? _publisherKey;
 
-    public UpdateChecker(HttpClient http, IReadOnlyList<string> manifestUrls, ReleaseVersion currentVersion)
+    public UpdateChecker(HttpClient http, IReadOnlyList<string> manifestUrls, ReleaseVersion currentVersion, string? publisherKey = null)
     {
         _http = http;
         _manifestUrls = manifestUrls;
         _currentVersion = currentVersion;
+        _publisherKey = publisherKey;
     }
 
     public async Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken)
@@ -184,9 +186,14 @@ public sealed class UpdateChecker
             }
 
             var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
-            return UpdateManifest.TryParse(json, out var manifest, out var error)
+            if (!UpdateManifest.TryParse(json, out var manifest, out var error))
+            {
+                return SourceResult.Failed(url, error);
+            }
+            // 配置了发布公钥时，未通过验签的快源不能抢先遮住另一个源的已签名清单。
+            return _publisherKey is null || manifest.VerifySignature(_publisherKey)
                 ? SourceResult.Ok(url, manifest)
-                : SourceResult.Failed(url, error);
+                : SourceResult.Failed(url, "publisher signature rejected");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {

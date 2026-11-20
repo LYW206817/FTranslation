@@ -41,9 +41,13 @@ internal sealed class UpdateCoordinator : IDisposable
         _present = present;
         _show = show;
         _shutdown = shutdown;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(20),
+            MaxResponseContentBufferSize = UpdateManifest.MaxManifestChars * 4,
+        };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("FastTranslation-Updater");
-        _checker = new UpdateChecker(_http, UpdateChannel.ManifestUrls, CurrentVersion);
+        _checker = new UpdateChecker(_http, UpdateChannel.ManifestUrls, CurrentVersion, PublisherKey);
     }
 
     public static ReleaseVersion CurrentVersion
@@ -123,8 +127,17 @@ internal sealed class UpdateCoordinator : IDisposable
     /// 运行安装程序并退出。安装程序会等本进程结束（它拿到了我们的 PID），装完后自己
     /// 启动新版本，所以应用不能再自己回来。
     /// </summary>
-    public bool ApplyUpdate(string setupPath, out string error)
+    public bool ApplyUpdate(UpdateManifest manifest, string setupPath, out string error)
     {
+        if (!IsInstalledCopy() || !IsPublisherManifest(manifest))
+        {
+            error = "Manifest is not authorized for in-app installation.";
+            return false;
+        }
+        if (!UpdateInstaller.VerifyDownload(setupPath, manifest.Sha256, manifest.SizeBytes, out error))
+        {
+            return false;
+        }
         if (!UpdateInstaller.LaunchInstaller(setupPath, Environment.ProcessId, InstallDirectory(), out error))
         {
             UpdateLog.Write($"installer launch failed: {error}");
@@ -134,6 +147,13 @@ internal sealed class UpdateCoordinator : IDisposable
         _shutdown();
         return true;
     }
+
+    private static string? PublisherKey => typeof(UpdateCoordinator).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "UpdateManifestPublicKey")?.Value;
+
+    internal static bool IsPublisherManifest(UpdateManifest manifest) =>
+        manifest.Version.IsNewerThan(CurrentVersion) && manifest.VerifySignature(PublisherKey);
 
     internal HttpClient Http => _http;
 

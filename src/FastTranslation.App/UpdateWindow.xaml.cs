@@ -31,9 +31,9 @@ public partial class UpdateWindow : Window
         Headline.Text = $"发现新版本 {manifest.Version}";
         Subline.Text = selfInstallable
             ? $"当前版本 {currentVersion}。更新会关闭程序、安装新版本，然后自动重新打开。"
-            : $"当前版本 {currentVersion}。便携版需要手动下载新版本。";
-        NotesText.Text = string.IsNullOrWhiteSpace(manifest.Notes) ? "本次更新没有附带说明。" : manifest.Notes;
-        StatusText.Text = $"安装包 {manifest.SizeBytes / 1024 / 1024.0:F1} MB";
+            : $"当前版本 {currentVersion}。请从官方下载页获取新版本。";
+        NotesText.Text = !selfInstallable || string.IsNullOrWhiteSpace(manifest.Notes) ? "版本说明请查看官方下载页。" : manifest.Notes;
+        StatusText.Text = selfInstallable ? $"安装包 {manifest.SizeBytes / 1024 / 1024.0:F1} MB" : string.Empty;
         if (!selfInstallable)
         {
             ApplyButton.Content = "打开下载页";
@@ -74,6 +74,16 @@ public partial class UpdateWindow : Window
             var result = await UpdateInstaller.DownloadAsync(http, _manifest, progress, _download.Token);
             if (result.Success && result.Path is { Length: > 0 } path)
             {
+                StatusText.Text = "正在验证安装包签名…";
+                if (!await Task.Run(() => UpdateAuthenticode.IsTrusted(path), _download.Token))
+                {
+                    UpdateLog.Write($"installer signature rejected for {_manifest.Version}");
+                    StatusText.Text = "安装包签名验证失败，请从官方下载页获取。";
+                    ApplyButton.IsEnabled = true;
+                    LaterButton.IsEnabled = true;
+                    return;
+                }
+                _download.Token.ThrowIfCancellationRequested();
                 UpdateLog.Write($"downloaded {_manifest.Version} -> {path} from {result.Detail}");
                 DownloadedPath = path;
                 DialogResult = true;
@@ -104,9 +114,7 @@ public partial class UpdateWindow : Window
 
     private void OpenDownloadPage()
     {
-        var url = string.IsNullOrWhiteSpace(_manifest.ReleasePageUrl)
-            ? UpdateChannel.ReleasesPageUrl
-            : _manifest.ReleasePageUrl;
+        var url = UpdateChannel.ReleasesPageUrl;
         try
         {
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });

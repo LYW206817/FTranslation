@@ -1,11 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace FastTranslation.Core;
 
 /// <summary>
 /// 公共更新通道下发的更新清单。所有字段都在这里校验，因为格式错误或恶意的清单绝不能
-/// 流到下载器：URL 决定会执行什么，哈希决定它是否可信。
+/// 流到下载器；格式校验通过后仍须单独验证发布者签名。
 /// </summary>
 public sealed record UpdateManifest(
     ReleaseVersion Version,
@@ -17,6 +18,44 @@ public sealed record UpdateManifest(
 {
     public const int MaxManifestChars = 64 * 1024;
     public const int MaxNotesLength = 2000;
+    public string Signature { get; init; } = string.Empty;
+
+    /// <summary>发布工具与客户端使用同一组已规范化字段生成签名数据。</summary>
+    public byte[] GetSigningPayload() => JsonSerializer.SerializeToUtf8Bytes(new
+    {
+        format = "fasttranslation.update.v1",
+        version = Version.ToString(),
+        url = DownloadUrl,
+        sha256 = Sha256,
+        size = SizeBytes,
+        notes = Notes,
+        releasePage = ReleasePageUrl,
+    });
+
+    /// <summary>只有嵌入构建的发布公钥能授权自更新，空公钥降级为手动下载。</summary>
+    public bool VerifySignature(string? publicKey)
+    {
+        if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(Signature)
+            || !Uri.TryCreate(DownloadUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var verifier = ECDsa.Create();
+            var key = Convert.FromBase64String(publicKey);
+            verifier.ImportSubjectPublicKeyInfo(key, out var read);
+            return read == key.Length && verifier.KeySize == 256
+                && verifier.VerifyData(GetSigningPayload(), Convert.FromBase64String(Signature),
+                    HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        {
+            // 发布字段损坏时仍允许通过固定入口手动更新。
+            return false;
+        }
+    }
 
     public static bool TryParse(string? json, [NotNullWhen(true)] out UpdateManifest? manifest, out string error)
     {
@@ -28,7 +67,7 @@ public sealed record UpdateManifest(
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(json);
+            document = JsonDocument.Parse(json, new JsonDocumentOptions { AllowDuplicateProperties = false });
         }
         catch (JsonException ex)
         {
@@ -90,7 +129,10 @@ public sealed record UpdateManifest(
                 return false;
             }
 
-            manifest = new UpdateManifest(version, url, sha256, size, notes, releasePage);
+            manifest = new UpdateManifest(version, url, sha256, size, notes, releasePage)
+            {
+                Signature = ReadOptionalString(root, "signature"),
+            };
             error = string.Empty;
             return true;
         }

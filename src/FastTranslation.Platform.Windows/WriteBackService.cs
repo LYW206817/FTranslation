@@ -9,7 +9,7 @@ namespace FastTranslation.Platform.Windows;
 /// 1. 前台窗口仍然是源窗口(绝不能让第三个应用收到粘贴)
 /// 2. 锚点处元素的 UIA RuntimeId 仍然一致
 /// 3. 选区归一化后的文本仍与捕获时一致
-/// 经 Ctrl+V 粘贴；若剪贴板暂存失败或校验中止 → 改为把译文复制到剪贴板。
+/// 纯文本允许临时粘贴；剪贴板不可暂存时使用 Unicode 输入，校验失败则交由界面提示。
 /// 终端/只读/管理员窗口在上游就被拒绝。
 /// </summary>
 public sealed class WriteBackService : IWriteBack
@@ -66,58 +66,14 @@ public sealed class WriteBackService : IWriteBack
             Diag("replace: fg-only validation");
         }
 
-        // 粘贴：先把译文暂存到剪贴板，然后发 Ctrl+V，且先显式 MOVE 一次
-        // (M0：不带 MOUSEEVENTF_MOVE 的 DOWN/UP 会忽略 dx/dy)。
-        // 用户的剪贴板在每一条退出路径上都会被还原(bugbot P1：以前中止时
-        // 会把译文留在剪贴板里，原内容就丢了)。
-        string? backup = null;
-        try
+        var outcome = await PasteOrTypeAsync(source.SourceWindowHandle, replacement, cancellationToken);
+        if (outcome != WriteBackOutcome.Replaced) return outcome;
+        if (source.Method == CaptureMethod.UiAutomation && canVerifyText
+            && !await VerifyLandedAsync(source.SourceWindowHandle, replacement, cancellationToken))
         {
-            try { backup = ClipboardService.TryGetText(); } catch { }
-            ClipboardService.SetText(replacement);
-            await Task.Delay(60, cancellationToken);
-
-            if (NativeMethods.GetForegroundWindow() != (IntPtr)source.SourceWindowHandle)
-            {
-                return WriteBackOutcome.AbortedForeground;
-            }
-
-            var focusPoint = source.Anchor;
-            var inputs = new List<NativeMethods.INPUT>
-            {
-                KeyInput(NativeMethods.VK_CONTROL, down: true),
-                KeyInput(NativeMethods.VK_V, down: true),
-                KeyInput(NativeMethods.VK_V, down: false),
-                KeyInput(NativeMethods.VK_CONTROL, down: false),
-            };
-            var sent = NativeMethods.SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<NativeMethods.INPUT>()) == inputs.Count;
-            await Task.Delay(200, cancellationToken);
-
-            if (!sent)
-            {
-                // Unicode SendInput 兜底：逐字符输入
-                sent = TryUnicodeType(replacement);
-            }
-            if (!sent) return WriteBackOutcome.Failed;
-
-            // 粘贴后校验(乐观按钮)：如果粘贴的文本并没有落进去——
-            // 只读界面会静默忽略粘贴——就降级为复制，而不是假装成功。
-            if (source.Method == CaptureMethod.UiAutomation && canVerifyText)
-            {
-                var landed = await VerifyLandedAsync(source.SourceWindowHandle, replacement, cancellationToken);
-                Diag("replace: landed=" + landed);
-                if (!landed) return WriteBackOutcome.Failed;
-            }
-
-            return WriteBackOutcome.Replaced;
+            return WriteBackOutcome.Failed;
         }
-        finally
-        {
-            if (backup is not null)
-            {
-                try { await Task.Delay(400, CancellationToken.None); ClipboardService.SetText(backup); } catch { }
-            }
-        }
+        return WriteBackOutcome.Replaced;
     }
 
     public async Task<WriteBackOutcome> InsertAsync(CapturedSelection source, string text, CancellationToken cancellationToken)
@@ -170,48 +126,66 @@ public sealed class WriteBackService : IWriteBack
             return Aborted(source);
         }
 
-        // 每条退出路径都还原剪贴板(bugbot P1，与 replace 相同)
-        string? backup = null;
+        var outcome = await PasteOrTypeAsync(source.SourceWindowHandle, text, cancellationToken);
+        if (outcome != WriteBackOutcome.Replaced) return outcome;
+        if (source.Method == CaptureMethod.UiAutomation && canVerifyText
+            && !await VerifyLandedAsync(source.SourceWindowHandle, text, cancellationToken))
+        {
+            return WriteBackOutcome.Failed;
+        }
+        return WriteBackOutcome.Inserted;
+    }
+
+    private static async Task<WriteBackOutcome> PasteOrTypeAsync(long windowHandle, string text, CancellationToken cancellationToken)
+    {
+        await ClipboardService.OperationGate.WaitAsync(cancellationToken);
+        ClipboardService.TemporaryClipboardText? temporary = null;
         try
         {
-            try { backup = ClipboardService.TryGetText(); } catch { }
-            ClipboardService.SetText(text);
-            await Task.Delay(60, cancellationToken);
-
-            if (NativeMethods.GetForegroundWindow() != (IntPtr)source.SourceWindowHandle)
+            if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle)
             {
-                Diag("insert abort: fg changed before paste fg=" + NativeMethods.GetForegroundWindow() + " want=" + source.SourceWindowHandle);
                 return WriteBackOutcome.AbortedForeground;
             }
 
-            var paste = new List<NativeMethods.INPUT>
+            temporary = ClipboardService.TryStageText(text);
+            if (temporary is null)
+            {
+                return TryUnicodeType(text, windowHandle) ? WriteBackOutcome.Replaced : WriteBackOutcome.Failed;
+            }
+
+            // 目标程序需要时间看到 OLE 数据；等待期间外部复制或切窗会使原来的粘贴计划失效。
+            await Task.Delay(60, cancellationToken);
+            if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle)
+            {
+                return WriteBackOutcome.AbortedForeground;
+            }
+            if (!temporary.IsCurrent)
+            {
+                return WriteBackOutcome.AbortedValidation;
+            }
+
+            var keys = new[]
             {
                 KeyInput(NativeMethods.VK_CONTROL, down: true),
                 KeyInput(NativeMethods.VK_V, down: true),
                 KeyInput(NativeMethods.VK_V, down: false),
                 KeyInput(NativeMethods.VK_CONTROL, down: false),
             };
-            var sent = NativeMethods.SendInput((uint)paste.Count, paste.ToArray(), Marshal.SizeOf<NativeMethods.INPUT>()) == paste.Count;
-            Diag("insert: paste sent=" + sent);
-            if (!sent) sent = TryUnicodeType(text);
-            if (!sent) return WriteBackOutcome.Failed;
-
-            // 粘贴后校验，契约与 replace 相同
-            if (source.Method == CaptureMethod.UiAutomation && canVerifyText)
-            {
-                var landed = await VerifyLandedAsync(source.SourceWindowHandle, text, cancellationToken);
-                Diag("insert: landed=" + landed);
-                if (!landed) return WriteBackOutcome.Failed;
-            }
-
-            return WriteBackOutcome.Inserted;
+            var sent = NativeMethods.SendInput((uint)keys.Length, keys, Marshal.SizeOf<NativeMethods.INPUT>()) == keys.Length;
+            if (!sent) sent = TryUnicodeType(text, windowHandle);
+            return sent ? WriteBackOutcome.Replaced : WriteBackOutcome.Failed;
         }
         finally
         {
-            if (backup is not null)
+            try
             {
-                try { await Task.Delay(400, CancellationToken.None); ClipboardService.SetText(backup); } catch { }
+                if (temporary is not null)
+                {
+                    await Task.Delay(400, CancellationToken.None);
+                    temporary.Restore();
+                }
             }
+            finally { ClipboardService.OperationGate.Release(); }
         }
     }
 
@@ -229,12 +203,13 @@ public sealed class WriteBackService : IWriteBack
     // 用户方向：失败绝不能动剪贴板——由卡片上的提示来解释。
     private static WriteBackOutcome Aborted(CapturedSelection source) => WriteBackOutcome.AbortedValidation;
 
-    private static bool TryUnicodeType(string text)
+    private static bool TryUnicodeType(string text, long windowHandle)
     {
         try
         {
             foreach (var ch in text)
             {
+                if (NativeMethods.GetForegroundWindow() != (IntPtr)windowHandle) return false;
                 var down = new NativeMethods.INPUT
                 {
                     type = NativeMethods.INPUT_KEYBOARD,
