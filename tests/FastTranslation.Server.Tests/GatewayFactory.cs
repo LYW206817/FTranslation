@@ -58,6 +58,9 @@ public class GatewayFactory : WebApplicationFactory<Program>
     /// <summary>默认实际上不设上限;预算测试会把它调低。</summary>
     protected virtual long DailyBudgetMicros => 5_000_000;
 
+    /// <summary>会员(有效档位非免费)独立的日预算桶;默认同样不设上限。</summary>
+    protected virtual long PaidDailyBudgetMicros => 5_000_000;
+
     protected virtual int RequestsPerMinute => 1000;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -78,6 +81,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
             ["Server:Gateway:ImageBaseUrl"] = "http://upstream.test/image",
             ["Server:Gateway:OcrBaseUrl"] = "http://upstream.test/ocr",
             ["Server:Gateway:DailyBudgetMicros"] = DailyBudgetMicros.ToString(),
+            ["Server:Gateway:PaidDailyBudgetMicros"] = PaidDailyBudgetMicros.ToString(),
             ["Server:Gateway:RequestsPerMinute"] = RequestsPerMinute.ToString(),
         }));
 

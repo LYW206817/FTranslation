@@ -27,7 +27,12 @@ public static class GatewayEndpoints
 
     private const int MinOutputTokenAllowance = 64;
 
-    private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros);
+    // 预算桶名同时是 usage_events.source：预留、结算与当日已花费三处必须落在同一个桶里。
+    private const string FreeBudgetSource = "gateway";
+
+    private const string PaidBudgetSource = "gateway_paid";
+
+    private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros, string Source);
 
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
     {
@@ -133,8 +138,9 @@ public static class GatewayEndpoints
                 (int)Math.Min(tokensOut, int.MaxValue),
                 Pricing.TextCostMicros(model, tokensIn, tokensOut),
                 database.NowUnix,
+                source: reservation.Value.Source,
                 reservedChars: reservation.Value.Chars);
-            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
             return Results.Content(response.Body, "application/json");
@@ -144,7 +150,7 @@ public static class GatewayEndpoints
             if (!settled && reservation is { } held)
             {
                 store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release("gateway", held.EstimatedCostMicros);
+                budget.Release(held.Source, held.EstimatedCostMicros);
             }
         }
     }
@@ -218,8 +224,9 @@ public static class GatewayEndpoints
                 0,
                 Pricing.ImageCostMicros(model),
                 database.NowUnix,
+                source: reservation.Value.Source,
                 reservedChars: reservation.Value.Chars);
-            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
             return Results.Content(response.Body, "application/json");
@@ -229,7 +236,7 @@ public static class GatewayEndpoints
             if (!settled && reservation is { } held)
             {
                 store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release("gateway", held.EstimatedCostMicros);
+                budget.Release(held.Source, held.EstimatedCostMicros);
             }
         }
     }
@@ -320,8 +327,9 @@ public static class GatewayEndpoints
                 (int)Math.Min(tokensOut, int.MaxValue),
                 Pricing.TextCostMicros(model, tokensIn, tokensOut),
                 database.NowUnix,
+                source: reservation.Value.Source,
                 reservedChars: reservation.Value.Chars);
-            budget.Release("gateway", reservation.Value.EstimatedCostMicros);
+            budget.Release(reservation.Value.Source, reservation.Value.EstimatedCostMicros);
             settled = true;
 
             return Results.Content(response.Body, "application/json");
@@ -331,7 +339,7 @@ public static class GatewayEndpoints
             if (!settled && reservation is { } held)
             {
                 store.ReleaseQuota(held.UserId, held.DeviceId, held.Chars);
-                budget.Release("gateway", held.EstimatedCostMicros);
+                budget.Release(held.Source, held.EstimatedCostMicros);
             }
         }
     }
@@ -361,20 +369,28 @@ public static class GatewayEndpoints
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
         }
 
-        if (!budget.TryReserve("gateway", gateway.DailyBudgetMicros, estimatedCostMicros))
+        // v191: 免费用户把日预算烧穿后，已付费的会员也跟着 429——两类账号共用一个桶。
+        // 现在按「有效档位」分桶（订阅到期的与免费同桶，和额度口径一致）；档位要先于预算闸门
+        // 读出，所以用户查询提前了，闸门顺序（限流 → 预算 → 禁用 → 额度）不变。
+        var user = store.FindUserById(userId);
+        var tier = user is null
+            ? PlanTier.Free
+            : Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
+        var (source, budgetMicros) = tier == PlanTier.Free
+            ? (FreeBudgetSource, gateway.DailyBudgetMicros)
+            : (PaidBudgetSource, gateway.PaidDailyBudgetMicros);
+        if (!budget.TryReserve(source, budgetMicros, estimatedCostMicros))
         {
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "budget_exhausted");
         }
 
-        var user = store.FindUserById(userId);
         if (user is null || user.Disabled)
         {
-            budget.Release("gateway", estimatedCostMicros);
+            budget.Release(source, estimatedCostMicros);
             return Fail(diagnostics, StatusCodes.Status403Forbidden, "account_disabled");
         }
 
         var (deviceId, _) = Device(context, principal, store);
-        var tier = Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
         QuotaPolicy.Decision decision;
         try
         {
@@ -383,20 +399,20 @@ public static class GatewayEndpoints
         catch (Exception)
         {
             // 预留失败也要退回预算占用，否则一次数据库异常会让预算闸门永久少一截。
-            budget.Release("gateway", estimatedCostMicros);
+            budget.Release(source, estimatedCostMicros);
             throw;
         }
 
         if (!decision.Allowed)
         {
-            budget.Release("gateway", estimatedCostMicros);
+            budget.Release(source, estimatedCostMicros);
             // 故意用 429（而不是 403）：客户端会把它读作“额度用尽”并静默切换到
             // 用户自己的 Key，于是套餐耗尽只是让产品降级，而不是把它弄坏。
             context.Response.Headers["X-FT-Quota-Reason"] = decision.Reason ?? "quota_exhausted";
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, decision.Reason ?? "quota_exhausted");
         }
 
-        reservation = new Reservation(userId, deviceId, chars, estimatedCostMicros);
+        reservation = new Reservation(userId, deviceId, chars, estimatedCostMicros, source);
         return null;
     }
 

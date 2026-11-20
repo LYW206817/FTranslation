@@ -7,7 +7,7 @@ namespace FastTranslation.Server.Gateway;
 /// 会各自读到同一个旧成本全部放行，把 5 元日预算冲过数倍。
 /// <para>
 /// 预留在进程内完成并随结算释放：部署只有一台 ECS、一个进程，重启时在途请求也一起
-/// 消失，所以不需要为它建表。预算按来源分桶（gateway / speech），与
+/// 消失，所以不需要为它建表。预算按来源分桶（gateway / gateway_paid / speech），与
 /// <c>ReadTodayCostMicros(source)</c> 的口径一致。
 /// </para>
 /// </summary>

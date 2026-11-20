@@ -29,11 +29,18 @@ public sealed class GatewayOptions
     public int TimeoutSeconds { get; set; } = 60;
 
     /// <summary>
-    /// 整个部署每日的支出上限，单位为微元。这是针对单个
-    /// 滥用账号的最后防线：当日成本越过该上限后，网关返回 429，所有客户端
+    /// 免费账号（有效档位为 Free，含订阅已到期的）每日的支出上限，单位为微元。这是针对单个
+    /// 滥用账号的最后防线：当日成本越过该上限后，网关返回 429，免费客户端
     /// 回落到用户自己的 Key，于是账单停住而产品继续可用。
     /// </summary>
     public long DailyBudgetMicros { get; set; } = 5_000_000;
+
+    /// <summary>
+    /// 会员（有效档位非 Free）每日的支出上限，单位为微元，与 <see cref="DailyBudgetMicros"/>
+    /// 分桶独立：免费用户被刷爆时，已付费的会员不能跟着一起回落到自带 Key；
+    /// 会员桶自己仍有上限，防的是被盗用或失控的付费账号。
+    /// </summary>
+    public long PaidDailyBudgetMicros { get; set; } = 20_000_000;
 
     /// <summary>每账号每分钟请求数——失控的客户端不能靠循环烧掉整个月额度。</summary>
     public int RequestsPerMinute { get; set; } = 40;

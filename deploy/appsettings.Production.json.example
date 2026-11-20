@@ -21,6 +21,7 @@
       "Enabled": true,
       "ApiKey": "__DASHSCOPE_API_KEY__",
       "DailyBudgetMicros": 5000000,
+      "PaidDailyBudgetMicros": 20000000,
       "Speech": {
         "Enabled": true,
         "WsUrl": "wss://__WORKSPACE_ID__.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference",

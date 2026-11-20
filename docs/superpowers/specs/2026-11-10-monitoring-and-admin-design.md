@@ -63,6 +63,7 @@
 ```
 
 - `costMicros` 与 `budgetMicros` 以微元为单位（`1e-6` 元），保持整数账本。
+- `bySource[].source` 取值：`gateway`（免费账号的文本/图片/OCR）、`gateway_paid`（会员的同类请求，v191 起；此前的历史行仍记在 `gateway`）、`speech`。`today.costMicros` 是当日所有来源之和，`today.budgetMicros` 是免费桶的 `DailyBudgetMicros`，两者口径并不严格对应。
 - 只统计 `usage_events` 里已有的记账；不读用户翻译文本。
 - 数据窗口超过归档保留期时，只返回仍在 `usage_events` 里的部分。
 
