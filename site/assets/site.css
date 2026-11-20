@@ -61,7 +61,9 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 112px; -webkit-text-size-adjust: 100%; }
+/* v190：只藏滚动条，保留页面原生滚动；阻止到达页面边界时的下拉回弹。 */
+html { scroll-behavior: smooth; scroll-padding-top: 24px; overscroll-behavior-y: none; scrollbar-width: none; -webkit-text-size-adjust: 100%; }
+html::-webkit-scrollbar { display: none; }
 body { margin: 0; isolation: isolate; color: var(--ink); background: var(--dream-base); font-family: var(--sans); font-size: 16px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
 /* v165：色雾固定在一个视口层，长页面不会把渐变拉淡；静态径向渐变避免持续模糊动画的绘制开销。 */
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 65% 62% at 4% 12%, var(--dream-blue), transparent 80%), radial-gradient(ellipse 62% 68% at 98% 24%, var(--dream-violet), transparent 78%), radial-gradient(ellipse 66% 46% at 48% 100%, var(--dream-sky), transparent 80%), linear-gradient(135deg, var(--dream-panel-blue), var(--dream-panel-white) 46%, var(--dream-panel-violet)); }
@@ -84,16 +86,23 @@ h1, h2, h3 { font-weight: 650; line-height: 1.35; letter-spacing: -.045em; text-
 /* v160：增强控件的显示规则优先级高于原生 hidden；切换场景时必须让隐藏状态优先。 */
 [hidden], .js .enhanced-only[hidden] { display: none !important; }
 
-.nav { position: sticky; top: 0; z-index: 30; background: var(--dream-glass); backdrop-filter: blur(16px); border-bottom: 1px solid var(--dream-rule); }
+/* v190：顶栏随文档滚出首屏，免得粘性白底遮住演示；首屏直接共用页面渐变。 */
+.nav { background: transparent; }
 .nav-inner { min-height: 78px; display: flex; align-items: center; gap: 28px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; font-size: 18px; font-weight: 650; letter-spacing: -.04em; }
 .brand img { border-radius: 8px; }
 .nav nav { margin-left: auto; display: flex; align-items: center; gap: 25px; }
 .nav nav a { display: flex; align-items: center; min-height: 44px; color: var(--secondary); font-size: 13px; transition: color .18s; }
 .nav nav a:hover, .text-link:hover { color: var(--brand); }
-.nav-download { display: flex; align-items: center; gap: 14px; min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .18s; }
+.nav-download { display: flex; align-items: center; gap: 14px; min-height: 40px; padding: 0 16px; border: 1px solid var(--dream-rule); border-radius: 12px; background: var(--dream-mist); font-size: 13px; font-weight: 600; transition: background .18s; }
 .nav-download:hover { background: var(--canvas); }
 .nav-download .icon { width: 16px; height: 16px; }
+.section-nav { position: fixed; z-index: 10; top: 50%; right: 4px; transform: translateY(-50%); flex-direction: column; }
+.section-nav a { position: relative; display: grid; place-items: center; width: 28px; height: clamp(24px, 4.5dvh, 32px); border-radius: 16px; outline-offset: -1px; }
+.section-nav a::before { content: ""; width: 9px; aspect-ratio: 1; border: 1px solid var(--secondary); border-radius: 50%; background: var(--dream-glass); transition: background .2s, box-shadow .2s; }
+.section-nav a[aria-current]::before { background: var(--prism-violet); border-color: var(--prism-violet); box-shadow: 0 0 0 4px var(--dream-panel-violet); }
+.section-nav a span { position: absolute; right: calc(100% + 4px); padding: 4px 10px; border-radius: 8px; color: var(--white); background: var(--ink); box-shadow: var(--shadow); font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .18s; }
+.section-nav a:hover span, .section-nav a:focus-visible span { opacity: 1; }
 .hero-shell { display: grid; grid-template-columns: minmax(0, .67fr) minmax(0, 1fr); align-items: center; gap: clamp(26px, 4vw, 60px); padding-block: 62px 28px; }
 .hero { min-width: 0; animation: rise-in .68s var(--entrance-ease) both; }
 .release-pill { display: inline-flex; align-items: center; gap: 9px; padding: 5px 7px 5px 13px; border: 1px solid var(--dream-rule); border-radius: 30px; background: var(--dream-mist); font-size: 12px; color: var(--secondary); }
@@ -481,7 +490,6 @@ main { overflow-x: clip; }
 }
 /* v160：窄屏保留完整导航，链接在独立一行内滚动，避免 v153 修复的入口丢失再次出现。 */
 @media (max-width: 880px) {
-  html { scroll-padding-top: 135px; }
   .nav-inner { flex-wrap: wrap; gap: 0 16px; min-height: 64px; padding-top: 14px; }
   .nav-download { margin-left: auto; min-height: 44px; }
   .nav nav { order: 3; width: 100%; margin: 9px 0 0; overflow-x: auto; gap: 25px; scrollbar-width: none; }
@@ -554,6 +562,8 @@ main { overflow-x: clip; }
 }
 @media (max-width: 600px) {
   .wrap { width: calc(100% - 36px); }
+  .js main .wrap, .js .footer { width: calc(100% - 48px); margin-inline: 16px 32px; }
+  .section-nav { right: 2px; }
   .nav-inner { width: calc(100% - 32px); padding-top: 10px; }
   .brand { font-size: 16px; gap: 7px; }
   .brand img { width: 28px; height: 28px; }

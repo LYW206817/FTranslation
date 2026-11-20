@@ -124,6 +124,34 @@
   // 最后再显示增强控件，脚本缺失或未执行时，静态示例与下载入口仍可完整阅读。
   document.documentElement.classList.add('js');
 
+  const setupSectionNav = () => {
+    const links = [...document.querySelectorAll('.section-nav a')];
+    const sections = links.map((link) => document.getElementById(link.hash.slice(1)));
+    const activationLine = 48;
+    let current = -1;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      // v190：以内容越过视口上缘为准，避免很高的分节因露出比例太小而一直无法点亮。
+      const atEnd = Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight;
+      const next = atEnd ? links.length - 1 : Math.max(0, sections.findLastIndex(
+        (section) => section.getBoundingClientRect().top <= activationLine
+      ));
+      if (current === next) return;
+      links[current]?.removeAttribute('aria-current');
+      links[next].setAttribute('aria-current', 'location');
+      current = next;
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    window.addEventListener('pageshow', schedule);
+    update();
+  };
+  setupSectionNav();
+
   const setupScrollReveal = () => {
     if (!('IntersectionObserver' in window)) return;
     const plans = document.getElementById('plan-cards');
@@ -150,12 +178,12 @@
         return target;
       })
     );
-    // v168：进入时越过粘性导航和底边才播放；离开更大的缓冲区才复位，来回滚动时不会闪烁。
+    // v190：顶栏已随页面滚走，只在底边留入场余量；离开更大的缓冲区才复位，避免来回滚动闪烁。
     const entrance = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.1) entry.target.classList.add('is-visible');
       });
-    }, { threshold: 0.1, rootMargin: '-100px 0px -26px 0px' });
+    }, { threshold: 0.1, rootMargin: '0px 0px -26px 0px' });
     const departure = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) entry.target.classList.remove('is-visible');
