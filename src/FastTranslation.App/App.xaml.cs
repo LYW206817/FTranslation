@@ -1232,8 +1232,7 @@ public partial class App : Application, IResultPresenter
                 {
                     BaseUrl = GatewayBaseUrl(),
                     TimeoutSeconds = 45,
-                    // 设备指纹让服务端把日额度记到真正发请求的这台设备上
-                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                    ExtraHeaders = GatewayHeaders(account.DeviceFingerprint, request.GatewayOperationId),
                 },
                 _gatewayHttp);
             var gatewayResult = await provider.TranslateAsync(request, cancellationToken);
@@ -1258,7 +1257,7 @@ public partial class App : Application, IResultPresenter
                     // 图片端点是一整条 URL，网关不拼后缀，所以这里直接给到 /v1/image
                     BaseUrl = GatewayBaseUrl() + "/image",
                     TimeoutSeconds = 60,
-                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                    ExtraHeaders = GatewayHeaders(account.DeviceFingerprint),
                 },
                 _gatewayHttp);
             var imageResult = await provider.TranslateImageAsync(request, cancellationToken);
@@ -1285,13 +1284,21 @@ public partial class App : Application, IResultPresenter
                 {
                     BaseUrl = GatewayBaseUrl() + "/ocr",
                     TimeoutSeconds = 60,
-                    ExtraHeaders = new Dictionary<string, string> { ["X-FT-Device"] = account.DeviceFingerprint },
+                    ExtraHeaders = GatewayHeaders(account.DeviceFingerprint),
                 },
                 _gatewayHttp);
             var ocrResult = await client.RecognizeAsync(request, cancellationToken);
             NoteGatewayFailure(ocrResult.Error);
             return ocrResult;
         });
+
+    private static IReadOnlyDictionary<string, string> GatewayHeaders(string deviceFingerprint, Guid? operationId = null) =>
+        new Dictionary<string, string>
+        {
+            ["X-FT-Device"] = deviceFingerprint,
+            // provider 内部重新建立 HTTP 请求时必须沿用这一笔，否则网关无法识别同一次操作。
+            ["X-FT-Request-Id"] = (operationId ?? Guid.NewGuid()).ToString("D"),
+        };
 
     /// <summary>
     /// 文档里的一段。没有 <c>TranslationResult</c> 那条兜底链：段落翻译失败就是失败，
@@ -1301,6 +1308,7 @@ public partial class App : Application, IResultPresenter
     private async Task<string> TranslateDocumentSegmentsAsync(
         string text,
         string targetLanguage,
+        Guid operationId,
         CancellationToken cancellationToken)
     {
         // 源语言给 auto：文档里的段落可能整段是英文也可能整段是中文，
@@ -1309,7 +1317,7 @@ public partial class App : Application, IResultPresenter
             text,
             "auto",
             LanguageCatalog.ToApiName(targetLanguage),
-            _settings.Model);
+            _settings.Model) { GatewayOperationId = operationId };
         var result = await _documentProvider!.TranslateAsync(request, cancellationToken).ConfigureAwait(false);
         if (result.Succeeded) return result.TranslatedText;
 
@@ -1318,6 +1326,11 @@ public partial class App : Application, IResultPresenter
         if (result.Error is { Code: TranslationErrorCode.QuotaExhausted } quota)
         {
             throw new QuotaExhaustedException(quota.Message);
+        }
+
+        if (result.Error is { Code: TranslationErrorCode.GatewayResultUnavailable } unavailable)
+        {
+            throw new GatewayResultUnavailableException(unavailable.Message);
         }
 
         throw new InvalidOperationException(result.Error?.Message ?? "翻译失败");

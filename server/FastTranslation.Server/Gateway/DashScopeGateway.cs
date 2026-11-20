@@ -1,11 +1,12 @@
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
 namespace FastTranslation.Server.Gateway;
 
 /// <summary>上游返回的原样内容。网关只负责转发，不负责改写。</summary>
-public sealed record GatewayResponse(int StatusCode, string Body, bool OutcomeUnknown = false)
+public sealed record GatewayResponse(int StatusCode, string Body, bool OutcomeUnknown = false, string? UpstreamRequestId = null)
 {
     public bool Succeeded => StatusCode is >= 200 and < 300;
 }
@@ -18,8 +19,9 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
 {
     private readonly HttpClient _http = new(handler ?? new SocketsHttpHandler())
     {
-        Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 60),
+        Timeout = Timeout.InfiniteTimeSpan,
     };
+    private readonly TimeSpan _timeout = TimeSpan.FromSeconds(options.EffectiveTimeoutSeconds);
 
     public async Task<GatewayResponse> SendChatAsync(string body, CancellationToken ct)
         => await SendAsync(options.EffectiveBaseUrl + "/chat/completions", body, ct).ConfigureAwait(false);
@@ -88,22 +90,70 @@ public sealed class DashScopeGateway(GatewayOptions options, HttpMessageHandler?
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
 
+        int? status = null;
+        string? upstreamRequestId = null;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping);
+        deadline.CancelAfter(_timeout);
         try
         {
-            // 入站断开不等于上游停止计费。转发后仍由 HttpClient 超时和服务生命周期收口，
-            // 有成功响应就结算；超时等未知结果交给诊断和供应商对账。
+            if (deadline.IsCancellationRequested)
+            {
+                return new GatewayResponse(StatusCodes.Status503ServiceUnavailable, """{"error":"upstream_unavailable"}""");
+            }
+            // 先取响应头，正文中断时仍可能有对账标识。独立截止时间覆盖整个下载过程。
             using var response = await _http
-                .SendAsync(request, HttpCompletionOption.ResponseContentRead, stopping)
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                 .ConfigureAwait(false);
-            var text = await response.Content.ReadAsStringAsync(stopping).ConfigureAwait(false);
-            return new GatewayResponse((int)response.StatusCode, text);
+            status = (int)response.StatusCode;
+            upstreamRequestId = ReadRequestId(response.Headers);
+            var text = await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false);
+            return new GatewayResponse(status.Value, text, OutcomeUnknown: status >= 500 || status == 408,
+                UpstreamRequestId: upstreamRequestId ?? ReadRequestId(text));
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or SocketException)
         {
-            // 上游不可达：按网关故障上报，绝不能当成额度事件。
-            return new GatewayResponse(StatusCodes.Status502BadGateway, string.Empty, OutcomeUnknown: true);
+            // 已收到明确拒绝的响应头时，正文读取失败也不会改变这笔的结算状态。
+            var rejected = status is >= 400 and < 500 and not 408;
+            if (status is null && FailedBeforeSending(ex))
+            {
+                return new GatewayResponse(StatusCodes.Status503ServiceUnavailable, """{"error":"upstream_unavailable"}""");
+            }
+            return new GatewayResponse(rejected ? status.GetValueOrDefault() : StatusCodes.Status502BadGateway,
+                string.Empty, OutcomeUnknown: !rejected, UpstreamRequestId: upstreamRequestId);
         }
     }
+
+    private static bool FailedBeforeSending(Exception failure)
+    {
+        var socket = failure as SocketException ?? failure.InnerException as SocketException;
+        // 仅把明确没有建立连接的错误视为拒绝。连接被重置也可能发生在提交之后。
+        return failure is HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError }
+            || socket?.SocketErrorCode is SocketError.ConnectionRefused or SocketError.HostNotFound or SocketError.NoData;
+    }
+
+    private static string? ReadRequestId(HttpResponseHeaders headers) =>
+        headers.TryGetValues("x-request-id", out var values) ? SafeRequestId(values.FirstOrDefault()) : null;
+
+    private static string? ReadRequestId(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object && root.TryGetProperty("request_id", out var value)
+                && value.ValueKind == JsonValueKind.String ? SafeRequestId(value.GetString()) : null;
+        }
+        catch (JsonException)
+        {
+            // 非 JSON 的上游错误正文仍按原样处理。
+            return null;
+        }
+    }
+
+    private static string? SafeRequestId(string? value) =>
+        value is { Length: > 0 and <= 128 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')
+            ? value : null;
 
     private static long ReadLong(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number

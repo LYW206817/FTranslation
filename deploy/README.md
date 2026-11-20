@@ -320,8 +320,8 @@ chmod 600 /var/lib/fasttranslation/fasttranslation.db
 | 任务 | 频率 | 检查 |
 |---|---|---|
 | `ft-probe.sh` | 每 15 分钟 | 专用账号登录 → 真实 `/v1/chat/completions` → 200 且译文非空；抓百炼 Key 失效、网关/记账坏掉 |
-| `ft-monitor.sh check` | 每小时 | 最新备份 >36h、`/var/lib/fasttranslation` 磁盘 >85%、今日网关花费 ≥ 预算 80% |
-| `ft-monitor.sh digest` | 每天 09:00 CST | 新增注册、30 天活跃、昨日请求/字符/成本、今日花费/预算、`usage_events` 最早月份 |
+| `ft-monitor.sh check` | 每小时 | 最新备份 >36h、`/var/lib/fasttranslation` 磁盘 >85%、今日网关已结算与待核对合计 ≥ 预算 80% |
+| `ft-monitor.sh digest` | 每天 09:00 CST | 新增注册、30 天活跃、昨日请求/字符/成本、今日已结算与待核对金额、`usage_events` 最早月份 |
 
 告警发到飞书群机器人：进入失败态发一次，持续失败每 6 小时提醒，恢复时补一条。状态文件在 `/var/lib/fasttranslation-monitor/`。
 
@@ -362,7 +362,9 @@ tail -f /var/log/ft-monitor.log
 
 `ft-probe.sh` 和 `ft-monitor.sh` 都从 `/etc/fasttranslation/monitor.env` 读配置；真实 webhook 和探针密码只放那里，不进仓库。`ft-monitor.sh` 用 `sqlite3 -readonly` 读生产库（WAL 下不阻塞写入），并用 `jq` 读 `appsettings.Production.json` 里三个预算桶的键——`Server:Gateway:DailyBudgetMicros`（免费）、`PaidDailyBudgetMicros`（会员）、`Speech:DailyBudgetMicros`（语音）——逐桶比对今日成本，`0` 表示该桶不设上限；某个键缺失时告警「无法比对」而不是当作不限——缺键等于这一桶没在监控。`bootstrap.sh` 会安装 `jq`。
 
-包含匿名成本账的版本需要同时更新服务端和 `ft-monitor.sh`。服务端首次启动会从存量流水回填，并以后续流水维护匿名日汇总；先确认服务正常启动，再执行新脚本的预算检查。登录会话升级后，旧桌面客户端的存量令牌需要重新登录。
+成本账版本需要同时更新服务端和 `ft-monitor.sh`。先确认服务启动并完成 SQLite 结构升级，再执行新脚本的检查和摘要。回退时使用目标服务端版本配套的脚本。暂停更新期间的实际支出按供应商账单核对。
+
+后台概览单列今日待核对金额。跨日待核对明细用 `GET /api/v1/admin/gateway/reconciliation` 查询。按上游标识、时间和来源核对已出账费用后，用 `POST /api/v1/admin/gateway/reconciliation/{id}/resolve` 登记费用。两条管理接口沿用 `X-Admin-Token` 认证，使用受保护的请求头文件传入令牌。只有供应商确认未计费时才登记零，暂时查不到账单的明细继续保留。
 
 ## 运营后台
 

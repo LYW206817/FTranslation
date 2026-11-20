@@ -47,6 +47,7 @@ builder.Services.AddSingleton(sp => new DashScopeGateway(sp.GetRequiredService<G
     stopping: sp.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping));
 
 builder.Services.AddSingleton<AccountStore>();
+builder.Services.AddSingleton<GatewaySettlementStore>();
 builder.Services.AddSingleton<OrderStore>();
 builder.Services.AddSingleton<RedeemStore>();
 builder.Services.AddSingleton<NoteStore>();

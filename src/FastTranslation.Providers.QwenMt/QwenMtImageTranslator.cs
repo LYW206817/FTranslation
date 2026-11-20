@@ -62,6 +62,7 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
         // 请求未指定模型时用 options 的默认模型，避免把空 model 发给上游。
         var effective = string.IsNullOrWhiteSpace(request.Model) ? request with { Model = _options.Model } : request;
         var payload = BuildPayload(effective);
+        var previousAttemptUnconfirmed = false;
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -76,6 +77,10 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
                 httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
                 using var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                if (GatewayRequestOutcome.Read(response, _options.ExtraHeaders, previousAttemptUnconfirmed) is { } unavailable)
+                {
+                    return Fail(effective, unavailable, started);
+                }
                 var body = await SafeReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
@@ -106,21 +111,26 @@ public sealed class QwenMtImageTranslator : IImageTranslationProvider
             }
             catch (TaskCanceledException) // HttpClient 超时
             {
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, "请求超时");
                 if (attempt == 0)
                 {
+                    previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
                     await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
-                return Fail(effective, TranslationError.Network("请求超时"), started);
+                return Fail(effective, error, started);
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException)
             {
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, ex.Message,
+                    previousAttemptUnconfirmed ? null : ex);
                 if (attempt == 0)
                 {
+                    previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
                     await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
-                return Fail(effective, TranslationError.Network(ex.Message), started);
+                return Fail(effective, error, started);
             }
         }
 

@@ -59,20 +59,26 @@
     { "day": "2026-11-10", "requests": 0, "chars": 0, "costMicros": 0 }
   ],
   "buckets": [
-    { "source": "gateway", "costMicros": 0, "budgetMicros": 0 },
-    { "source": "gateway_paid", "costMicros": 0, "budgetMicros": 0 },
-    { "source": "speech", "costMicros": 0, "budgetMicros": 0 }
+    { "source": "gateway", "costMicros": 0, "budgetMicros": 0, "pendingCostMicros": 0 },
+    { "source": "gateway_paid", "costMicros": 0, "budgetMicros": 0, "pendingCostMicros": 0 },
+    { "source": "speech", "costMicros": 0, "budgetMicros": 0, "pendingCostMicros": 0 }
   ]
 }
 ```
 
 - `costMicros` 与 `budgetMicros` 以微元为单位（`1e-6` 元），保持整数账本。
 - 支出与用量汇总按 UTC 日和来源做匿名聚合。注销清理个人流水，已结算用量与成本继续参与统计和预算熔断。活跃账号指标只统计仍有个人流水的账号。
-- `buckets` 是今日的日预算桶：`costMicros` 为该桶今日（UTC）已花费，`budgetMicros` 为该桶的熔断上限，`0` 表示该桶未设上限。桶与网关的熔断一一对应（见 `2026-10-28-account-and-billing-design.md` §7.4.1），页面与告警都按桶比较，不要跨桶相加。
+- `buckets` 按 UTC 日展示已结算成本 `costMicros`、待核对估算 `pendingCostMicros` 和预算上限 `budgetMicros`。预算为 `0` 时该桶不限。熔断还包含在途预留；监控以已结算与待核对的合计比较预算。语音保留自身结算方式，待核对字段为 `0`。
 - `bySource[].source` 取值：`gateway`（免费账号的文本/图片/OCR）、`gateway_paid`（会员的同类请求，v191 起；此前的历史行仍记在 `gateway`）、`speech`。
 - `bySource` 是所选窗口的汇总，历史行不会因改名而迁移；与 `buckets`（只管今日）口径不同。
-- 只统计 `usage_events` 里已有的记账；不读用户翻译文本。
-- 数据窗口超过归档保留期时，只返回仍在 `usage_events` 里的部分。
+
+#### `GET /api/v1/admin/gateway/reconciliation?limit=&offset=`
+
+返回待核对账目的数组，按发起时间与 `id` 排序。默认 50 条，最多 200 条。每条含有 `id`、`source`、`startedAtUnix`、`estimatedCostMicros` 和可为空的 `upstreamRequestId`。跨日账目仍可查询。账目只记录成本与对账标识。
+
+#### `POST /api/v1/admin/gateway/reconciliation/{id}/resolve`
+
+从供应商账单确认实际费用后，提交 `{"costMicros":0}` 或相应微元整数。零表示确认未产生费用。成功返回 200 `{"message":"gateway_charge_resolved"}`。重复提交相同金额不重复入账，重复提交不同金额、单号未知或该笔尚在发送时返回 409 `reconciliation_conflict`。缺少金额、负数或高于 `2147483647` 微元返回 400 `cost_invalid`。有费用时追加到请求发起日的匿名账本，个人用量、请求数和字符数均不追加。
 
 #### `GET /api/v1/admin/accounts?query=&plan=&limit=&offset=`
 
@@ -134,6 +140,12 @@
 - 计数器是进程内状态，重启清零；不持久化，也不写用户文本。
 - `byReason` 使用现有网关错误 token（如 `rate_limited`、`budget_exhausted`、`quota_exhausted`）。
 - HTTP 网关在读请求体之前执行账号限频与并发限制，触发时均返回 `rate_limited`。文本端点重建非流式上游请求并设置输出上限，即使调用方省略该参数也适用。
+
+### 3.3 HTTP 网关回执
+
+文本、图片和 OCR 调用可发送 `X-FT-Request-Id`，值为非零 UUID 的带连字符形式。同一次自动重试使用同一标识。请求通过限流后若已有发送记录，网关返回 409 `request_already_processed` 与 `X-FT-Request-Outcome: already_processed`。明确的上游拒绝仍允许同一请求重试。未带标识的旧客户端仍受额度和成本登记保护。
+
+发送后结果无法确定时，网关返回 `X-FT-Request-Outcome: pending`。上一进程遗留的发送在启动时进入待核对，在进程运行中超过发送与结算期限的记录也进入待核对。后台按发起日暂计估算费用，个人额度释放预留。收到上述两类回执时，桌面端停止当前操作的自动重试和自带 Key 回落。等待供应商核对的记录继续保留。已完成明细保留至少 30 天，清理明细后匿名汇总账仍可查询。网关不保存正文和译文，重试返回状态回执。
 
 ## 4. 禁用语义
 

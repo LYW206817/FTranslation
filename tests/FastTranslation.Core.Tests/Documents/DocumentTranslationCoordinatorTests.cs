@@ -31,6 +31,29 @@ public sealed class DocumentTranslationCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Stops_after_an_unavailable_gateway_receipt_without_resubmitting_each_segment()
+    {
+        var source = WriteText("outcome.txt", "第一段\n\n第二段");
+        var operations = new List<Guid>();
+        var coordinator = new DocumentTranslationCoordinator(
+            format => new TextDocumentTranslator(format),
+            (_, _, id, _) =>
+            {
+                operations.Add(id);
+                if (operations.Count == 1) throw new IOException("Fixture response interrupted.");
+                throw new GatewayResultUnavailableException("Fixture result unavailable.");
+            },
+            () => _dir, _results.Add, _errors.Add, (_, _, _) => { }, _dir);
+
+        await coordinator.RunAsync(source, "en", null, CancellationToken.None);
+
+        Assert.Equal(2, operations.Count);
+        Assert.NotEqual(Guid.Empty, operations[0]);
+        Assert.Equal(operations[0], operations[1]);
+        Assert.Equal(2, Assert.Single(_results).FailedSegments);
+    }
+
+    [Fact]
     public async Task Refuses_to_start_when_the_quota_is_too_small()
     {
         var source = WriteText("quota.txt", "一段不短的正文内容");

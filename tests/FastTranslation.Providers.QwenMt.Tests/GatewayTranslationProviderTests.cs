@@ -1,3 +1,4 @@
+using System.Net;
 using FastTranslation.Core;
 using Xunit;
 
@@ -102,6 +103,48 @@ public class GatewayTranslationProviderTests
 
         Assert.Equal(TranslationErrorCode.Cancelled, result.Error!.Code);
         Assert.Equal(0, own.Calls);
+    }
+
+    [Theory]
+    [InlineData("pending", HttpStatusCode.GatewayTimeout, false)]
+    [InlineData("already_processed", HttpStatusCode.Conflict, false)]
+    [InlineData(null, HttpStatusCode.BadGateway, false)]
+    [InlineData(null, HttpStatusCode.TooManyRequests, true)]
+    public async Task Gateway_operation_receipts_stop_automatic_fallback(
+        string? outcome, HttpStatusCode status, bool loseFirstResponse)
+    {
+        var operation = Guid.NewGuid().ToString("D");
+        var handler = new OutcomeHandler(outcome, status, loseFirstResponse);
+        using var client = new HttpClient(handler);
+        using var gateway = new QwenMtProvider(() => "test-token", new QwenMtOptions
+        {
+            BaseUrl = "https://example.com/v1",
+            ExtraHeaders = new Dictionary<string, string> { ["X-FT-Request-Id"] = operation },
+        }, client);
+        var own = new StubProvider(() => Ok("自己的译文"));
+        using var provider = new GatewayTranslationProvider(
+            async (request, token) => await gateway.TranslateAsync(request, token), own);
+
+        var result = await provider.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(TranslationErrorCode.GatewayResultUnavailable, result.Error?.Code);
+        Assert.Equal(0, own.Calls);
+        Assert.Equal(loseFirstResponse ? 2 : 1, handler.Operations.Count);
+        Assert.All(handler.Operations, identity => Assert.Equal(operation, identity));
+    }
+
+    private sealed class OutcomeHandler(string? outcome, HttpStatusCode status, bool loseFirstResponse) : HttpMessageHandler
+    {
+        public List<string> Operations { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Operations.Add(Assert.Single(request.Headers.GetValues("X-FT-Request-Id")));
+            if (loseFirstResponse && Operations.Count == 1) throw new IOException("Fixture connection interrupted.");
+            var response = new HttpResponseMessage(status);
+            if (outcome is not null) response.Headers.Add("X-FT-Request-Outcome", outcome);
+            return Task.FromResult(response);
+        }
     }
 
     [Fact]

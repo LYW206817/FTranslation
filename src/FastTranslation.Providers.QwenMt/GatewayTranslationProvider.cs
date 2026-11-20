@@ -41,8 +41,8 @@ public sealed class GatewayTranslationProvider : ITranslationProvider
         if (gateway is null) return await _own.TranslateAsync(request, cancellationToken).ConfigureAwait(false);
         if (gateway.Succeeded) return gateway;
 
-        // 取消和超长是请求本身的问题，换成用户自己的 Key 也是同样的结果，不重试。
-        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong })
+        // 结果未确认时回落会重新发请求，用户可能同时付直连和网关两笔费用。
+        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong or TranslationErrorCode.GatewayResultUnavailable })
         {
             return gateway;
         }

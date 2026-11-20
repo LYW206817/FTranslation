@@ -26,6 +26,9 @@ public enum TranslationErrorCode
     NotSignedIn,
 
     Unknown,
+
+    /// <summary>网关已接受本次操作，当前无法取回结果。</summary>
+    GatewayResultUnavailable,
 }
 
 public sealed record TranslationError(TranslationErrorCode Code, string Message)
@@ -42,6 +45,8 @@ public sealed record TranslationError(TranslationErrorCode Code, string Message)
 public sealed record TranslationRequest(string Text, string SourceLanguage, string TargetLanguage, string Model)
 {
     public const int MaxInputLength = 5000;
+    /// <summary>同一个业务操作的网关标识，重试时应复用。</summary>
+    public Guid? GatewayOperationId { get; init; }
 }
 
 /// <summary>

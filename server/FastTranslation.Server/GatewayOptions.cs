@@ -28,6 +28,8 @@ public sealed class GatewayOptions
 
     public int TimeoutSeconds { get; set; } = 60;
 
+    internal int EffectiveTimeoutSeconds => TimeoutSeconds > 0 ? TimeoutSeconds : 60;
+
     /// <summary>
     /// 免费账号（有效档位为 Free，含订阅已到期的）每日的支出上限，单位为微元。这是针对单个
     /// 滥用账号的最后防线：当日成本越过该上限后，网关返回 429，免费客户端

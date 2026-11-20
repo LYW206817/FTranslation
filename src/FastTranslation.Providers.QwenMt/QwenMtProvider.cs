@@ -64,6 +64,7 @@ public sealed class QwenMtProvider : ITranslationProvider
         }
 
         var payload = BuildPayload(request);
+        var previousAttemptUnconfirmed = false;
         int attempt;
         for (attempt = 0; attempt < 2; attempt++)
         {
@@ -78,6 +79,10 @@ public sealed class QwenMtProvider : ITranslationProvider
                 httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
                 using var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                if (GatewayRequestOutcome.Read(response, _options.ExtraHeaders, previousAttemptUnconfirmed) is { } unavailable)
+                {
+                    return Fail(request, unavailable, started);
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -118,13 +123,18 @@ public sealed class QwenMtProvider : ITranslationProvider
             }
             catch (TaskCanceledException) // HttpClient 超时
             {
-                if (attempt == 0) { await DelayAsync(attempt, ct).ConfigureAwait(false); continue; }
-                return Fail(request, TranslationError.Network("请求超时"), started);
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, "请求超时");
+                if (attempt != 0) return Fail(request, error, started);
+                previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
+                await DelayAsync(attempt, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException)
             {
-                if (attempt == 0 && IsWorthRetrying(ex)) { await DelayAsync(attempt, ct).ConfigureAwait(false); continue; }
-                return Fail(request, TranslationError.Network(ex.Message), started);
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, ex.Message,
+                    previousAttemptUnconfirmed ? null : ex);
+                if (attempt != 0 || !IsWorthRetrying(ex)) return Fail(request, error, started);
+                previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
+                await DelayAsync(attempt, ct).ConfigureAwait(false);
             }
         }
         return Fail(request, TranslationError.Network("重试后仍失败"), started);

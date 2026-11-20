@@ -25,7 +25,7 @@ public sealed class GatewayOcrProvider : IImageOcrProvider
         var gateway = await _gateway(request, cancellationToken).ConfigureAwait(false);
         if (gateway is null) return await _own.RecognizeAsync(request, cancellationToken).ConfigureAwait(false);
         if (gateway.Succeeded) return gateway;
-        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong })
+        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong or TranslationErrorCode.GatewayResultUnavailable })
         {
             return gateway;
         }

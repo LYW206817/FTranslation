@@ -6,9 +6,8 @@ namespace FastTranslation.Server.Gateway;
 /// 全站日预算的并发闸门。原实现是「读今天成本 → 放行 → 结束后记账」，一批并发请求
 /// 会各自读到同一个旧成本全部放行，把 5 元日预算冲过数倍。
 /// <para>
-/// 预留在进程内完成并随结算释放：部署只有一台 ECS、一个进程，重启时在途请求也一起
-/// 消失，所以不需要为它建表。预算按来源分桶（gateway / gateway_paid / speech），与
-/// <c>ReadTodayCostMicros(source)</c> 的口径一致。
+/// HTTP 发送前的预留与语音在途预留保存在内存，HTTP 发送后的占用由 SQLite 账本负责。
+/// 每桶独立计算，待核对金额只占用发起当日的预算，跨日后仍保留供运营对账。
 /// </para>
 /// </summary>
 public sealed class GatewayBudgetGuard(AccountStore store)
@@ -29,8 +28,10 @@ public sealed class GatewayBudgetGuard(AccountStore store)
 
         lock (_gate)
         {
-            var used = store.ReadTodayCostMicros(source);
-            _reservedMicros.TryGetValue(source, out var held);
+            var (settled, pending, sending) = store.ReadTodayCosts(source);
+            var used = settled + pending;
+            _reservedMicros.TryGetValue(source, out var heldLocally);
+            var held = heldLocally + sending;
             if (used >= budgetMicros)
             {
                 return false;
@@ -44,7 +45,18 @@ public sealed class GatewayBudgetGuard(AccountStore store)
                 return false;
             }
 
-            _reservedMicros[source] = held + estimateMicros;
+            _reservedMicros[source] = heldLocally + estimateMicros;
+            return true;
+        }
+    }
+
+    internal bool TransferReservation(string source, long estimateMicros, Func<bool> persist)
+    {
+        // 预算读取与转移共用锁，避免另一请求在持久化切换时漏计或重复看到同一笔。
+        lock (_gate)
+        {
+            if (!persist()) return false;
+            ReleaseCore(source, estimateMicros);
             return true;
         }
     }
@@ -52,23 +64,17 @@ public sealed class GatewayBudgetGuard(AccountStore store)
     /// <summary>请求结束（成功记账、上游拒绝或异常）后释放预留。</summary>
     public void Release(string source, long estimateMicros)
     {
-        if (estimateMicros <= 0)
-        {
-            return;
-        }
-
         lock (_gate)
         {
-            _reservedMicros.TryGetValue(source, out var held);
-            var left = held - estimateMicros;
-            if (left > 0)
-            {
-                _reservedMicros[source] = left;
-            }
-            else
-            {
-                _reservedMicros.Remove(source);
-            }
+            ReleaseCore(source, estimateMicros);
         }
+    }
+
+    private void ReleaseCore(string source, long estimateMicros)
+    {
+        if (estimateMicros <= 0 || !_reservedMicros.TryGetValue(source, out var held)) return;
+        var left = held - estimateMicros;
+        if (left > 0) _reservedMicros[source] = left;
+        else _reservedMicros.Remove(source);
     }
 }

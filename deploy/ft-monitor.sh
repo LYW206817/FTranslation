@@ -49,7 +49,19 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 log() { printf '%s ft-monitor[%s]: %s\n' "$(date -u +%FT%TZ)" "$MODE" "$*"; }
 sql() { sqlite3 -readonly "$FT_DB" "PRAGMA query_only=ON; $1"; }
-yuan() { awk -v m="${1:-0}" 'BEGIN { printf "%.2f", m / 1000000 }'; }
+yuan() { awk -v m="${1:-0}" -v digits="${2:-2}" 'BEGIN { printf "%.*f", digits, m / 1000000 }'; }
+
+# 同一条语句读取，避免人工核对把一笔费用从待核对移进已结算时漏算或多算。
+budget_costs() {
+	local source=$1
+	sql "WITH today(day) AS (SELECT unixepoch('now','start of day'))
+		SELECT COALESCE((SELECT cost_micros FROM gateway_daily_costs, today
+			WHERE gateway_daily_costs.day = today.day AND source = '$source'), 0) || ':' ||
+		COALESCE((SELECT SUM(estimated_cost_micros) FROM gateway_dispatches, today
+			WHERE source = '$source'
+			AND (state = 'pending' OR (state = 'sending' AND recover_after <= unixepoch('now')))
+			AND started_at >= today.day AND started_at < today.day + 86400), 0);"
+}
 
 # 读一个预算键；键不存在或值非法都返回 missing——不能当成 0（0 是「刻意不设上限」），
 # 否则生产配置漏了键时监控会静默跳过这一桶，而网关那边仍在按默认值熔断。
@@ -67,7 +79,7 @@ config_micros() {
 # 预算 0 表示该桶不熔断；此时补一条 ok，清掉之前遗留的失败告警。
 check_budget() {
 	local key=$1 label=$2 source=$3 config_path=$4
-	local budget used percent
+	local budget costs settled pending percent
 	budget=$(config_micros "$config_path")
 	if [ "$budget" = "missing" ]; then
 		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：配置缺少 ${config_path#.Server.Gateway.}，这一桶无法比对" || true
@@ -77,25 +89,30 @@ check_budget() {
 		ft_alert_once "$key" ok "[FastTranslation] 预算检查（${label}）：未设上限" || true
 		return 0
 	fi
-	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM gateway_daily_costs WHERE source = '$source' AND day = unixepoch('now','start of day');")
-	percent=$(( used * 100 / budget ))
+	costs=$(budget_costs "$source")
+	settled=${costs%:*}
+	pending=${costs#*:}
+	percent=$(( (settled + pending) * 100 / budget ))
 	if [ "$percent" -ge "$FT_BUDGET_ALERT_PERCENT" ]; then
-		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：今日已用 $(yuan "$used") 元（${percent}%），预算 $(yuan "$budget") 元" || true
+		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：今日预算占用 ${percent}%，已结算 $(yuan "$settled") 元，待核对 $(yuan "$pending" 6) 元，预算 $(yuan "$budget") 元" || true
 	else
-		ft_alert_once "$key" ok "[FastTranslation] 预算恢复（${label}）：今日已用 $(yuan "$used") 元（${percent}%）" || true
+		ft_alert_once "$key" ok "[FastTranslation] 预算恢复（${label}）：今日预算占用 ${percent}%，已结算 $(yuan "$settled") 元，待核对 $(yuan "$pending" 6) 元" || true
 	fi
 }
 
 # 每日摘要用的一行「今日成本 / 上限」。
 bucket_today() {
-	local source=$1 config_path=$2 used budget
-	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM gateway_daily_costs WHERE source = '$source' AND day = unixepoch('now','start of day');")
+	local source=$1 config_path=$2 costs settled pending budget
+	costs=$(budget_costs "$source")
+	settled=${costs%:*}
+	pending=${costs#*:}
 	budget=$(config_micros "$config_path")
 	case "$budget" in
-		missing) printf '%s 元（未配置上限）' "$(yuan "$used")" ;;
-		0) printf '%s 元（不限）' "$(yuan "$used")" ;;
-		*) printf '%s / %s 元' "$(yuan "$used")" "$(yuan "$budget")" ;;
+		missing) printf '%s 元（未配置上限）' "$(yuan "$settled")" ;;
+		0) printf '%s 元（不限）' "$(yuan "$settled")" ;;
+		*) printf '%s / %s 元' "$(yuan "$settled")" "$(yuan "$budget")" ;;
 	esac
+	if [ "$pending" -gt 0 ]; then printf '，待核对 %s 元' "$(yuan "$pending" 6)"; fi
 }
 
 [ -f "$FT_DB" ] || { log "database not found: $FT_DB"; exit 1; }

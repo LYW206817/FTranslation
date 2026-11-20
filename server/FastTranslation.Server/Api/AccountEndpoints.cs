@@ -265,6 +265,8 @@ public static class AdminEndpoints
             .RequireRateLimiting(RateLimiting.AdminPolicy);
         group.MapGet("/metrics", Metrics).AddEndpointFilter(RequireAdminToken);
         group.MapGet("/usage", Usage).AddEndpointFilter(RequireAdminToken);
+        group.MapGet("/gateway/reconciliation", PendingGatewayCharges).AddEndpointFilter(RequireAdminToken);
+        group.MapPost("/gateway/reconciliation/{id:guid}/resolve", ResolveGatewayCharge).AddEndpointFilter(RequireAdminToken);
         group.MapGet("/accounts", Accounts).AddEndpointFilter(RequireAdminToken);
         group.MapPost("/accounts/{email}/plan", SetPlan).AddEndpointFilter(RequireAdminToken);
         group.MapPost("/accounts/{email}/disable", Disable).AddEndpointFilter(RequireAdminToken);
@@ -319,12 +321,11 @@ public static class AdminEndpoints
 
         // 预算按桶分账（免费 / 会员 / 语音），各自与自己的上限比较：之前这里把当日
         // 全部来源的成本和免费桶预算摆在一起，页面上分子分母根本不对应。
-        var buckets = GatewayBuckets.All(gateway)
-            .Select(bucket => new AdminBudgetBucket(
-                bucket.Source,
-                store.ReadTodayCostMicros(bucket.Source),
-                bucket.BudgetMicros))
-            .ToArray();
+        var buckets = GatewayBuckets.All(gateway).Select(bucket =>
+        {
+            var (settled, pending, _) = store.ReadTodayCosts(bucket.Source);
+            return new AdminBudgetBucket(bucket.Source, settled, bucket.BudgetMicros, pending);
+        }).ToArray();
 
         return Results.Ok(new AdminUsageResponse(
             window,
@@ -334,6 +335,25 @@ public static class AdminEndpoints
             bySource,
             byDay,
             buckets));
+    }
+
+    private static IResult PendingGatewayCharges(
+        [FromQuery] int? limit, [FromQuery] int? offset, GatewaySettlementStore ledger)
+        => Results.Ok(ledger.ReadPending(Math.Clamp(limit ?? 50, 1, 200), Math.Max(offset ?? 0, 0)));
+
+    private static IResult ResolveGatewayCharge(Guid id, [FromBody] ResolveGatewayChargeRequest request,
+        GatewaySettlementStore ledger, ILoggerFactory loggers)
+    {
+        if (request.CostMicros is not { } cost || cost is < 0 or > int.MaxValue)
+        {
+            return Results.BadRequest(new ErrorResponse("cost_invalid"));
+        }
+        if (!ledger.Resolve(id, cost))
+        {
+            return Results.Conflict(new ErrorResponse("reconciliation_conflict"));
+        }
+        loggers.CreateLogger("Admin").LogInformation("admin action=gateway_charge_resolved id={Id}", id);
+        return Results.Ok(new MessageResponse("gateway_charge_resolved"));
     }
 
     private static IResult Accounts(

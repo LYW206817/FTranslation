@@ -287,9 +287,10 @@ function card(label, value, hint) {
   return el;
 }
 
-function summary(label, value) {
+function summary(label, value, hint) {
   const el = create('div');
   el.append(create('div', 'label', label), create('div', 'value', value));
+  if (hint) el.append(create('div', 'label', hint));
   return el;
 }
 
@@ -459,8 +460,14 @@ async function loadUsage() {
   $('usage-summary').replaceChildren(
     summary('请求', formatNumber(data.total.requests)),
     summary('字符', formatNumber(data.total.chars)),
-    summary('成本', formatYuan(data.total.costMicros)),
-    ...data.buckets.map((bucket) => summary(`今日${sourceLabel(bucket.source)}`, bucketText(bucket))),
+    summary('已结算成本', formatYuan(data.total.costMicros)),
+    ...data.buckets.map((bucket) => {
+      const pending = Number(bucket.pendingCostMicros || 0) / 1_000_000;
+      const hint = pending > 0
+        ? `待核对 ${pending.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}\u00a0元`
+        : '';
+      return summary(`今日${sourceLabel(bucket.source)}`, bucketText(bucket), hint);
+    }),
   );
   renderUsageChart(data.byDay);
 

@@ -237,14 +237,34 @@ public sealed class AccountStore(ServerDatabase database)
     }
 
     /// <summary>今天某个来源已花掉的成本(微元)。日预算按桶分账,必须按 source 单独求和。</summary>
-    public long ReadTodayCostMicros(string source)
+    public long ReadTodayCostMicros(string source) => ReadTodayCosts(source).Settled;
+
+    /// <summary>以同一 SQLite 快照读取预算桶今日成本和仍在发送的预留。</summary>
+    public (long Settled, long Pending, long Sending) ReadTodayCosts(string source)
     {
         using var connection = database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT cost_micros FROM gateway_daily_costs WHERE day = $day AND source = $source";
-        command.Parameters.AddWithValue("$day", QuotaCycle.StartOfUtcDay(database.NowUnix));
+        // 转待核对、确认成本和预算检查可能并发，单次读取才能避免漏看状态转换中的支出。
+        command.CommandText = """
+            SELECT
+                COALESCE((SELECT cost_micros FROM gateway_daily_costs WHERE day = $day AND source = $source), 0),
+                COALESCE((SELECT SUM(estimated_cost_micros) FROM gateway_dispatches
+                    WHERE state = 'pending' AND source = $source AND started_at >= $day AND started_at < $next), 0)
+                    + COALESCE((SELECT SUM(estimated_cost_micros) FROM gateway_dispatches
+                        WHERE state = 'sending' AND recover_after <= $now AND source = $source
+                        AND started_at >= $day AND started_at < $next), 0),
+                COALESCE((SELECT SUM(estimated_cost_micros) FROM gateway_dispatches
+                    WHERE state = 'sending' AND recover_after > $now AND source = $source), 0)
+            """;
+        var now = database.NowUnix;
+        var day = QuotaCycle.StartOfUtcDay(now);
+        command.Parameters.AddWithValue("$day", day);
+        command.Parameters.AddWithValue("$next", day + 86_400);
         command.Parameters.AddWithValue("$source", source);
-        return command.ExecuteScalar() is long cost ? cost : 0L;
+        command.Parameters.AddWithValue("$now", now);
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        return (reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
     }
 
     /// <summary>返回该指纹对应的设备；账号未达设备上限时会创建。</summary>
@@ -561,11 +581,18 @@ public sealed class AccountStore(ServerDatabase database)
     /// 记一笔用量。<paramref name="source"/> 是预算桶名（<see cref="Gateway.GatewayBuckets"/>），
     /// 没有默认值：漏传就会把会员或语音的账记进免费桶，熔断与展示都会错。
     /// </summary>
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut,
-        long costMicros, long now, string source, Guid? reservationId = null, bool completeReservation = true)
+    public bool RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut,
+        long costMicros, long now, string source, Guid? reservationId = null, bool completeReservation = true,
+        GatewayUsageCompletion? gatewayCompletion = null)
     {
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
+        if (gatewayCompletion is { } completion
+            && !GatewaySettlementStore.Complete(connection, transaction, completion.Id, completion.UpstreamRequestId, now))
+        {
+            return false;
+        }
+
         using var entry = connection.CreateCommand();
         entry.Transaction = transaction;
         entry.Parameters.AddWithValue("$chars", chars);
@@ -579,19 +606,9 @@ public sealed class AccountStore(ServerDatabase database)
         if (anchor is null)
         {
             // v197: 请求在用户注销前已发给上游时，仍需入成本账，但不能重建个人记录。
-            entry.CommandText = """
-                INSERT INTO gateway_daily_costs (day, source, requests, chars, tokens_in, tokens_out, cost_micros)
-                VALUES ($now - ($now % 86400), $source, 1, $chars, $tokensIn, $tokensOut, $cost)
-                ON CONFLICT(day, source) DO UPDATE SET
-                    requests = requests + 1,
-                    chars = chars + excluded.chars,
-                    tokens_in = tokens_in + excluded.tokens_in,
-                    tokens_out = tokens_out + excluded.tokens_out,
-                    cost_micros = cost_micros + excluded.cost_micros
-                """;
-            entry.ExecuteNonQuery();
+            RecordAnonymousUsage(connection, transaction, source, costMicros, now, 1, chars, tokensIn, tokensOut);
             transaction.Commit();
-            return;
+            return true;
         }
 
         var window = reservationId is { } id
@@ -599,7 +616,7 @@ public sealed class AccountStore(ServerDatabase database)
             : (QuotaCycle.Key(anchor.Value, now), UtcDayKey(now));
         if (window is not { } quotaWindow)
         {
-            return;
+            return false;
         }
 
         using (var monthly = connection.CreateCommand())
@@ -638,6 +655,32 @@ public sealed class AccountStore(ServerDatabase database)
         entry.ExecuteNonQuery();
 
         transaction.Commit();
+        return true;
+    }
+
+    internal static void RecordAnonymousUsage(SqliteConnection connection, SqliteTransaction transaction,
+        string source, long costMicros, long now, int requests, int chars = 0, int tokensIn = 0, int tokensOut = 0)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO gateway_daily_costs (day, source, requests, chars, tokens_in, tokens_out, cost_micros)
+            VALUES ($day, $source, $requests, $chars, $tokensIn, $tokensOut, $cost)
+            ON CONFLICT(day, source) DO UPDATE SET
+                requests = requests + excluded.requests,
+                chars = chars + excluded.chars,
+                tokens_in = tokens_in + excluded.tokens_in,
+                tokens_out = tokens_out + excluded.tokens_out,
+                cost_micros = cost_micros + excluded.cost_micros
+            """;
+        command.Parameters.AddWithValue("$day", QuotaCycle.StartOfUtcDay(now));
+        command.Parameters.AddWithValue("$source", source);
+        command.Parameters.AddWithValue("$requests", requests);
+        command.Parameters.AddWithValue("$chars", chars);
+        command.Parameters.AddWithValue("$tokensIn", tokensIn);
+        command.Parameters.AddWithValue("$tokensOut", tokensOut);
+        command.Parameters.AddWithValue("$cost", costMicros);
+        command.ExecuteNonQuery();
     }
 
     public void SaveRefreshToken(Guid userId, string tokenHash, long expiresAt, Guid? deviceId = null)

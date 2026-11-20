@@ -63,6 +63,7 @@ public sealed class QwenOcrClient : IImageOcrProvider
         }
 
         var payload = BuildPayload(request, _options.Model);
+        var previousAttemptUnconfirmed = false;
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -79,8 +80,11 @@ public sealed class QwenOcrClient : IImageOcrProvider
                 using var response = await _http
                     .SendAsync(httpRequest, HttpCompletionOption.ResponseContentRead, cancellationToken)
                     .ConfigureAwait(false);
+                if (GatewayRequestOutcome.Read(response, _options.ExtraHeaders, previousAttemptUnconfirmed) is { } unavailable)
+                {
+                    return ImageOcrResult.Failed(unavailable, started);
+                }
                 var body = await SafeReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
-
                 if (!response.IsSuccessStatusCode)
                 {
                     if (QuotaRefusal.Describe(body) is { } quota)
@@ -113,21 +117,26 @@ public sealed class QwenOcrClient : IImageOcrProvider
             }
             catch (TaskCanceledException) // HttpClient 超时
             {
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, "请求超时");
                 if (attempt == 0)
                 {
+                    previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
                     await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
-                return ImageOcrResult.Failed(TranslationError.Network("请求超时"), started);
+                return ImageOcrResult.Failed(error, started);
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException)
             {
+                var error = GatewayRequestOutcome.TransportFailure(_options.ExtraHeaders, ex.Message,
+                    previousAttemptUnconfirmed ? null : ex);
                 if (attempt == 0)
                 {
+                    previousAttemptUnconfirmed = error.Code == TranslationErrorCode.GatewayResultUnavailable;
                     await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
-                return ImageOcrResult.Failed(TranslationError.Network(ex.Message), started);
+                return ImageOcrResult.Failed(error, started);
             }
         }
 

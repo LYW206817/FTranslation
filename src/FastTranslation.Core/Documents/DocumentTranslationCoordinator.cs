@@ -25,7 +25,7 @@ public sealed record DocumentPreview(DocumentFormat Format, int TotalSegments, l
 public sealed class DocumentTranslationCoordinator
 {
     private readonly Func<DocumentFormat, IDocumentTranslator> _translatorFactory;
-    private readonly Func<string, string, CancellationToken, Task<string>> _translateText;
+    private readonly Func<string, string, Guid, CancellationToken, Task<string>> _translateText;
     private readonly Func<string?> _outputDirectory;
     private readonly Action<DocumentJobResult> _present;
     private readonly Action<string> _reportError;
@@ -41,6 +41,22 @@ public sealed class DocumentTranslationCoordinator
     public DocumentTranslationCoordinator(
         Func<DocumentFormat, IDocumentTranslator> translatorFactory,
         Func<string, string, CancellationToken, Task<string>> translateText,
+        Func<string?> outputDirectory,
+        Action<DocumentJobResult> present,
+        Action<string> reportError,
+        Action<double, int, int> progress,
+        string? checkpointDirectory = null,
+        Action<string>? log = null)
+        : this(translatorFactory, (text, language, _, token) => translateText(text, language, token),
+            outputDirectory, present, reportError, progress, checkpointDirectory, log)
+    {
+        ArgumentNullException.ThrowIfNull(translateText);
+    }
+
+    /// <summary>把每个翻译单元的操作标识传给网关，使自动重试复用同一笔请求。</summary>
+    public DocumentTranslationCoordinator(
+        Func<DocumentFormat, IDocumentTranslator> translatorFactory,
+        Func<string, string, Guid, CancellationToken, Task<string>> translateText,
         Func<string?> outputDirectory,
         Action<DocumentJobResult> present,
         Action<string> reportError,
@@ -149,7 +165,7 @@ public sealed class DocumentTranslationCoordinator
         long lastSavedAt = 0;
         const int PartialSaveIntervalMs = 10_000;
 
-        var translated = await SegmentTranslator.TranslateAsync(
+        var translated = await SegmentTranslator.TranslateWithOperationIdAsync(
                 job.Segments, translate, progress, cancellationToken, SavePartialAsync)
             .ConfigureAwait(false);
         var finished = new DocumentJob(sourcePath, outputPath, targetLanguage, translated, _checkpointDirectory);
@@ -273,8 +289,8 @@ public sealed class DocumentTranslationCoordinator
         IReadOnlyList<DocumentSegment> Segments,
         long Chars);
 
-    private Func<string, CancellationToken, Task<string>> BuildTranslate(string targetLanguage) =>
-        (text, token) => _translateText(text, targetLanguage, token);
+    private Func<string, Guid, CancellationToken, Task<string>> BuildTranslate(string targetLanguage) =>
+        (text, operationId, token) => _translateText(text, targetLanguage, operationId, token);
 
     /// <summary>没译成的段与跳过（空白/纯数字）的段都不计额度：服务端也只按真正送上去的字数记账。</summary>
     private static long CountChars(IReadOnlyList<DocumentSegment> segments) =>

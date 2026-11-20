@@ -27,7 +27,7 @@ public sealed class GatewayImageTranslationProvider : IImageTranslationProvider
         var gateway = await _gateway(request, cancellationToken).ConfigureAwait(false);
         if (gateway is null) return await _own.TranslateImageAsync(request, cancellationToken).ConfigureAwait(false);
         if (gateway.Succeeded) return gateway;
-        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong })
+        if (gateway.Error is { Code: TranslationErrorCode.Cancelled or TranslationErrorCode.ContentTooLong or TranslationErrorCode.GatewayResultUnavailable })
         {
             return gateway;
         }

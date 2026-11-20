@@ -76,9 +76,21 @@ public static class SegmentTranslator
     /// 让整份文档能落地并在界面上列出「哪几段没译成」——把 5000 段里的一段失败升级成整份失败，
     /// 等于几乎每份大文档都失败。
     /// </summary>
-    public static async Task<IReadOnlyList<DocumentSegment>> TranslateAsync(
+    public static Task<IReadOnlyList<DocumentSegment>> TranslateAsync(
         IReadOnlyList<DocumentSegment> segments,
         Func<string, CancellationToken, Task<string>> translate,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken,
+        Func<IReadOnlyList<DocumentSegment>, Task>? onUnitCompleted = null)
+    {
+        ArgumentNullException.ThrowIfNull(translate);
+        return TranslateWithOperationIdAsync(segments, (text, _, token) => translate(text, token),
+            progress, cancellationToken, onUnitCompleted);
+    }
+
+    internal static async Task<IReadOnlyList<DocumentSegment>> TranslateWithOperationIdAsync(
+        IReadOnlyList<DocumentSegment> segments,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         IProgress<int>? progress,
         CancellationToken cancellationToken,
         Func<IReadOnlyList<DocumentSegment>, Task>? onUnitCompleted = null)
@@ -149,7 +161,7 @@ public static class SegmentTranslator
 
     private static async Task<IReadOnlyList<DocumentSegment>> TranslateUnitAsync(
         IReadOnlyList<DocumentSegment> unit,
-        Func<string, CancellationToken, Task<string>> translate,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
@@ -159,7 +171,7 @@ public static class SegmentTranslator
 
     private static async Task<DocumentSegment> TranslateSingleAsync(
         DocumentSegment segment,
-        Func<string, CancellationToken, Task<string>> translate,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
@@ -175,7 +187,7 @@ public static class SegmentTranslator
     /// </summary>
     private static async Task<IReadOnlyList<DocumentSegment>> TranslateMergedAsync(
         IReadOnlyList<DocumentSegment> unit,
-        Func<string, CancellationToken, Task<string>> translate,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
@@ -199,7 +211,7 @@ public static class SegmentTranslator
     /// <summary>试一次合并请求（含 3 次重试），成功返回整单元的译文，失败返回 null 交给调用方降级。</summary>
     private static async Task<IReadOnlyList<DocumentSegment>?> TryTranslateMergedAsync(
         IReadOnlyList<DocumentSegment> unit,
-        Func<string, CancellationToken, Task<string>> translate,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
@@ -210,6 +222,7 @@ public static class SegmentTranslator
         var originals = new IReadOnlyList<string>[unit.Count];
         for (var i = 0; i < unit.Count; i++) protectedTexts[i] = PlaceholderProtector.Protect(unit[i].Source, out originals[i]);
         var joined = string.Join("\n\n", protectedTexts);
+        var operationId = Guid.NewGuid();
 
         for (var attempt = 0; attempt < MaxAttempts; attempt++)
         {
@@ -217,7 +230,7 @@ public static class SegmentTranslator
             try
             {
                 await pacer.WaitAsync(joined.Length, cancellationToken).ConfigureAwait(false);
-                translated = await translate(joined, cancellationToken).ConfigureAwait(false);
+                translated = await translate(joined, operationId, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -227,6 +240,11 @@ public static class SegmentTranslator
             {
                 // 额度耗尽重试一次也是同样的结果，直接放弃整份作业交给上层报错。
                 throw;
+            }
+            catch (GatewayResultUnavailableException)
+            {
+                // 已提交的单元没有可用结果时，拆段会把同一份内容重新送给上游。
+                return [.. unit.Select(segment => segment with { Target = null, Status = SegmentStatus.Failed })];
             }
             catch (Exception)
             {
@@ -239,9 +257,9 @@ public static class SegmentTranslator
 
             // 回切靠段落分隔符，段数不符说明模型把两段并成了一段或多切了——整包重试。
             var pieces = translated.Split("\n\n");
-            if (pieces.Length != unit.Count) continue;
-            var filled = Fill(unit, pieces, originals);
-            if (filled is not null) return filled;
+            if (pieces.Length == unit.Count && Fill(unit, pieces, originals) is { } filled) return filled;
+            // 已收到译文但格式不合适时，重译是一笔新的操作；只有传输重试沿用原标识。
+            operationId = Guid.NewGuid();
         }
 
         return null;
@@ -270,18 +288,19 @@ public static class SegmentTranslator
 
     private static async Task<string?> TryTranslateAsync(
         string source,
-        Func<string, CancellationToken, Task<string>> translate,
+        Func<string, Guid, CancellationToken, Task<string>> translate,
         RequestPacer pacer,
         CancellationToken cancellationToken)
     {
         var protectedText = PlaceholderProtector.Protect(source, out var originals);
+        var operationId = Guid.NewGuid();
         for (var attempt = 0; attempt < MaxAttempts; attempt++)
         {
             string translated;
             try
             {
                 await pacer.WaitAsync(protectedText.Length, cancellationToken).ConfigureAwait(false);
-                translated = await translate(protectedText, cancellationToken).ConfigureAwait(false);
+                translated = await translate(protectedText, operationId, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -291,6 +310,10 @@ public static class SegmentTranslator
             {
                 // 同上：额度耗尽是「换个 Key」而不是「稍后再试」，逐段重试只会把用户的等待拉长。
                 throw;
+            }
+            catch (GatewayResultUnavailableException)
+            {
+                return null;
             }
             catch (Exception)
             {
@@ -302,6 +325,7 @@ public static class SegmentTranslator
 
             var restored = PlaceholderProtector.Restore(translated, originals, out var ok);
             if (ok) return restored;
+            operationId = Guid.NewGuid();
         }
 
         return null;

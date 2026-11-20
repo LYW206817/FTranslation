@@ -191,6 +191,7 @@ public sealed class ServerDatabase
             DELETE FROM quota_reservations;
             UPDATE usage_monthly SET reserved = 0 WHERE reserved > 0;
             UPDATE usage_daily SET reserved = 0 WHERE reserved > 0;
+            UPDATE gateway_dispatches SET state = 'pending' WHERE state = 'sending';
             """;
         command.ExecuteNonQuery();
         transaction.Commit();
@@ -368,6 +369,27 @@ public sealed class ServerDatabase
         );
         CREATE INDEX IF NOT EXISTS ix_quota_reservations_month ON quota_reservations(user_id, month);
         CREATE INDEX IF NOT EXISTS ix_quota_reservations_day ON quota_reservations(device_id, day);
+
+        CREATE TABLE IF NOT EXISTS gateway_dispatches (
+            id TEXT PRIMARY KEY,
+            operation_key TEXT UNIQUE,
+            source TEXT NOT NULL,
+            estimated_cost_micros INTEGER NOT NULL,
+            started_at INTEGER NOT NULL,
+            recover_after INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            upstream_request_id TEXT,
+            resolved_cost_micros INTEGER,
+            completed_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS ix_gateway_dispatches_pending
+            ON gateway_dispatches(started_at, id) WHERE state = 'pending';
+        CREATE INDEX IF NOT EXISTS ix_gateway_dispatches_pending_source
+            ON gateway_dispatches(source, started_at) WHERE state = 'pending';
+        CREATE INDEX IF NOT EXISTS ix_gateway_dispatches_sending
+            ON gateway_dispatches(source, recover_after, started_at) WHERE state = 'sending';
+        CREATE INDEX IF NOT EXISTS ix_gateway_dispatches_completed
+            ON gateway_dispatches(completed_at) WHERE completed_at IS NOT NULL;
 
         CREATE TABLE IF NOT EXISTS usage_events (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

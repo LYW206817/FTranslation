@@ -141,7 +141,9 @@ public sealed record AdminUsageBySource(string Source, long Requests, long Chars
 public sealed record AdminUsageByDay(string Day, long Requests, long Chars, long CostMicros);
 
 /// <summary>今日某个预算桶的已花费与上限；<paramref name="BudgetMicros"/> 为 0 表示不限。</summary>
-public sealed record AdminBudgetBucket(string Source, long CostMicros, long BudgetMicros);
+public sealed record AdminBudgetBucket(string Source, long CostMicros, long BudgetMicros, long PendingCostMicros = 0);
+
+public sealed record ResolveGatewayChargeRequest(long? CostMicros);
 
 public sealed record AdminAccountDto(
     string Email,
