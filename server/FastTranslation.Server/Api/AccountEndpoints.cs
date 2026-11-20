@@ -203,17 +203,12 @@ public static class AccountEndpoints
             : Results.BadRequest(new ErrorResponse(device.Error!));
     }
 
-    /// <summary>
-    /// 账号页的设备列表。当前设备按请求头 X-FT-Device 里的指纹标记；客户端
-    /// 不送指纹时全部按“非当前”返回，删除接口也不会阻止删任何一台。
-    /// </summary>
-    private static IResult ListDevices(HttpContext context, ClaimsPrincipal principal, AccountStore store)
+    /// <summary>设备列表与删除接口使用同一个已认证的设备标识。</summary>
+    private static IResult ListDevices(ClaimsPrincipal principal, AccountStore store)
     {
-        var fingerprint = CallerFingerprint(context);
+        var currentDeviceId = principal.GetDeviceId();
         var devices = store.ListDevices(principal.GetUserId())
-            .Select(device => ToDeviceDto(
-                device,
-                fingerprint.Length > 0 && string.Equals(device.Fingerprint, fingerprint, StringComparison.Ordinal)))
+            .Select(device => ToDeviceDto(device, device.Id == currentDeviceId))
             .ToList();
 
         return Results.Ok(new DeviceListResponse(devices, Plans.MaxDevicesPerAccount));
@@ -243,9 +238,6 @@ public static class AccountEndpoints
             ? Results.Ok(ToDeviceDto(device, isCurrent: false))
             : Results.NotFound(new ErrorResponse("device_missing"));
     }
-
-    private static string CallerFingerprint(HttpContext context) =>
-        context.Request.Headers[GatewayEndpoints.DeviceHeaderName].ToString().Trim();
 
     private static DeviceDto ToDeviceDto(DeviceRecord device, bool isCurrent) =>
         new(device.Id, device.Name, device.CreatedAt, device.LastSeenAt, isCurrent);

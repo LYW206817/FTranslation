@@ -72,6 +72,21 @@ public class AccountDeviceTests : IClassFixture<ServerFactory>
     }
 
     [Fact]
+    public async Task Devices_marks_the_authenticated_device_without_a_fingerprint_header()
+    {
+        var email = UniqueEmail();
+        using var client = _factory.CreateClient();
+        await RegisterAsync(client, email, "fixture-desktop");
+        using var second = await LoginAsync(email, "fixture-laptop", "laptop");
+        second.EnsureSuccessStatusCode();
+
+        var list = await client.GetFromJsonAsync<DeviceListResponse>("/api/v1/account/devices");
+
+        Assert.NotNull(list);
+        Assert.Equal("test-pc", Assert.Single(list.Devices, device => device.IsCurrent).Name);
+    }
+
+    [Fact]
     public async Task Devices_BlankNameOnLoginKeepsTheExistingName()
     {
         // 网关转发时 RegisterDevice 拿到的名字是空串；登录也不能把客户端设置过的名字抹掉。
