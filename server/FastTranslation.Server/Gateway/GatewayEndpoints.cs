@@ -27,11 +27,6 @@ public static class GatewayEndpoints
 
     private const int MinOutputTokenAllowance = 64;
 
-    // 预算桶名同时是 usage_events.source：预留、结算与当日已花费三处必须落在同一个桶里。
-    private const string FreeBudgetSource = "gateway";
-
-    private const string PaidBudgetSource = "gateway_paid";
-
     private readonly record struct Reservation(Guid UserId, Guid DeviceId, int Chars, long EstimatedCostMicros, string Source);
 
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
@@ -377,8 +372,8 @@ public static class GatewayEndpoints
             ? PlanTier.Free
             : Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix);
         var (source, budgetMicros) = tier == PlanTier.Free
-            ? (FreeBudgetSource, gateway.DailyBudgetMicros)
-            : (PaidBudgetSource, gateway.PaidDailyBudgetMicros);
+            ? (GatewayBuckets.Free, gateway.DailyBudgetMicros)
+            : (GatewayBuckets.Paid, gateway.PaidDailyBudgetMicros);
         if (!budget.TryReserve(source, budgetMicros, estimatedCostMicros))
         {
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "budget_exhausted");

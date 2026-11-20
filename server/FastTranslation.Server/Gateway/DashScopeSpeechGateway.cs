@@ -88,7 +88,7 @@ public sealed class DashScopeSpeechGateway
                 var cost = Pricing.TextCostMicros(_options.Model, deltaIn, deltaOut);
                 store.RecordUsage(userId, deviceId, (int)Math.Min(chars, int.MaxValue), _options.Model,
                     (int)Math.Min(deltaIn, int.MaxValue), (int)Math.Min(deltaOut, int.MaxValue),
-                    cost, database.NowUnix, source: "speech");
+                    cost, database.NowUnix, source: GatewayBuckets.Speech);
                 billedSeconds = seconds;
                 billedIn = tokensIn;
                 billedOut = tokensOut;

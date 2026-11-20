@@ -51,19 +51,57 @@ log() { printf '%s ft-monitor[%s]: %s\n' "$(date -u +%FT%TZ)" "$MODE" "$*"; }
 sql() { sqlite3 -readonly "$FT_DB" "PRAGMA query_only=ON; $1"; }
 yuan() { awk -v m="${1:-0}" 'BEGIN { printf "%.2f", m / 1000000 }'; }
 
-budget_micros() {
+# 读一个预算键；键不存在或值非法都返回 missing——不能当成 0（0 是「刻意不设上限」），
+# 否则生产配置漏了键时监控会静默跳过这一桶，而网关那边仍在按默认值熔断。
+config_micros() {
 	local value
-	value=$(jq -r '.Server.Gateway.DailyBudgetMicros // 0' "$FT_CONFIG" 2>/dev/null || echo 0)
+	value=$(jq -r "(${1}) // \"missing\"" "$FT_CONFIG" 2>/dev/null || echo missing)
 	case "$value" in
-		''|*[!0-9]*) echo 0 ;;
+		''|*[!0-9]*) echo missing ;;
 		*) echo "$value" ;;
+	esac
+}
+
+# 预算按桶比对（免费 / 会员 / 语音，见网关 GatewayBuckets）：把全站成本塞进免费桶的
+# 上限，会在会员或语音花钱时提前告警，而真正烧穿的那一桶反而看不出来。
+# 预算 0 表示该桶不熔断；此时补一条 ok，清掉之前遗留的失败告警。
+check_budget() {
+	local key=$1 label=$2 source=$3 config_path=$4
+	local budget used percent
+	budget=$(config_micros "$config_path")
+	if [ "$budget" = "missing" ]; then
+		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：配置缺少 ${config_path#.Server.Gateway.}，这一桶无法比对" || true
+		return 0
+	fi
+	if [ "$budget" -le 0 ]; then
+		ft_alert_once "$key" ok "[FastTranslation] 预算检查（${label}）：未设上限" || true
+		return 0
+	fi
+	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE source = '$source' AND created_at >= strftime('%s','now','start of day');")
+	percent=$(( used * 100 / budget ))
+	if [ "$percent" -ge "$FT_BUDGET_ALERT_PERCENT" ]; then
+		ft_alert_once "$key" fail "[FastTranslation] 预算检查（${label}）：今日已用 $(yuan "$used") 元（${percent}%），预算 $(yuan "$budget") 元" || true
+	else
+		ft_alert_once "$key" ok "[FastTranslation] 预算恢复（${label}）：今日已用 $(yuan "$used") 元（${percent}%）" || true
+	fi
+}
+
+# 每日摘要用的一行「今日成本 / 上限」。
+bucket_today() {
+	local source=$1 config_path=$2 used budget
+	used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE source = '$source' AND created_at >= strftime('%s','now','start of day');")
+	budget=$(config_micros "$config_path")
+	case "$budget" in
+		missing) printf '%s 元（未配置上限）' "$(yuan "$used")" ;;
+		0) printf '%s 元（不限）' "$(yuan "$used")" ;;
+		*) printf '%s / %s 元' "$(yuan "$used")" "$(yuan "$budget")" ;;
 	esac
 }
 
 [ -f "$FT_DB" ] || { log "database not found: $FT_DB"; exit 1; }
 
 check_resources() {
-	local now latest age disk budget used percent
+	local now latest age disk
 	now=$(date -u +%s)
 
 	if [ -d "$FT_BACKUP_DIR" ]; then
@@ -107,20 +145,14 @@ check_resources() {
 		ft_alert_once disk ok "[FastTranslation] 磁盘恢复：已用 ${disk:-?}%" || true
 	fi
 
-	budget=$(budget_micros)
-	if [ "$budget" -gt 0 ]; then
-		used=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE created_at >= strftime('%s','now','start of day');")
-		percent=$(( used * 100 / budget ))
-		if [ "$percent" -ge "$FT_BUDGET_ALERT_PERCENT" ]; then
-			ft_alert_once budget fail "[FastTranslation] 预算检查：今日已用 $(yuan "$used") 元（${percent}%），预算 $(yuan "$budget") 元" || true
-		else
-			ft_alert_once budget ok "[FastTranslation] 预算恢复：今日已用 $(yuan "$used") 元（${percent}%）" || true
-		fi
-	fi
+	# 免费桶沿用旧 key（budget），部署前的失败状态不会因为改名被丢掉。
+	check_budget budget 免费 gateway '.Server.Gateway.DailyBudgetMicros'
+	check_budget budget_paid 会员 gateway_paid '.Server.Gateway.PaidDailyBudgetMicros'
+	check_budget budget_speech 语音 speech '.Server.Gateway.Speech.DailyBudgetMicros'
 }
 
 digest() {
-	local midnight yesterday new_users active rows chars cost today_cost budget oldest by_source text
+	local midnight yesterday new_users active rows chars cost today_free today_paid today_speech oldest by_source text
 	midnight=$(sql "SELECT strftime('%s','now','start of day');")
 	yesterday=$(sql "SELECT strftime('%s','now','start of day','-1 day');")
 	new_users=$(sql "SELECT COUNT(*) FROM users WHERE created_at >= $yesterday AND created_at < $midnight;")
@@ -128,14 +160,15 @@ digest() {
 	rows=$(sql "SELECT COUNT(*) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
 	chars=$(sql "SELECT COALESCE(SUM(chars),0) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
 	cost=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight;")
-	today_cost=$(sql "SELECT COALESCE(SUM(cost_micros),0) FROM usage_events WHERE created_at >= $midnight;")
-	budget=$(budget_micros)
+	today_free=$(bucket_today gateway '.Server.Gateway.DailyBudgetMicros')
+	today_paid=$(bucket_today gateway_paid '.Server.Gateway.PaidDailyBudgetMicros')
+	today_speech=$(bucket_today speech '.Server.Gateway.Speech.DailyBudgetMicros')
 	oldest=$(sql "SELECT COALESCE(strftime('%Y-%m', MIN(created_at), 'unixepoch'), '-') FROM usage_events;" | head -1)
 	by_source=$(sql "SELECT source || ': ' || COUNT(*) || ' 次 / ' || COALESCE(SUM(chars),0) || ' 字符 / ' || printf('%.2f', COALESCE(SUM(cost_micros),0)/1000000.0) || ' 元' FROM usage_events WHERE created_at >= $yesterday AND created_at < $midnight GROUP BY source;")
 
-	text=$(printf '[FastTranslation] 每日摘要 %s (UTC)\n新增注册: %s\n30 天活跃: %s\n昨日请求: %s\n昨日字符: %s\n昨日成本: %s 元\n今日成本: %s 元 / 预算 %s 元\n最早 usage_events 月份: %s\n%s' \
+	text=$(printf '[FastTranslation] 每日摘要 %s (UTC)\n新增注册: %s\n30 天活跃: %s\n昨日请求: %s\n昨日字符: %s\n昨日成本: %s 元\n今日成本: 免费 %s · 会员 %s · 语音 %s\n最早 usage_events 月份: %s\n%s' \
 		"$(date -u +%F)" "$new_users" "$active" "$rows" "$chars" \
-		"$(yuan "$cost")" "$(yuan "$today_cost")" "$(yuan "$budget")" "$oldest" "${by_source:-（昨日无请求）}")
+		"$(yuan "$cost")" "$today_free" "$today_paid" "$today_speech" "$oldest" "${by_source:-（昨日无请求）}")
 	ft_send_feishu "$text"
 	log "digest sent"
 }

@@ -443,8 +443,10 @@ public class DashScopeSpeechRelayTests
             Assert.Equal(200, result.QuotaChars);
             Assert.Equal(Pricing.TextCostMicros(AsrModel, 96, 17), result.CostMicros);
             Assert.Equal(7.0, result.DurationSeconds);
-            Assert.Equal(result.CostMicros, store.ReadTodayCostMicros("speech"));
-            Assert.Equal(result.CostMicros, store.ReadTodayCostMicros());
+            Assert.Equal(result.CostMicros, store.ReadTodayCostMicros(GatewayBuckets.Speech));
+            // 语音的账只落语音桶，不会串到文本的两个桶里。
+            Assert.Equal(0L, store.ReadTodayCostMicros(GatewayBuckets.Free));
+            Assert.Equal(0L, store.ReadTodayCostMicros(GatewayBuckets.Paid));
             var usage = store.ReadUsage(user.Id, device);
             Assert.Equal(200, usage.MonthlyChars);
         }

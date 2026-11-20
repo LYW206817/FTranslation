@@ -132,7 +132,7 @@ public sealed record AdminUsageResponse(
     AdminUsageTotals Total,
     IReadOnlyList<AdminUsageBySource> BySource,
     IReadOnlyList<AdminUsageByDay> ByDay,
-    AdminTodayUsage Today);
+    IReadOnlyList<AdminBudgetBucket> Buckets);
 
 public sealed record AdminUsageTotals(long Requests, long Chars, long TokensIn, long TokensOut, long CostMicros);
 
@@ -140,7 +140,8 @@ public sealed record AdminUsageBySource(string Source, long Requests, long Chars
 
 public sealed record AdminUsageByDay(string Day, long Requests, long Chars, long CostMicros);
 
-public sealed record AdminTodayUsage(long CostMicros, long BudgetMicros);
+/// <summary>今日某个预算桶的已花费与上限；<paramref name="BudgetMicros"/> 为 0 表示不限。</summary>
+public sealed record AdminBudgetBucket(string Source, long CostMicros, long BudgetMicros);
 
 public sealed record AdminAccountDto(
     string Email,

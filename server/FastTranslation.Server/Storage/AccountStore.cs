@@ -218,17 +218,7 @@ public sealed class AccountStore(ServerDatabase database)
         return deleted;
     }
 
-    /// <summary>今天所有账号的总支出，单位为微元——网关的预算熔断依据。</summary>
-    public long ReadTodayCostMicros()
-    {
-        using var connection = database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COALESCE(SUM(cost_micros), 0) FROM usage_events WHERE created_at >= $since";
-        command.Parameters.AddWithValue("$since", database.NowUnix - (database.NowUnix % 86_400));
-        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
-    }
-
-    /// <summary>今天某个来源已花掉的成本(微元)。语音有独立日预算,要按 source 单独算一个桶。</summary>
+    /// <summary>今天某个来源已花掉的成本(微元)。日预算按桶分账,必须按 source 单独求和。</summary>
     public long ReadTodayCostMicros(string source)
     {
         using var connection = database.Open();
@@ -626,7 +616,11 @@ public sealed class AccountStore(ServerDatabase database)
         return (monthly, daily);
     }
 
-    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source = "gateway", int reservedChars = 0)
+    /// <summary>
+    /// 记一笔用量。<paramref name="source"/> 是预算桶名（<see cref="Gateway.GatewayBuckets"/>），
+    /// 没有默认值：漏传就会把会员或语音的账记进免费桶，熔断与展示都会错。
+    /// </summary>
+    public void RecordUsage(Guid userId, Guid deviceId, int chars, string model, int tokensIn, int tokensOut, long costMicros, long now, string source, int reservedChars = 0)
     {
         using var connection = database.Open();
         var periodStart = QuotaPeriodKey(connection, null, userId);

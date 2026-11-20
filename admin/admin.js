@@ -255,6 +255,21 @@ function cycleName(cycle) {
   return { monthly: '月付', quarterly: '季付', yearly: '年付' }[cycle] || cycle || '—';
 }
 
+// 预算桶的来源名同时是 usage_events.source；名字来自服务端网关契约，这里只做展示翻译。
+const SOURCE_LABELS = { gateway: '免费', gateway_paid: '会员', speech: '语音' };
+
+function sourceLabel(source) {
+  return SOURCE_LABELS[source] || source;
+}
+
+// 每个桶的今日已用 / 上限；上限为 0 表示这一桶没设熔断（服务端视为不限）。
+// 单位只在末尾写一次：六列指标并排时「4.50 元 / 5.00 元」会把数字拆行。
+function bucketText(bucket) {
+  const spent = (Number(bucket.costMicros || 0) / 1_000_000).toFixed(2);
+  const budget = Number(bucket.budgetMicros || 0);
+  return budget > 0 ? `${spent} / ${(budget / 1_000_000).toFixed(2)} 元` : `${spent} 元 / 不限`;
+}
+
 // 升级只升一档：Lite→Pro、Pro→Max；Max 已是最高档，没有升级入口。
 const UPGRADE_TARGETS = { light: 'standard', standard: 'max' };
 
@@ -437,7 +452,7 @@ async function loadUsage() {
     summary('请求', formatNumber(data.total.requests)),
     summary('字符', formatNumber(data.total.chars)),
     summary('成本', formatYuan(data.total.costMicros)),
-    summary('今日', `${formatYuan(data.today.costMicros)} / ${formatYuan(data.today.budgetMicros)}`),
+    ...data.buckets.map((bucket) => summary(`今日${sourceLabel(bucket.source)}`, bucketText(bucket))),
   );
   renderUsageChart(data.byDay);
 
@@ -456,7 +471,7 @@ async function loadUsage() {
     data.bySource.forEach((item) => {
       const row = create('tr');
       row.append(
-        create('td', '', item.source),
+        create('td', '', sourceLabel(item.source)),
         create('td', '', formatNumber(item.requests)),
         create('td', '', formatNumber(item.chars)),
         create('td', '', formatYuan(item.costMicros)),

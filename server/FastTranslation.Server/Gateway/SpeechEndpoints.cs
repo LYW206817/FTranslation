@@ -93,7 +93,7 @@ public static class SpeechEndpoints
         }
 
         var estimatedCostMicros = Pricing.EstimateSpeechCostMicros(gateway.Speech.Model, sessionSeconds);
-        if (!budget.TryReserve("speech", gateway.Speech.DailyBudgetMicros, estimatedCostMicros))
+        if (!budget.TryReserve(GatewayBuckets.Speech, gateway.Speech.DailyBudgetMicros, estimatedCostMicros))
         {
             store.ReleaseQuota(userId, deviceId, reservedChars);
             diagnostics.RecordSpeechFailure("budget_exhausted");
@@ -106,7 +106,7 @@ public static class SpeechEndpoints
         if (!sessions.TryEnter(userId, gateway.Speech.MaxConcurrentSessionsPerUser))
         {
             store.ReleaseQuota(userId, deviceId, reservedChars);
-            budget.Release("speech", estimatedCostMicros);
+            budget.Release(GatewayBuckets.Speech, estimatedCostMicros);
             diagnostics.RecordSpeechFailure("speech_busy");
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             await context.Response.WriteAsJsonAsync(new ErrorResponse("speech_busy"));
@@ -137,7 +137,7 @@ public static class SpeechEndpoints
         {
             sessions.Exit(userId);
             store.ReleaseQuota(userId, deviceId, reservedChars);
-            budget.Release("speech", estimatedCostMicros);
+            budget.Release(GatewayBuckets.Speech, estimatedCostMicros);
         }
     }
 }

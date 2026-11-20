@@ -351,7 +351,7 @@ chmod 600 /var/lib/fasttranslation/fasttranslation.db
 tail -f /var/log/ft-monitor.log
 ```
 
-`ft-probe.sh` 和 `ft-monitor.sh` 都从 `/etc/fasttranslation/monitor.env` 读配置；真实 webhook 和探针密码只放那里，不进仓库。`ft-monitor.sh` 用 `sqlite3 -readonly` 读生产库（WAL 下不阻塞写入），并用 `jq` 读 `appsettings.Production.json` 的 `Server:Gateway:DailyBudgetMicros`；`bootstrap.sh` 会安装 `jq`。
+`ft-probe.sh` 和 `ft-monitor.sh` 都从 `/etc/fasttranslation/monitor.env` 读配置；真实 webhook 和探针密码只放那里，不进仓库。`ft-monitor.sh` 用 `sqlite3 -readonly` 读生产库（WAL 下不阻塞写入），并用 `jq` 读 `appsettings.Production.json` 里三个预算桶的键——`Server:Gateway:DailyBudgetMicros`（免费）、`PaidDailyBudgetMicros`（会员）、`Speech:DailyBudgetMicros`（语音）——逐桶比对今日成本，`0` 表示该桶不设上限；某个键缺失时告警「无法比对」而不是当作不限——缺键等于这一桶没在监控。`bootstrap.sh` 会安装 `jq`。
 
 ## 运营后台
 

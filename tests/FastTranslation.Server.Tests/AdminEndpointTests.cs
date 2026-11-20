@@ -64,7 +64,7 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         var device = store.ListDevices(auth.Account.Id).Single();
         var now = database.NowUnix;
 
-        store.RecordUsage(auth.Account.Id, device.Id, 120, "qwen-mt-flash", 10, 5, 1_000, now);
+        store.RecordUsage(auth.Account.Id, device.Id, 120, "qwen-mt-flash", 10, 5, 1_000, now, "gateway");
         store.RecordUsage(auth.Account.Id, device.Id, 240, "qwen-audio-3.1-asr-flash-streaming", 20, 10, 2_000, now, "speech");
 
         var response = await AdminAsync(_client, HttpMethod.Get, "/api/v1/admin/usage?days=1");
@@ -79,8 +79,12 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         Assert.True(usage.BySource.Single(row => row.Source == "speech").Chars >= 240);
         var today = Assert.Single(usage.ByDay);
         Assert.True(today.Requests >= 2);
-        Assert.True(usage.Today.CostMicros >= 3_000);
-        Assert.True(usage.Today.BudgetMicros > 0);
+        // 今日成本按预算桶分别报:语音的花费只进 speech 桶,不再和文本一起对免费桶的上限。
+        var freeBucket = usage.Buckets.Single(row => row.Source == "gateway");
+        var speechBucket = usage.Buckets.Single(row => row.Source == "speech");
+        Assert.True(freeBucket.CostMicros >= 1_000);
+        Assert.True(speechBucket.CostMicros >= 2_000);
+        Assert.All(usage.Buckets, bucket => Assert.True(bucket.BudgetMicros > 0));
 
         var invalid = await AdminAsync(_client, HttpMethod.Get, "/api/v1/admin/usage?days=0");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -229,7 +233,7 @@ public class AdminEndpointTests : IClassFixture<ServerFactory>
         }
 
         // 升级前的当月用量必须原样保留：标准额度减去它，而不是从 0 重新发额度。
-        store.RecordUsage(auth.Account.Id, device.Id, 12_000, "qwen-mt-flash", 10, 5, 3_000, database.NowUnix);
+        store.RecordUsage(auth.Account.Id, device.Id, 12_000, "qwen-mt-flash", 10, 5, 3_000, database.NowUnix, "gateway");
         var before = await GetAuthorizedAsync<AccountDto>(_client, "/api/v1/account/me", auth.AccessToken);
         var beforeUsage = await GetAuthorizedAsync<UsageDto>(_client, "/api/v1/account/usage", auth.AccessToken);
         Assert.Equal("light", before.Plan);

@@ -113,7 +113,7 @@ public sealed class AccountStoreTests : IDisposable
     {
         var user = CreateUser("delete-account@example.com");
         var device = _store.RegisterDevice(user.Id, "fp-delete", "pc").Device!;
-        _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 1, 1, 500, _database.NowUnix);
+        _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 1, 1, 500, _database.NowUnix, "gateway");
         _store.SaveRefreshToken(user.Id, "delete-token-hash", _database.NowUnix + 600);
         _store.SaveVerificationCode(user.Email, "hash", _database.NowUnix + 300, _database.NowUnix,
             VerificationCodeService.ResetPurpose);
@@ -133,7 +133,7 @@ public sealed class AccountStoreTests : IDisposable
         Assert.Null(_store.ConsumeRefreshToken("delete-token-hash"));
         Assert.Null(_store.FindVerificationCode(user.Email));
         Assert.Equal(0, notes.CountLive(user.Id));
-        Assert.Equal(0L, _store.ReadTodayCostMicros());
+        Assert.Equal(0L, _store.ReadTodayCostMicros("gateway"));
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public sealed class AccountStoreTests : IDisposable
         var user = CreateUser("delete-device@example.com");
         var removed = _store.RegisterDevice(user.Id, "fp-remove", "pc").Device!;
         var kept = _store.RegisterDevice(user.Id, "fp-keep", "pc").Device!;
-        _store.RecordUsage(user.Id, removed.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix);
+        _store.RecordUsage(user.Id, removed.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix, "gateway");
 
         Assert.True(_store.DeleteDevice(user.Id, removed.Id));
 
@@ -188,7 +188,7 @@ public sealed class AccountStoreTests : IDisposable
         var reserved = _store.TryReserveQuota(user.Id, device.Id, 120, PlanTier.Free);
         Assert.True(reserved.Allowed);
         _store.RecordUsage(user.Id, device.Id, 120, "qwen-mt-flash", 0, 0, 0, _database.NowUnix,
-            reservedChars: 120);
+            "gateway", reservedChars: 120);
 
         Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).MonthlyChars);
         Assert.Equal(120, _store.ReadUsage(user.Id, device.Id).DailyChars);
@@ -217,7 +217,7 @@ public sealed class AccountStoreTests : IDisposable
         var owner = CreateUser("owner-device@example.com");
         var intruder = CreateUser("intruder-device@example.com");
         var device = _store.RegisterDevice(owner.Id, "fp-owned", "pc").Device!;
-        _store.RecordUsage(owner.Id, device.Id, 50, "qwen-mt-flash", 0, 0, 0, _database.NowUnix);
+        _store.RecordUsage(owner.Id, device.Id, 50, "qwen-mt-flash", 0, 0, 0, _database.NowUnix, "gateway");
 
         Assert.False(_store.DeleteDevice(intruder.Id, device.Id));
 
@@ -301,8 +301,8 @@ public sealed class AccountStoreTests : IDisposable
         var user = CreateUser("usage@example.com");
         var device = _store.RegisterDevice(user.Id, "fp-u", "pc").Device!;
 
-        _store.RecordUsage(user.Id, device.Id, 100, "qwen-mt-flash", 10, 5, 0, _database.NowUnix);
-        _store.RecordUsage(user.Id, device.Id, 250, "qwen-mt-flash", 20, 8, 0, _database.NowUnix);
+        _store.RecordUsage(user.Id, device.Id, 100, "qwen-mt-flash", 10, 5, 0, _database.NowUnix, "gateway");
+        _store.RecordUsage(user.Id, device.Id, 250, "qwen-mt-flash", 20, 8, 0, _database.NowUnix, "gateway");
 
         var usage = _store.ReadUsage(user.Id, device.Id);
         Assert.Equal(350, usage.MonthlyChars);
@@ -401,7 +401,7 @@ public sealed class AccountStoreTests : IDisposable
         _store.CreateUser("s@example.com", "hash", PlanTier.Standard);
         _store.CreateUser("m@example.com", "hash", PlanTier.Max);
         var device = _store.RegisterDevice(free.Id, "fp", "pc").Device!;
-        _store.RecordUsage(free.Id, device.Id, 10, "m", 0, 0, 0, _database.NowUnix);
+        _store.RecordUsage(free.Id, device.Id, 10, "m", 0, 0, 0, _database.NowUnix, "gateway");
 
         var metrics = _store.ReadAccountMetrics();
 

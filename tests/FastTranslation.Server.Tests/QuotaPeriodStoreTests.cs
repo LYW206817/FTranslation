@@ -43,7 +43,7 @@ public sealed class QuotaPeriodStoreTests : IDisposable
     }
 
     private void Record(UserRecord user, DeviceRecord device, int chars)
-        => _store.RecordUsage(user.Id, device.Id, chars, "qwen-mt-flash", 10, 5, 0, _clock.Unix);
+        => _store.RecordUsage(user.Id, device.Id, chars, "qwen-mt-flash", 10, 5, 0, _clock.Unix, "gateway");
 
     [Fact]
     public void Usage_rolls_on_the_activation_anniversary()

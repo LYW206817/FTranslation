@@ -199,7 +199,7 @@ public sealed class GatewayBudgetGuardTests : IDisposable
 
         var user = _store.CreateUser("budget-guard@example.com", "hash", PlanTier.Free);
         var device = _store.RegisterDevice(user.Id, "fp-budget", "pc").Device!;
-        _store.RecordUsage(user.Id, device.Id, 0, "qwen-mt-flash", 0, 0, 60, _database.NowUnix);
+        _store.RecordUsage(user.Id, device.Id, 0, "qwen-mt-flash", 0, 0, 60, _database.NowUnix, "gateway");
         guard.Release("gateway", 60);
 
         // 已记入 60 微元，下一笔 60 会越过 100，必须拒绝。

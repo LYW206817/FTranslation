@@ -58,12 +58,18 @@
   "byDay": [
     { "day": "2026-11-10", "requests": 0, "chars": 0, "costMicros": 0 }
   ],
-  "today": { "costMicros": 0, "budgetMicros": 0 }
+  "buckets": [
+    { "source": "gateway", "costMicros": 0, "budgetMicros": 0 },
+    { "source": "gateway_paid", "costMicros": 0, "budgetMicros": 0 },
+    { "source": "speech", "costMicros": 0, "budgetMicros": 0 }
+  ]
 }
 ```
 
 - `costMicros` 与 `budgetMicros` 以微元为单位（`1e-6` 元），保持整数账本。
-- `bySource[].source` 取值：`gateway`（免费账号的文本/图片/OCR）、`gateway_paid`（会员的同类请求，v191 起；此前的历史行仍记在 `gateway`）、`speech`。`today.costMicros` 是当日所有来源之和，`today.budgetMicros` 是免费桶的 `DailyBudgetMicros`，两者口径并不严格对应。
+- `buckets` 是今日的日预算桶：`costMicros` 为该桶今日（UTC）已花费，`budgetMicros` 为该桶的熔断上限，`0` 表示该桶未设上限。桶与网关的熔断一一对应（见 `2026-10-28-account-and-billing-design.md` §7.4.1），页面与告警都按桶比较，不要跨桶相加。
+- `bySource[].source` 取值：`gateway`（免费账号的文本/图片/OCR）、`gateway_paid`（会员的同类请求，v191 起；此前的历史行仍记在 `gateway`）、`speech`。
+- `bySource` 是所选窗口的汇总，历史行不会因改名而迁移；与 `buckets`（只管今日）口径不同。
 - 只统计 `usage_events` 里已有的记账；不读用户翻译文本。
 - 数据窗口超过归档保留期时，只返回仍在 `usage_events` 里的部分。
 

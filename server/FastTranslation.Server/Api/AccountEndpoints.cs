@@ -316,6 +316,15 @@ public static class AdminEndpoints
             byDay.Add(new AdminUsageByDay(day, requests, chars, cost));
         }
 
+        // 预算按桶分账（免费 / 会员 / 语音），各自与自己的上限比较：之前这里把当日
+        // 全部来源的成本和免费桶预算摆在一起，页面上分子分母根本不对应。
+        var buckets = GatewayBuckets.All(gateway)
+            .Select(bucket => new AdminBudgetBucket(
+                bucket.Source,
+                store.ReadTodayCostMicros(bucket.Source),
+                bucket.BudgetMicros))
+            .ToArray();
+
         return Results.Ok(new AdminUsageResponse(
             window,
             from,
@@ -323,7 +332,7 @@ public static class AdminEndpoints
             new AdminUsageTotals(totals.Requests, totals.Chars, totals.TokensIn, totals.TokensOut, totals.CostMicros),
             bySource,
             byDay,
-            new AdminTodayUsage(store.ReadTodayCostMicros(), gateway.DailyBudgetMicros)));
+            buckets));
     }
 
     private static IResult Accounts(
