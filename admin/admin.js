@@ -79,6 +79,14 @@ function createSvg(tag) {
   return document.createElementNS(SVG_NS, tag);
 }
 
+// 手机宽度下数据表的每一行会变成「标签 + 值」卡片，标签取自 data-label；
+// 桌面端表头可见，data-label 不渲染。
+function labeledCell(label, className, text) {
+  const td = create('td', className, text);
+  td.dataset.label = label;
+  return td;
+}
+
 let openSelect = null;
 let openTrigger = null;
 
@@ -512,14 +520,14 @@ async function loadAccounts() {
       const planText = item.effectivePlan && item.effectivePlan !== item.plan
         ? `${planName(item.plan)}（现 ${planName(item.effectivePlan)}）`
         : planName(item.plan);
-      const emailCell = create('td', 'account-email', item.email);
+      const emailCell = labeledCell('邮箱', 'account-email', item.email);
       emailCell.title = item.email;
       row.append(emailCell);
-      row.append(create('td', '', planText));
-      row.append(create('td', '', formatTime(item.planExpiresAt)));
-      row.append(create('td', '', formatTime(item.lastSeenAt)));
-      row.append(create('td', '', formatNumber(item.monthlyChars)));
-      const statusCell = create('td');
+      row.append(labeledCell('套餐', '', planText));
+      row.append(labeledCell('到期', '', formatTime(item.planExpiresAt)));
+      row.append(labeledCell('最后活跃', '', formatTime(item.lastSeenAt)));
+      row.append(labeledCell('本周期字符', '', formatNumber(item.monthlyChars)));
+      const statusCell = labeledCell('状态');
       statusCell.append(create('span', item.disabled ? 'badge disabled' : 'badge ok', item.disabled ? '已禁用' : '正常'));
       row.append(statusCell);
 
@@ -558,7 +566,7 @@ async function loadAccounts() {
         actions.append(upgrade);
       }
       actions.append(toggle);
-      const actionsCell = create('td');
+      const actionsCell = labeledCell('操作', 'cell-actions');
       actionsCell.append(actions);
       row.append(actionsCell);
       tbody.append(row);
@@ -703,7 +711,7 @@ function renderOrdersTable(items) {
   items.forEach((item) => {
     const row = create('tr');
 
-    const orderCell = create('td');
+    const orderCell = labeledCell('订单');
     const orderStack = create('div', 'cell-stack');
     orderStack.title = formatTime(item.submittedAt || item.createdAt);
     orderStack.append(
@@ -712,11 +720,11 @@ function renderOrdersTable(items) {
     orderCell.append(orderStack);
     row.append(orderCell);
 
-    const emailCell = create('td', 'account-email', item.email);
+    const emailCell = labeledCell('账号', 'account-email', item.email);
     emailCell.title = item.email;
     row.append(emailCell);
 
-    const planCell = create('td');
+    const planCell = labeledCell('套餐');
     const planStack = create('div', 'cell-stack');
     planStack.append(
       create('span', 'cell-strong', planName(item.plan)),
@@ -724,9 +732,9 @@ function renderOrdersTable(items) {
     planCell.append(planStack);
     row.append(planCell);
 
-    row.append(create('td', 'cell-amount', `¥${(item.amountCents / 100).toFixed(2)}`));
+    row.append(labeledCell('金额', 'cell-amount', `¥${(item.amountCents / 100).toFixed(2)}`));
 
-    const methodCell = create('td');
+    const methodCell = labeledCell('收款');
     if (item.paymentMethod) {
       methodCell.append(create('span', 'method ' + item.paymentMethod,
         item.paymentMethod === 'wechat' ? '微信'
@@ -736,7 +744,7 @@ function renderOrdersTable(items) {
     }
     row.append(methodCell);
 
-    const refCell = create('td');
+    const refCell = labeledCell('交易单号');
     if (item.paymentRef) {
       const refWrap = create('div', 'ref-cell');
       const text = create('span', 'ref-text', item.paymentRef);
@@ -758,7 +766,7 @@ function renderOrdersTable(items) {
     }
     row.append(refCell);
 
-    const statusCell = create('td');
+    const statusCell = labeledCell('状态');
     statusCell.append(create('span', 'status-pill ' + item.status, orderStatusText(item.status)));
     row.append(statusCell);
 
@@ -779,7 +787,7 @@ function renderOrdersTable(items) {
     } else {
       actions.append(create('span', 'muted', '—'));
     }
-    const actionCell = create('td');
+    const actionCell = labeledCell('操作', 'cell-actions');
     actionCell.append(actions);
     row.append(actionCell);
     tbody.append(row);
@@ -894,16 +902,16 @@ async function loadCodes() {
       const statusText = item.revokedAt ? '已作废' : item.redeemedAt ? '已兑换' : '未兑换';
       const statusClass = item.revokedAt ? 'badge disabled' : item.redeemedAt ? 'badge' : 'badge ok';
       const row = create('tr');
-      row.append(create('td', '', item.code));
-      row.append(create('td', '', planName(item.plan)));
-      row.append(create('td', '', formatNumber(item.days)));
-      row.append(create('td', '', item.note || '—'));
-      row.append(create('td', '', formatTime(item.createdAt)));
-      row.append(create('td', '', item.redeemedEmail || '—'));
-      const statusCell = create('td');
+      row.append(labeledCell('码', '', item.code));
+      row.append(labeledCell('套餐', '', planName(item.plan)));
+      row.append(labeledCell('天数', '', formatNumber(item.days)));
+      row.append(labeledCell('备注', '', item.note || '—'));
+      row.append(labeledCell('创建时间', '', formatTime(item.createdAt)));
+      row.append(labeledCell('兑换人', '', item.redeemedEmail || '—'));
+      const statusCell = labeledCell('状态');
       statusCell.append(create('span', statusClass, statusText));
       row.append(statusCell);
-      const actionCell = create('td');
+      const actionCell = labeledCell('操作', 'cell-actions');
       if (!item.redeemedAt && !item.revokedAt) {
         const revoke = create('button', 'danger', '作废');
         revoke.type = 'button';

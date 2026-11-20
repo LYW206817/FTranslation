@@ -800,7 +800,8 @@ tbody tr:hover td { background: #f8fbff; }
 }
 
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); }
+  /* dvh 而不是 vh：手机浏览器地址栏收起/展开时 vh 不跟着变，底部会被裁掉。 */
+  .app { height: 100dvh; grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); }
   .sidebar {
     grid-column: 1;
     grid-row: 1;
@@ -808,13 +809,15 @@ tbody tr:hover td { background: #f8fbff; }
     align-items: center;
     padding: 8px 10px;
     overflow-x: auto;
+    scrollbar-width: none;
   }
+  .sidebar::-webkit-scrollbar { display: none; }
   .sidebar-brand { display: none; }
   .nav { flex-direction: row; gap: 4px; }
-  .nav-item { width: auto; white-space: nowrap; padding: 8px 10px; }
+  .nav-item { width: auto; white-space: nowrap; padding: 8px 10px; min-height: 40px; }
   .nav-item svg { display: none; }
   .sidebar-foot { display: none; }
-  .topbar { grid-column: 1; grid-row: 2; padding: 0 14px; }
+  .topbar { grid-column: 1; grid-row: 2; padding: 8px 14px; flex-wrap: wrap; }
   .topbar-title p { display: none; }
   .workspace { grid-column: 1; grid-row: 3; padding: 12px; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -822,6 +825,86 @@ tbody tr:hover td { background: #f8fbff; }
   .inline-form input, .inline-form select { flex: 1 1 120px; }
   .inline-form .ft-select { flex: 1 1 120px; }
   #account-query, #code-note { width: auto; }
-  .table-wrap-orders { max-height: calc(100vh - 210px); }
+  /* 手机上不再做「工作区滚动 + 表格内滚动」双层嵌套，订单页跟随整页滚动。 */
+  .view[data-view="orders"] { height: auto; }
+  .view[data-view="orders"] .panel-orders { flex: none; }
+  .table-wrap-orders { max-height: none; min-height: 0; }
   .pager { justify-content: space-between; }
+  /* iOS 对 font-size < 16px 的输入框会自动放大整页，这是注定的坑。 */
+  input, select { font-size: 16px; }
+  .dialog-backdrop { padding: 12px; }
+  .dialog { max-height: calc(100dvh - 24px); }
+  .ft-select-menu { max-height: calc(100dvh - 32px); }
+  .pager button, .row-actions button { min-height: 40px; }
+}
+
+@media (max-width: 720px) {
+  /* 订单 / 账号 / 激活码三张表在手机上改成卡片行：横向滑动看不清，
+     也让「操作」按钮永远露在视口里。来源表只有四列，保持原样。 */
+  .table-wrap:not(#usage-sources) table,
+  .table-wrap:not(#usage-sources) tbody,
+  .table-wrap:not(#usage-sources) tr,
+  .table-wrap:not(#usage-sources) td { display: block; width: 100%; min-width: 0; }
+  .table-wrap:not(#usage-sources) thead { display: none; }
+  .table-wrap:not(#usage-sources) tr {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .table-wrap:not(#usage-sources) tbody tr:last-child { border-bottom: 0; }
+  .table-wrap:not(#usage-sources) td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 5px 12px;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+  .table-wrap:not(#usage-sources) td::before {
+    content: attr(data-label);
+    flex: 0 0 84px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .table-wrap:not(#usage-sources) td:not([data-label])::before { content: none; }
+  .table-wrap:not(#usage-sources) td[colspan] { text-align: center; }
+  .table-wrap:not(#usage-sources) .account-email { max-width: none; }
+  .table-wrap:not(#usage-sources) .row-actions { flex-wrap: wrap; }
+  .table-wrap:not(#usage-sources) .cell-stack { align-items: flex-start; }
+  /* 操作行的按钮多，标签压在上面一行比左右对齐更好点、更省宽度。 */
+  .table-wrap:not(#usage-sources) td.cell-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .table-wrap:not(#usage-sources) td.cell-actions::before {
+    /* 这一行是纵排，flex-basis 会变成高度；不覆盖就会出现 84px 的空白。 */
+    flex: 0 0 auto;
+    text-align: left;
+  }
+  /* 交易单号是给运营核对数字的，绝不能折成两行；放不下就省略号，点「复制」拿原文。 */
+  .table-wrap:not(#usage-sources) .ref-cell { flex: 1 1 auto; min-width: 0; }
+  .table-wrap:not(#usage-sources) .ref-text { max-width: none; min-width: 0; flex: 1 1 auto; white-space: nowrap; }
+  .table-wrap:not(#usage-sources) .ref-cell button { flex: 0 0 auto; white-space: nowrap; }
+  /* 顶栏已有「刷新」，订单页自己的那个在手机上会和状态标签挤成两行。 */
+  #order-refresh { display: none; }
+}
+
+@media (max-width: 560px) {
+  /* 五个导航项要落在 390px 里，不靠横向滑动才能看见全部。 */
+  .nav { gap: 2px; }
+  .nav-item { padding: 6px 8px; font-size: 13px; }
+  .workspace { padding: 10px 10px 16px; }
+  .panel { padding: 12px; }
+  .topbar { padding: 8px 10px; }
+  .topbar-title h1 { font-size: 16px; }
+  .section-head h2 { font-size: 14px; }
+  .summary { gap: 14px 10px; }
+  .dialog-head { padding: 14px 14px 0; }
+  .dialog-body { padding: 10px 14px 4px; }
+  .dialog-actions { padding: 8px 14px 14px; }
 }
