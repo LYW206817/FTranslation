@@ -38,6 +38,31 @@ fi
 chown root:ftserver "$APP_DIR/appsettings.Production.json"
 chmod 640 "$APP_DIR/appsettings.Production.json"
 
+# 停服之前确认要装的文件都在。v194 实测：漏传一个 deploy/ 里的脚本，脚本会走到
+# Tailscale 那一步才因 install: cannot stat 退出，而服务已经在上一节停下——生产因此
+# 中断约 30 秒。缺文件在这里就退出，什么都不动。
+echo "==> files"
+required_files=(
+	fasttranslation.service Caddyfile backup.sh fasttranslation-backup.cron
+	fasttranslation-logrotate backup.env.example ft-alert.sh ft-probe.sh ft-monitor.sh
+	provision-probe.sh fasttranslation-monitor.cron monitor.env.example
+	ft-tailscale-workbench-allow.sh tailscaled-workbench.conf
+)
+required_dirs=(server site admin)
+missing=()
+for name in "${required_files[@]}"; do
+	[ -f "$HERE/$name" ] || missing+=("$name")
+done
+for name in "${required_dirs[@]}"; do
+	[ -d "$HERE/$name" ] || missing+=("$name/")
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+	echo "    !! missing from $HERE: ${missing[*]}"
+	echo "    !! copy them from deploy/ and the publish output, then re-run"
+	echo "    (nothing has been copied or stopped yet)"
+	exit 1
+fi
+
 echo "==> stop the service"
 # 在拷贝之前检查，而不是之后：Linux 拒绝覆盖正在运行的
 # 可执行文件（ETXTBSY），第一次真升级就死在这里，报错 "cp: cannot create regular file

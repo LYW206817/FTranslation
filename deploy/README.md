@@ -30,6 +30,8 @@
 | `provision-probe.sh` | → `/usr/local/bin/ft-provision-probe.sh`（一次性创建探针账号） |
 | `fasttranslation-monitor.cron` | → `/etc/cron.d/fasttranslation-monitor` |
 | `monitor.env.example` | 首次安装复制为 `/etc/fasttranslation/monitor.env`（600）；填探针密码与飞书 webhook |
+| `ft-tailscale-workbench-allow.sh` | → `/usr/local/bin/`；阿里云 Workbench 的 `100.104.0.0/16` 与 Tailscale 网段重叠，tailscaled 的 DROP 规则会掐断它，装在系统里保留放行 |
+| `tailscaled-workbench.conf` | → `/etc/systemd/system/tailscaled.service.d/workbench.conf`（`install.sh` 缺它会中途退出，v194 实测停服 30 秒） |
 | `go-live.sh` | 备案号下来后在服务器上执行一次:替换占位符、填备案号、启用 Caddy 并断言五项 |
 
 ## 首次部署
@@ -46,7 +48,9 @@ cp deploy/bootstrap.sh deploy/install.sh deploy/go-live.sh deploy/fasttranslatio
    deploy/backup.env.example \
    deploy/ft-alert.sh deploy/ft-probe.sh deploy/ft-monitor.sh \
    deploy/provision-probe.sh deploy/fasttranslation-monitor.cron \
-   deploy/monitor.env.example publish/ftdeploy/
+   deploy/monitor.env.example \
+   deploy/ft-tailscale-workbench-allow.sh deploy/tailscaled-workbench.conf \
+   publish/ftdeploy/
 cp deploy/appsettings.Production.json.example publish/ftdeploy/
 cp -r publish/server-linux publish/ftdeploy/server
 cp -r site publish/ftdeploy/site
