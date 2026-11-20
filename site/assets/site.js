@@ -124,6 +124,12 @@
   // 最后再显示增强控件，脚本缺失或未执行时，静态示例与下载入口仍可完整阅读。
   document.documentElement.classList.add('js');
 
+  const scroller = document.querySelector('.page-scroll');
+  const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '];
+  document.addEventListener('keydown', (event) => {
+    // v196：未聚焦任何控件时，把浏览器的原生翻页交给正文；不接管按钮、链接或弹窗里的按键。
+    if (event.target === document.body && scrollKeys.includes(event.key)) scroller.focus({ preventScroll: true });
+  });
   const setupSectionNav = () => {
     const links = [...document.querySelectorAll('.section-nav a')];
     const sections = links.map((link) => document.getElementById(link.hash.slice(1)));
@@ -133,9 +139,10 @@
     const update = () => {
       frame = 0;
       // v190：以内容越过视口上缘为准，避免很高的分节因露出比例太小而一直无法点亮。
-      const atEnd = Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight;
+      const atEnd = Math.ceil(scroller.scrollTop + scroller.clientHeight) >= scroller.scrollHeight;
+      const visibleTop = scroller.getBoundingClientRect().top;
       const next = atEnd ? links.length - 1 : Math.max(0, sections.findLastIndex(
-        (section) => section.getBoundingClientRect().top <= activationLine
+        (section) => section.getBoundingClientRect().top <= visibleTop + activationLine
       ));
       if (current === next) return;
       links[current]?.removeAttribute('aria-current');
@@ -145,7 +152,7 @@
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
-    window.addEventListener('scroll', schedule, { passive: true });
+    scroller.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
     window.addEventListener('pageshow', schedule);
     update();
@@ -178,17 +185,17 @@
         return target;
       })
     );
-    // v190：顶栏已随页面滚走，只在底边留入场余量；离开更大的缓冲区才复位，避免来回滚动闪烁。
+    // v196：以正文可滚动区域作为观察边界，顶部裁切随导航实际高度变化。
     const entrance = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.1) entry.target.classList.add('is-visible');
       });
-    }, { threshold: 0.1, rootMargin: '0px 0px -26px 0px' });
+    }, { root: scroller, threshold: 0.1, rootMargin: '0px 0px -26px 0px' });
     const departure = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) entry.target.classList.remove('is-visible');
       });
-    }, { rootMargin: '120px 0px' });
+    }, { root: scroller, rootMargin: '120px 0px' });
     targets.forEach((target) => {
       target.classList.add('scroll-reveal');
       const siblings = [...target.parentElement.children];

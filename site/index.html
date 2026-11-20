@@ -14,8 +14,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#F8F7FF">
   <!-- v168：assets 缓存一年，脚本与样式都带内容摘要，避免新版页面配到旧入场逻辑。 -->
-  <link rel="stylesheet" href="assets/site.css?v=4030c5115488">
-  <script src="assets/site.js?v=2ed798a0a46c" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=ac28a4104130">
+  <script src="assets/site.js?v=ea0816fb7117" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -37,7 +37,7 @@
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14m6-14v14"/></symbol>
   </svg>
 
-  <header class="nav" id="top"><div class="wrap nav-inner">
+  <header class="nav"><div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Fast Translation 首页"><img src="assets/img/icon.png" alt="" width="32" height="32"><span>Fast Translation</span></a>
     <nav aria-label="页面导航"><a href="#how">使用体验</a><a href="#features">功能</a><a href="#words">单词与复习</a><a href="#look">软件界面</a><a href="#plans">套餐</a><a href="#faq">FAQ</a><a href="assets/img/contact-wechat.jpg?v=439a8b4c6362" data-contact>联系我们</a></nav>
     <a class="nav-download" href="#download">免费下载<svg class="icon"><use href="#i-down"/></svg></a>
@@ -54,8 +54,9 @@
     <a href="#download"><span>免费下载</span></a>
   </nav>
 
-  <main id="main">
-    <div class="hero-shell wrap">
+  <div class="page-scroll" tabindex="0" role="region" aria-label="网页主要内容">
+  <main id="main" tabindex="-1">
+    <div class="hero-shell wrap" id="top">
     <section class="hero" aria-labelledby="hero-title">
       <a class="release-pill" href="#download"><span class="release-dot"></span>为 Windows 打造<span class="release-version">v1.5.3<svg class="icon"><use href="#i-arrow"/></svg></span></a>
       <h1 id="hero-title">读到哪里，<br><span>译到哪里。</span></h1>
@@ -191,7 +192,8 @@
     </div></section>
   </main>
 
-  <footer class="wrap footer"><div><a class="brand" href="#"><img src="assets/img/icon.png" alt="" width="28" height="28"><span>Fast Translation</span></a><p>让理解随手发生。</p><span>© 2026 Fast Translation</span></div><div class="footer-links"><a href="assets/img/contact-wechat.jpg?v=439a8b4c6362" data-contact>联系开发者</a><span>翻译由阿里云百炼提供</span><a href="https://beian.miit.gov.cn/" rel="nofollow">豫ICP备2026058690号</a></div></footer>
+  <footer class="wrap footer"><div><a class="brand" href="#top"><img src="assets/img/icon.png" alt="" width="28" height="28"><span>Fast Translation</span></a><p>让理解随手发生。</p><span>© 2026 Fast Translation</span></div><div class="footer-links"><a href="assets/img/contact-wechat.jpg?v=439a8b4c6362" data-contact>联系开发者</a><span>翻译由阿里云百炼提供</span><a href="https://beian.miit.gov.cn/" rel="nofollow">豫ICP备2026058690号</a></div></footer>
+  </div>
   <dialog class="contact-dialog" id="contact-dialog" aria-labelledby="contact-title" aria-describedby="contact-intro">
     <div class="contact-card">
       <form method="dialog"><button class="contact-close" type="submit" aria-label="关闭联系方式" autofocus><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></form>
