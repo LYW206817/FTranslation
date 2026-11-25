@@ -74,4 +74,14 @@ public class UiaLineSliceTests
     {
         Assert.Null(UiaSelectionReader.SliceLine(Line, "abcdefghij", Array.Empty<Rect>()));
     }
+
+    [Fact]
+    public void MultilineAccessibilityHint_IsNotRebuiltAsOneSelectedLine()
+    {
+        // v206：Monaco 会把含换行的无障碍说明放进 TextPattern 的可见范围，
+        // 其行框又与真实编辑器选区重合；按单行比例切它必然得到错误源文本。
+        var hint = "现在无法访问编辑器。\n若要启用屏幕阅读器优化模式，请使用 Shift+Alt+F1。";
+        var editorSelection = new Rect(895, 883, 1499, 34);
+        Assert.Null(UiaSelectionReader.SliceLine(editorSelection, hint, new[] { editorSelection }));
+    }
 }

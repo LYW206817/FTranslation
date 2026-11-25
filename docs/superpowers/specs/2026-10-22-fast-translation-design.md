@@ -333,7 +333,7 @@ public interface ISecretStore
 
 1. `AutomationElement.FromPoint(point)`。
 2. 从该元素向上最多 10 层，查找支持 `TextPattern`（优先 `TextPattern2`）的元素。
-3. `GetSelection()` 取选区范围；每个范围 `GetText(-1)` 拼接；`GetBoundingRectangles()` 取逐行矩形。
+3. `GetSelection()` 取选区范围；每个范围 `GetText(-1)` 拼接；`GetBoundingRectangles()` 取逐行矩形。若选区文本为空但矩形有效，可按单行几何近似恢复；可见文本范围自身跨行时不得当作单行切分，仍读不到则按空处理进入 L3。
 4. 读取 `AutomationElement.IsPasswordProperty`；为 true 直接放弃。
 5. 250ms 超时；超时放弃，不排队。
 

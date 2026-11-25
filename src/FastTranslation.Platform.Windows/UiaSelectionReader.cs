@@ -235,6 +235,9 @@ public sealed class UiaSelectionReader
     internal static string? SliceLine(System.Windows.Rect lineRect, string lineText, IReadOnlyList<System.Windows.Rect> selRects)
     {
         if (string.IsNullOrEmpty(lineText) || lineRect.Width <= 0) return null;
+        // v206：一个 TextRange 可能把 Monaco 的无障碍说明跨行返回，却只提供
+        // 覆盖整个编辑器的单个行框；此时按宽度切字符会把说明误当成真实选区。
+        if (lineText.IndexOfAny('\r', '\n') >= 0) return null;
 
         double covL = double.MaxValue, covR = double.MinValue;
         foreach (var sr in selRects)
