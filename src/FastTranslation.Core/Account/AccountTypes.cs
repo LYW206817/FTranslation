@@ -61,6 +61,7 @@ public sealed record AccountError(AccountErrorCode Code, string Message)
         {
             nameof(TimeoutException) => "账号服务器请求超时，请稍后重试。",
             nameof(SocketError.ConnectionRefused) => "连接被拒绝，请检查网络或系统代理后重试。",
+            nameof(HttpRequestError.ConnectionError) => "无法建立连接，请检查网络或系统代理后重试。",
             nameof(HttpRequestError.NameResolutionError) => "无法解析账号服务器地址，请检查网络后重试。",
             nameof(HttpRequestError.ProxyTunnelError) => "代理无法连接账号服务器，请检查系统代理后重试。",
             nameof(HttpRequestError.SecureConnectionError) => "无法建立安全连接，请检查系统时间或网络后重试。",

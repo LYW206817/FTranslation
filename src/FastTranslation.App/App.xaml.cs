@@ -68,6 +68,7 @@ public partial class App : Application, IResultPresenter
     private bool _captureEnabled = true;
     private UpdateCoordinator? _updates;
     private AccountCoordinator? _account;
+    private HttpClient? _accountHttp;
     private AccountApiClient? _accountClient;
     private NotesApiClient? _notesClient;
     private HttpClient? _gatewayHttp;
@@ -144,15 +145,15 @@ public partial class App : Application, IResultPresenter
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         _systemEventsSubscribed = true;
 
-        // 账号服务：整个进程共用一个 HttpClient，超时 20 秒，这样主机挂了会表现为
-        // 网络错误，而不是一个永远回不来的按钮
+        // 同一个账号客户端继续复用连接；公网代理变化时由 Windows 传输层轮换会话。
         var accountBase = string.IsNullOrWhiteSpace(_settings.AccountBaseUrl)
             ? AccountApiClient.DefaultBaseUrl
             : _settings.AccountBaseUrl;
-        _accountClient = new AccountApiClient(
-            CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
-            accountBase,
-            Trace);
+        var accountTimeout = TimeSpan.FromSeconds(20);
+        _accountHttp = IsLocalAddress(accountBase)
+            ? CreateApiHttpClient(accountTimeout, accountBase)
+            : new HttpClient(new WindowsAccountHttpHandler()) { Timeout = accountTimeout };
+        _accountClient = new AccountApiClient(_accountHttp, accountBase, Trace);
         _notesClient = new NotesApiClient(
             CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
             accountBase);
@@ -2380,6 +2381,8 @@ public partial class App : Application, IResultPresenter
         _hotkey?.Dispose();
         if (_account is not null) _account.Changed -= OnAccountChanged;
         _accountClient = null;
+        _accountHttp?.Dispose();
+        _accountHttp = null;
         // 不 Dispose 文档链路：它的组合 provider 包着与划词链路共用的那个 ownProvider，
         // Dispose 会顺着把用户 Key 的 provider 也关掉，而进程正要退出，没必要冒这个风险。
         _documentProvider = null;

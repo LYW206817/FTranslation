@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FastTranslation.Core\FastTranslation.Core.csproj" />
+    <PackageReference Include="System.Net.Http.WinHttpHandler" Version="10.0.15" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FastTranslation.Platform.Windows.Tests" />
