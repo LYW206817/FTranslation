@@ -64,10 +64,11 @@ public class AccountClientTests
     }
 
     private static (AccountApiClient Client, StubHandler Handler) Build(
-        HttpStatusCode status, string body, Exception? toThrow = null, string? baseUrl = null)
+        HttpStatusCode status, string body, Exception? toThrow = null, string? baseUrl = null,
+        Action<string>? transportLog = null)
     {
         var handler = new StubHandler(status, body, toThrow);
-        return (new AccountApiClient(new HttpClient(handler), baseUrl), handler);
+        return (new AccountApiClient(new HttpClient(handler), baseUrl, transportLog), handler);
     }
 
     [Theory]
@@ -185,12 +186,18 @@ public class AccountClientTests
     [Fact]
     public async Task Transport_failure_is_reported_as_Network_not_thrown()
     {
-        var (client, _) = Build(HttpStatusCode.OK, "{}", new HttpRequestException("connection refused"));
+        var diagnostics = new List<string>();
+        var socket = new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused);
+        var (client, _) = Build(HttpStatusCode.OK, "{}",
+            new HttpRequestException(HttpRequestError.ConnectionError, "Synthetic failure.", socket),
+            "https://example.com", diagnostics.Add);
 
-        var result = await client.GetUsageAsync("t", CancellationToken.None);
+        var result = await client.GetUsageAsync("synthetic-access", CancellationToken.None, "synthetic-device");
 
         Assert.False(result.Succeeded);
         Assert.Equal(AccountErrorCode.Network, result.Error!.Code);
+        Assert.Contains("连接被拒绝", result.Error.Display);
+        Assert.Equal("account transport: GET host=example.com:443 failure=ConnectionRefused", Assert.Single(diagnostics));
     }
 
     [Fact]
@@ -201,6 +208,7 @@ public class AccountClientTests
         var result = await client.RefreshAsync("r", CancellationToken.None);
 
         Assert.Equal(AccountErrorCode.Network, result.Error!.Code);
+        Assert.Contains("超时", result.Error.Display);
     }
 
     [Fact]

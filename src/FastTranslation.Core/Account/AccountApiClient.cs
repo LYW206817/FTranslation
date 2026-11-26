@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -42,11 +43,14 @@ public sealed class AccountApiClient
 
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly Action<string>? _transportLog;
 
-    public AccountApiClient(HttpClient http, string? baseUrl = null)
+    /// <summary>创建账号客户端，可接收仅含主机、端口和错误类别的本地诊断记录。</summary>
+    public AccountApiClient(HttpClient http, string? baseUrl = null, Action<string>? transportLog = null)
     {
         _http = http;
         _baseUrl = NormalizeBaseUrl(baseUrl);
+        _transportLog = transportLog;
     }
 
     public string BaseUrl => _baseUrl;
@@ -238,19 +242,10 @@ public sealed class AccountApiClient
     /// <summary>尽力而为：退出登录失败绝不能阻塞本地令牌清除。</summary>
     public async Task<AccountApiResult<bool>> LogoutAsync(string accessToken, CancellationToken cancellationToken)
     {
-        try
-        {
-            var response = await SendAsync(HttpMethod.Post, "api/v1/auth/logout", accessToken, new EmptyBody(), cancellationToken)
-                .ConfigureAwait(false);
-            response?.Dispose();
-            return response is null
-                ? AccountApiResult<bool>.Fail(AccountErrorCode.Network)
-                : AccountApiResult<bool>.Ok(true);
-        }
-        catch (Exception ex) when (IsTransport(ex))
-        {
-            return AccountApiResult<bool>.Fail(AccountErrorCode.Network, ex.Message);
-        }
+        var (response, failure) = await SendAsync(
+            HttpMethod.Post, "api/v1/auth/logout", accessToken, new EmptyBody(), cancellationToken).ConfigureAwait(false);
+        response?.Dispose();
+        return failure is null ? AccountApiResult<bool>.Ok(true) : AccountApiResult<bool>.Fail(AccountErrorCode.Network, failure);
     }
 
     /// <summary>
@@ -321,7 +316,7 @@ public sealed class AccountApiClient
     }
 
     private async Task<AccountApiResult<AccountOrder>> ReadOrderAsync(
-        HttpResponseMessage? response, CancellationToken cancellationToken) =>
+        (HttpResponseMessage? Response, string? Failure) response, CancellationToken cancellationToken) =>
         await ReadAsync<OrderResponse, AccountOrder>(
             response, body => body.ToOrder(), cancellationToken).ConfigureAwait(false);
 
@@ -338,8 +333,7 @@ public sealed class AccountApiClient
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>返回 null 表示传输层本身失败，由调用方上报 <see cref="AccountErrorCode.Network"/>。</summary>
-    private async Task<HttpResponseMessage?> SendAsync(
+    private async Task<(HttpResponseMessage? Response, string? Failure)> SendAsync(
         HttpMethod method, string path, string? accessToken, object? body, CancellationToken cancellationToken,
         string? deviceFingerprint = null)
     {
@@ -353,26 +347,29 @@ public sealed class AccountApiClient
         {
             request.Headers.TryAddWithoutValidation(DeviceHeaderName, deviceFingerprint.Trim());
         }
-        // 用 ResponseHeadersRead：卡住的响应体必须表现为超时，而不是冻住 UI 线程。
-        // 调用本身有保护：DNS/连接被拒/TLS/超时会让 HttpClient 抛异常，
-        // 而调用方绝不能看到这些异常。
+        // v208：账号接口只返回短 JSON，读完再结束 HTTP 操作，让客户端超时也覆盖卡住的响应体。
         try
         {
-            return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
+            var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            return (response, null);
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            return null; // DNS、连接被拒、TLS、超时——统一算一种「网络」答案
+            var failure = DescribeTransportFailure(ex, cancellationToken);
+            // v208：异常原文可能带查询参数或代理信息；只记录目标主机和受控的错误类别。
+            if (!cancellationToken.IsCancellationRequested && request.RequestUri is { } uri)
+                _transportLog?.Invoke($"account transport: {method} host={uri.IdnHost}:{uri.Port} failure={failure}");
+            return (null, failure);
         }
     }
 
     private static async Task<AccountApiResult<TOut>> ReadAsync<TWire, TOut>(
-        HttpResponseMessage? response, Func<TWire, TOut> map, CancellationToken cancellationToken)
+        (HttpResponseMessage? Response, string? Failure) result, Func<TWire, TOut> map, CancellationToken cancellationToken)
         where TWire : class
         where TOut : class
     {
-        if (response is null) return AccountApiResult<TOut>.Fail(AccountErrorCode.Network);
+        if (result.Response is not { } response)
+            return AccountApiResult<TOut>.Fail(AccountErrorCode.Network, result.Failure);
         using (response)
         {
             string payload;
@@ -382,7 +379,7 @@ public sealed class AccountApiClient
             }
             catch (Exception ex) when (IsTransport(ex))
             {
-                return AccountApiResult<TOut>.Fail(AccountErrorCode.Network, ex.Message);
+                return AccountApiResult<TOut>.Fail(AccountErrorCode.Network, DescribeTransportFailure(ex, cancellationToken));
             }
 
             if (!response.IsSuccessStatusCode)
@@ -481,7 +478,16 @@ public sealed class AccountApiClient
     }
 
     private static bool IsTransport(Exception ex) =>
-        ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException;
+        ex is HttpRequestException or OperationCanceledException or TimeoutException or IOException;
+
+    private static string DescribeTransportFailure(Exception ex, CancellationToken cancellationToken) => ex switch
+    {
+        TimeoutException or OperationCanceledException when !cancellationToken.IsCancellationRequested => nameof(TimeoutException),
+        HttpRequestException { InnerException: SocketException { SocketErrorCode: SocketError.ConnectionRefused } }
+            => nameof(SocketError.ConnectionRefused),
+        HttpRequestException request => request.HttpRequestError.ToString(),
+        _ => ex.GetType().Name,
+    };
 
     // ---- 线上数据结构（服务端用 camelCase，按不区分大小写匹配） ----
 

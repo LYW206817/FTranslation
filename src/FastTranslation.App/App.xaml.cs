@@ -151,7 +151,8 @@ public partial class App : Application, IResultPresenter
             : _settings.AccountBaseUrl;
         _accountClient = new AccountApiClient(
             CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
-            accountBase);
+            accountBase,
+            Trace);
         _notesClient = new NotesApiClient(
             CreateApiHttpClient(TimeSpan.FromSeconds(20), accountBase),
             accountBase);

@@ -20,6 +20,9 @@ public partial class AccountPage : UserControl
     private readonly AccountCoordinator _account;
     private bool _busy;
     private bool _subscribed;
+    private long? _devicesLoadingFor;
+    private long _deviceLoadVersion;
+    private long _renderedSession = -1;
 
     /// <summary>用户要求看价目表时触发；导航由外壳负责。</summary>
     public event Action? PlanRequested;
@@ -43,7 +46,8 @@ public partial class AccountPage : UserControl
     {
         // v111：Changed 事件里的异步调度会慢一帧；先就地切面板，让成功提示不会先于卡片切换。
         Render();
-        _ = LoadUsageAsync();
+        _account.UsageRefresh.EnsureLoaded();
+        _ = LoadDevicesAsync();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -51,6 +55,7 @@ public partial class AccountPage : UserControl
         if (!_subscribed)
         {
             _account.Changed += OnAccountChanged;
+            _account.UsageRefresh.Changed += RenderUsage;
             _subscribed = true;
         }
         // 订阅建立之前会话可能已经变了（启动恢复是异步的）：补一次重绘；
@@ -62,6 +67,7 @@ public partial class AccountPage : UserControl
     {
         if (!_subscribed) return;
         _account.Changed -= OnAccountChanged;
+        _account.UsageRefresh.Changed -= RenderUsage;
         _subscribed = false;
     }
 
@@ -69,8 +75,8 @@ public partial class AccountPage : UserControl
     public void Reload()
     {
         Render();
-        if (_account.Session is null) return;
-        _ = LoadUsageAsync();
+        _ = _account.UsageRefresh.RefreshAsync();
+        RenderUsage();
         _ = LoadDevicesAsync();
     }
 
@@ -78,10 +84,11 @@ public partial class AccountPage : UserControl
     // 所以迟到的账号变更还要再问一次用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
+        if (!IsLoaded) return;
+        var changedAccount = _renderedSession != _account.SessionGeneration;
         Render();
-        if (_account.Session is null) return;
-        _ = LoadUsageAsync();
-        _ = LoadDevicesAsync();
+        _account.UsageRefresh.EnsureLoaded();
+        if (changedAccount) _ = LoadDevicesAsync();
     });
 
     private void Render()
@@ -90,13 +97,17 @@ public partial class AccountPage : UserControl
         SignedOutPanel.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
         SignedInPanel.Visibility = session is null ? Visibility.Collapsed : Visibility.Visible;
         LoginRequiredBanner.Visibility = session is null ? Visibility.Visible : Visibility.Collapsed;
-        if (session is null)
+        RenderUsage();
+        if (_renderedSession != _account.SessionGeneration)
         {
-            // 退出登录后清掉上一个账号的设备名，别让它们在下一帧里闪一下
+            // 设备结果跟账号绑定，切换会话时先清掉上一位用户的设备名。
+            _renderedSession = _account.SessionGeneration;
             DeviceItems.ItemsSource = null;
             DeviceCountText.Text = string.Empty;
-            return;
+            DeviceEmptyText.Text = "设备列表读取中…";
+            DeviceEmptyText.Visibility = Visibility.Visible;
         }
+        if (session is null) return;
 
         var profile = session.Profile;
         AvatarText.Text = profile.Initial;
@@ -109,64 +120,72 @@ public partial class AccountPage : UserControl
         PlanBadgeText.Text = profile.PlanDisplay;
 
         PlanNameText.Text = profile.PlanDisplay;
-        PlanValidityText.Text = profile.ExpiryLine
-            ?? "免费版长期有效。Lite / Pro / Max 解锁单词本与四档复习。";
+        PlanValidityText.Text = profile.ExpiryLine ?? (profile.Plan == "free"
+            ? "免费版长期有效。Lite / Pro / Max 解锁单词本与四档复习。"
+            : "到期时间暂不可用。");
         NameBox.Text = profile.DisplayName;
-
-        // 剩余数字是随用量一起到的；先在这里清空，免得用户切换账号时有一帧显示上一个账号的残留
-        MonthlyLeftText.Text = "读取中…";
-        DailyLeftText.Text = "读取中…";
     }
 
-    private async Task LoadUsageAsync()
+    private void RenderUsage()
     {
-        if (_account.Session is null) return;
-        var result = await _account.ReadUsageAsync(CancellationToken.None);
-        if (!result.Succeeded)
-        {
-            SetStatus(result.Error!.Display, isError: true);
-            MonthlyLeftText.Text = "—";
-            DailyLeftText.Text = "—";
-            return;
-        }
+        var refresh = _account.UsageRefresh;
+        var usage = refresh.Result?.Value;
+        var error = refresh.Result?.Error;
+        UsageRefreshButton.Content = refresh.ButtonText;
+        UsageRefreshButton.IsEnabled = !refresh.IsLoading;
+        UsageStatus.Text = error?.Display ?? (refresh.IsLoading ? "正在读取用量…" : string.Empty);
+        UsageStatus.Visibility = UsageStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UsageStatus.Foreground = (System.Windows.Media.Brush)FindResource(error is null ? "TextMutedBrush" : "DangerBrush");
 
-        var usage = result.Value!;
-        MonthlyLeftText.Text = usage.RemainingMonthlyChars.ToString("N0") + " 字符，已用 "
-            + usage.UsedMonthlyChars.ToString("N0") + " / " + usage.QuotaMonthlyChars.ToString("N0");
-        MonthlyBar.Value = usage.MonthlyFraction;
+        MonthlyRow.Visibility = usage is null ? Visibility.Collapsed : Visibility.Visible;
+        MonthlyBar.Value = usage?.MonthlyFraction ?? 0;
+        MonthlyLeftText.Text = usage is null ? string.Empty
+            : $"{usage.RemainingMonthlyChars:N0} 字符，已用 {usage.UsedMonthlyChars:N0} / {usage.QuotaMonthlyChars:N0}";
 
-        DailyRow.Visibility = usage.HasDaily ? Visibility.Visible : Visibility.Collapsed;
-        if (usage.HasDaily)
-        {
-            DailyLeftText.Text = (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符，已用 "
-                + (usage.UsedDailyChars ?? 0).ToString("N0") + " / " + usage.QuotaDailyChars!.Value.ToString("N0");
-            DailyBar.Value = usage.DailyFraction;
-        }
+        DailyRow.Visibility = usage?.HasDaily == true ? Visibility.Visible : Visibility.Collapsed;
+        DailyBar.Value = usage?.DailyFraction ?? 0;
+        DailyLeftText.Text = usage?.HasDaily == true
+            ? $"{usage.RemainingDailyChars ?? 0:N0} 字符，已用 {usage.UsedDailyChars ?? 0:N0} / {usage.QuotaDailyChars:N0}"
+            : string.Empty;
     }
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e)
+    private void RefreshUsage_Click(object sender, RoutedEventArgs e) => _ = _account.UsageRefresh.RefreshAsync();
+
+    private void Refresh_Click(object sender, RoutedEventArgs e) => _ = LoadDevicesAsync();
+
+    private async Task LoadDevicesAsync(bool afterRemoval = false)
     {
+        var generation = _account.SessionGeneration;
+        if (!_account.IsSignedIn || (!afterRemoval && _devicesLoadingFor == generation)) return;
+        // 移除成功后的列表必须重新读取，移除前开始的请求即使晚到也不能覆盖它。
+        var version = ++_deviceLoadVersion;
+        _devicesLoadingFor = generation;
+        RefreshButton.IsEnabled = false;
         try
         {
-            await LoadUsageAsync();
-            await LoadDevicesAsync();
+            var result = await _account.ReadDevicesAsync(CancellationToken.None);
+            if (_deviceLoadVersion == version && _account.SessionGeneration == generation) RenderDevices(result);
         }
         catch (Exception ex)
         {
-            // 这两个调用走 AccountApiClient，正常失败都会变成 AccountError；到这里是
-            // 意料之外的异常，不能让它从 async void 里冒出去把进程带走。
-            SetStatus("刷新失败，请稍后重试。", isError: true);
-            System.Diagnostics.Debug.WriteLine("account refresh: " + ex);
+            // 网络错误已有结果类型；渲染或解析意外失败也要让按钮恢复，并把提示留在设备卡里。
+            App.Trace($"account devices: {ex.GetType().Name}");
+            if (_deviceLoadVersion == version && _account.SessionGeneration == generation)
+                RenderDevices(AccountApiResult<AccountDeviceList>.Fail(AccountErrorCode.InvalidResponse));
+        }
+        finally
+        {
+            if (_deviceLoadVersion == version)
+            {
+                _devicesLoadingFor = null;
+                RefreshButton.IsEnabled = !_busy;
+            }
         }
     }
 
-    // ---------------- 设备管理 ----------------
-
-    private async Task LoadDevicesAsync()
+    private void RenderDevices(AccountApiResult<AccountDeviceList> result)
     {
-        if (_account.Session is null) return;
-        var result = await _account.ReadDevicesAsync(CancellationToken.None);
-        if (!result.Succeeded)
+        if (result.Value is not { } list)
         {
             DeviceItems.ItemsSource = null;
             DeviceCountText.Text = string.Empty;
@@ -175,7 +194,6 @@ public partial class AccountPage : UserControl
             return;
         }
 
-        var list = result.Value!;
         var rows = list.Devices.Select(device => new AccountDeviceRow(device)).ToList();
         DeviceItems.ItemsSource = rows;
         DeviceCountText.Text = list.CountLine;
@@ -208,7 +226,7 @@ public partial class AccountPage : UserControl
 
             ToastWindow.Show($"已移除「{name}」。");
             SetStatus("设备已移除。", isError: false);
-            await LoadDevicesAsync();
+            await LoadDevicesAsync(afterRemoval: true);
         }
         catch (Exception ex)
         {
@@ -402,7 +420,7 @@ public partial class AccountPage : UserControl
     {
         _busy = busy;
         SignOutButton.IsEnabled = !busy;
-        RefreshButton.IsEnabled = !busy;
+        RefreshButton.IsEnabled = !busy && _devicesLoadingFor != _account.SessionGeneration;
         SaveNameButton.IsEnabled = !busy;
         SavePasswordButton.IsEnabled = !busy;
         DeleteAccountButton.IsEnabled = !busy;

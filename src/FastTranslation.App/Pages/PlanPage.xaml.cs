@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FastTranslation.App;
 using FastTranslation.Core.Account;
 
@@ -27,6 +28,8 @@ public partial class PlanPage : UserControl
     private bool _redeemHintIsError;
     private bool _selecting;
     private bool _subscribed;
+    private bool _hasTierChoice;
+    private long _selectionSession = -1;
 
     // 价格文案与服务端 OrderPricing.PricesCents 同批改；四个值依次是月价、季价、
     // 月标价、季标价。季付按 3 倍月价，标价按「88 万字符 10 元」线性折算。
@@ -50,6 +53,7 @@ public partial class PlanPage : UserControl
         if (!_subscribed)
         {
             _account.Changed += OnAccountChanged;
+            _account.UsageRefresh.Changed += RenderUsage;
             _subscribed = true;
         }
         Render();
@@ -59,6 +63,7 @@ public partial class PlanPage : UserControl
     {
         if (!_subscribed) return;
         _account.Changed -= OnAccountChanged;
+        _account.UsageRefresh.Changed -= RenderUsage;
         _subscribed = false;
     }
 
@@ -66,54 +71,49 @@ public partial class PlanPage : UserControl
     public void Reload()
     {
         Render();
-        if (_account.Session is not null) _ = LoadUsageAsync();
+        _ = _account.UsageRefresh.RefreshAsync();
+        RenderUsage();
+    }
+
+    internal void RevealPricing()
+    {
+        // 主窗口延后挂载页面，等布局完成再计算价格卡在滚动视口里的位置。
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (!IsLoaded) return;
+            var top = PricingCard.TranslatePoint(new Point(), PlanScroll).Y;
+            _ = SubscribeTitle.Focus();
+            PlanScroll.ScrollToVerticalOffset(PlanScroll.VerticalOffset + top);
+        });
     }
 
     // 会话可能在本页第一次打开之后才到（启动恢复是异步的），所以迟到的变更
     // 必须重绘价格卡并重新询问用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
+        if (!IsLoaded) return;
         Render();
-        if (_account.Session is not null) _ = LoadUsageAsync();
+        _account.UsageRefresh.EnsureLoaded();
     });
 
     private void Render()
     {
-        var session = _account.Session;
-        var signedIn = session is not null;
-
-        SignedOutHint.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
-        if (!signedIn)
+        var profile = _account.Session?.Profile;
+        if (_selectionSession != _account.SessionGeneration)
         {
-            // v183：日额度行的可见性只由用量结果（LoadUsageAsync）或登出决定。
-            // 原来这里无条件按 signedIn 设回 Visible：OnLoaded 会在首次请求成功后重绘，
-            // 把已收起的那行重新亮出来，只留一行「读取中…」和一条空进度条。
-            DailyRow.Visibility = Visibility.Collapsed;
-            MonthlyText.Text = "登录后显示";
-            MonthlyLeftText.Text = string.Empty;
-            MonthlyBar.Value = 0;
-            DailyText.Text = string.Empty;
-            DailyLeftText.Text = string.Empty;
-            DailyBar.Value = 0;
-            PlanPillText.Text = "未登录";
-            PlanNameText.Text = "未登录";
-            PlanTermText.Text = string.Empty;
-            SelectCycle();
-            SelectTier("standard");
-            return;
+            // 页面会被缓存。只在登录会话切换时丢弃旧选择，令牌续期和重新进页都保留用户的决定。
+            _selectionSession = _account.SessionGeneration;
+            _hasTierChoice = false;
+            _cycle = "monthly";
         }
-
-        var paid = !string.Equals(session!.Profile.Plan, "free", StringComparison.OrdinalIgnoreCase);
-        // v91：hero 的 42px 大字与右上角药丸读的都是同一个套餐名，两处必须同源。
-        var planName = session.Profile.PlanDisplay;
+        var planName = profile?.PlanDisplay ?? "未登录";
         PlanPillText.Text = planName;
         PlanNameText.Text = planName;
-        PlanTermText.Text = paid ? "已订阅" : "长期有效";
-        // 已付费时默认选中自己那一档；免费用户默认 Pro（三档里折中的一档）。
+        PlanTermText.Text = profile is null ? string.Empty : profile.Plan == "free" ? "长期有效" : "已订阅";
         SelectCycle();
-        SelectTier(session.Profile.Plan is "light" or "standard" or "max"
-            ? session.Profile.Plan
-            : "standard");
+        if (!_hasTierChoice) SelectTier(profile?.Plan is "light" or "max" ? profile.Plan : "standard");
+        else UpdateSubscribeState();
+        RenderUsage();
     }
 
     /// <summary>
@@ -157,81 +157,30 @@ public partial class PlanPage : UserControl
         return new Point(59 + RingRadius * Math.Cos(radians), 59 + RingRadius * Math.Sin(radians));
     }
 
-    /// <summary>读取中的占位：两条计量都写同一个词，进度条清零等真值。</summary>
-    private void ShowReading()
+    private void Refresh_Click(object sender, RoutedEventArgs e) => _ = _account.UsageRefresh.RefreshAsync();
+
+    private void RenderUsage()
     {
-        MonthlyText.Text = "读取中…";
-        MonthlyLeftText.Text = string.Empty;
-        MonthlyBar.Value = 0;
-        DailyText.Text = "读取中…";
-        DailyLeftText.Text = string.Empty;
-        DailyBar.Value = 0;
-        // v143：进度环不能在请求期间装作 0%——那会被读成「本月一点都没用」。
-        // MonthlyBar.Value=0 会触发 UpdateRing，所以这两行必须放在它后面。
-        RingProgress.Data = null;
-        RingPercent.Text = "…";
-    }
+        var refresh = _account.UsageRefresh;
+        var usage = refresh.Result?.Value;
+        var error = refresh.Result?.Error;
+        UsageRefreshButton.Visibility = _account.IsSignedIn ? Visibility.Visible : Visibility.Collapsed;
+        UsageRefreshButton.IsEnabled = !refresh.IsLoading;
+        UsageRefreshButton.Content = refresh.ButtonText;
+        UsageStatus.Text = !_account.IsSignedIn ? "登录后才能查看用量。"
+            : error?.Display ?? (refresh.IsLoading ? "正在读取用量…" : string.Empty);
+        UsageStatus.Visibility = UsageStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UsageStatus.Foreground = (Brush)FindResource(error is null ? "TextMutedBrush" : "DangerBrush");
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadUsageAsync();
+        UsageRing.Visibility = MonthlyUsage.Visibility = usage is null ? Visibility.Collapsed : Visibility.Visible;
+        MonthlyText.Text = usage?.MonthlyLine ?? string.Empty;
+        MonthlyLeftText.Text = usage is null ? string.Empty : $"还剩 {usage.RemainingMonthlyChars:N0} 字符";
+        MonthlyBar.Value = usage?.MonthlyFraction ?? 0;
 
-    private async Task LoadUsageAsync()
-    {
-        if (_account.Session is null) return;
-        UsageError.Visibility = Visibility.Collapsed;
-        // v69：拿到结果前先写清楚「在读取」。原来这里什么都不写，卡片里只剩两条
-        // 空进度条，看起来像坏了而不是在等网络。
-        ShowReading();
-        AccountApiResult<AccountUsage> result;
-        try
-        {
-            result = await _account.ReadUsageAsync(CancellationToken.None);
-        }
-        catch (Exception)
-        {
-            // async void 的刷新入口没有上层 catch；网络层意外异常也要落到卡片里
-            ShowUsageFailure("读取失败，请稍后再试。");
-            return;
-        }
-        if (!result.Succeeded)
-        {
-            ShowUsageFailure(result.Error!.Display);
-            return;
-        }
-
-        var usage = result.Value!;
-        MonthlyText.Text = usage.MonthlyLine;
-        MonthlyLeftText.Text = "还剩 " + usage.RemainingMonthlyChars.ToString("N0") + " 字符";
-        MonthlyBar.Value = usage.MonthlyFraction;
-
-        DailyRow.Visibility = usage.HasDaily ? Visibility.Visible : Visibility.Collapsed;
-        if (usage.HasDaily)
-        {
-            DailyText.Text = usage.DailyLine;
-            DailyLeftText.Text = "还剩 " + (usage.RemainingDailyChars ?? 0).ToString("N0") + " 字符";
-            DailyBar.Value = usage.DailyFraction;
-        }
-        else
-        {
-            // 付费版只有月度额度：收起后把占位文本也清掉，下一次 Render 不会再带出「读取中…」。
-            DailyText.Text = string.Empty;
-            DailyLeftText.Text = string.Empty;
-            DailyBar.Value = 0;
-        }
-    }
-
-    /// <summary>用量读取失败：文字与进度环一起落到明确的失败态，不留假的 0%。</summary>
-    private void ShowUsageFailure(string message)
-    {
-        MonthlyText.Text = "读取失败";
-        MonthlyLeftText.Text = string.Empty;
-        DailyRow.Visibility = Visibility.Collapsed;
-        DailyText.Text = string.Empty;
-        DailyLeftText.Text = string.Empty;
-        DailyBar.Value = 0;
-        RingProgress.Data = null;
-        RingPercent.Text = "—";
-        UsageError.Text = message;
-        UsageError.Visibility = Visibility.Visible;
+        DailyRow.Visibility = usage?.HasDaily == true ? Visibility.Visible : Visibility.Collapsed;
+        DailyText.Text = usage?.HasDaily == true ? usage.DailyLine : string.Empty;
+        DailyLeftText.Text = usage?.HasDaily == true ? $"还剩 {usage.RemainingDailyChars ?? 0:N0} 字符" : string.Empty;
+        DailyBar.Value = usage?.DailyFraction ?? 0;
     }
 
     private async void Redeem_Click(object sender, RoutedEventArgs e)
@@ -258,7 +207,7 @@ public partial class PlanPage : UserControl
             // 只和那次兑换请求一样新。
             RedeemBox.Text = string.Empty;
             SetRedeemHint("已开通 " + result.Value!.Profile.PlanDisplay + "。");
-            await LoadUsageAsync();
+            await _account.UsageRefresh.RefreshAsync();
         }
         catch (Exception)
         {
@@ -283,7 +232,8 @@ public partial class PlanPage : UserControl
     // 程序性同步也会发，所以用 _selecting 挡住回环。
     private void Tier_Checked(object sender, RoutedEventArgs e)
     {
-        if (_selecting || sender is not RadioButton { Tag: string tier }) return;
+        if (_selecting || _busy || sender is not RadioButton { Tag: string tier }) return;
+        _hasTierChoice = true;
         SelectTier(tier);
     }
 
@@ -291,23 +241,28 @@ public partial class PlanPage : UserControl
     private void SelectTier(string tier)
     {
         _tier = tier;
+        SyncTierCards();
+        UpdateSubscribeState();
+    }
+
+    private void SyncTierCards()
+    {
         _selecting = true;
         try
         {
-            Select(LiteCard, tier == "light");
-            Select(ProCard, tier == "standard");
-            Select(MaxCard, tier == "max");
+            Select(LiteCard, _tier == "light");
+            Select(ProCard, _tier == "standard");
+            Select(MaxCard, _tier == "max");
         }
         finally
         {
             _selecting = false;
         }
-        UpdateSubscribeState();
     }
 
     private void Cycle_Checked(object sender, RoutedEventArgs e)
     {
-        if (_selecting || sender is not RadioButton { Tag: string cycle }) return;
+        if (_selecting || _busy || sender is not RadioButton { Tag: string cycle }) return;
         _cycle = cycle;
         SelectCycle();
         UpdateSubscribeState();
@@ -422,11 +377,15 @@ public partial class PlanPage : UserControl
             return;
         }
 
+        // v208：查旧订单可能在网络上等待；创建请求必须用按下订阅时的选择。
+        var (tier, cycle, generation) = (_tier, _cycle, _account.SessionGeneration);
         SetBusy(true);
         try
         {
             // 先恢复未结算订单：用户可能关过应用，再点订阅不应再生成一笔。
+            SubscribeHint.Text = "正在检查待处理订单…";
             var current = await _account.GetCurrentOrderAsync(CancellationToken.None);
+            if (_account.SessionGeneration != generation) return;
             if (current.Succeeded)
             {
                 ShowOrder(current.Value!);
@@ -439,7 +398,9 @@ public partial class PlanPage : UserControl
                 return;
             }
 
-            var created = await _account.CreateOrderAsync(_tier, _cycle, CancellationToken.None);
+            SubscribeHint.Text = "正在创建订单…";
+            var created = await _account.CreateOrderAsync(tier, cycle, CancellationToken.None);
+            if (_account.SessionGeneration != generation) return;
             if (created.Succeeded)
             {
                 ShowOrder(created.Value!);
@@ -449,6 +410,7 @@ public partial class PlanPage : UserControl
             if (created.Error!.Code == AccountErrorCode.OrderPending)
             {
                 var again = await _account.GetCurrentOrderAsync(CancellationToken.None);
+                if (_account.SessionGeneration != generation) return;
                 if (again.Succeeded)
                 {
                     ShowOrder(again.Value!);
@@ -467,6 +429,11 @@ public partial class PlanPage : UserControl
         finally
         {
             SetBusy(false);
+            if (_account.SessionGeneration == generation)
+            {
+                SelectCycle();
+                SyncTierCards();
+            }
         }
     }
 
@@ -482,6 +449,8 @@ public partial class PlanPage : UserControl
     {
         _busy = busy;
         RedeemButton.IsEnabled = !busy;
+        TierOptions.IsEnabled = !busy;
+        CycleOptions.IsEnabled = !busy;
         SubscribeButton.IsEnabled = !busy && _canSubscribe;
     }
 

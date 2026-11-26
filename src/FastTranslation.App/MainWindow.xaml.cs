@@ -468,9 +468,20 @@ public partial class MainWindow : Window
     {
         if (_accountPage is not null) return _accountPage;
         var page = new AccountPage(_account);
-        page.PlanRequested += () => ShowPage(MainPageId.Plan);
+        page.PlanRequested += ShowPricing;
         _accountPage = page;
         return page;
+    }
+
+    private void ShowPricing()
+    {
+        ShowPage(MainPageId.Plan);
+        // 与换页使用相同的优先级排队，等 PageHost 已挂载目标页再定位价格卡。
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (_current == MainPageId.Plan && PageHost.Content is PlanPage plan)
+                plan.RevealPricing();
+        });
     }
 
     private PlanPage Plan()

@@ -88,11 +88,8 @@
                 <TextBlock x:Name="EmailText" Style="{StaticResource Hint}" Margin="0,3,0,0"/>
               </StackPanel>
 
-              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="RefreshButton" Content="刷新" Style="{StaticResource SmallButton}"
-                        Click="Refresh_Click"/>
-                <Button x:Name="SignOutButton" Content="退出登录" Margin="0" Click="SignOut_Click"/>
-              </StackPanel>
+              <Button x:Name="SignOutButton" Grid.Column="2" Content="退出登录" Margin="0"
+                      VerticalAlignment="Center" Click="SignOut_Click"/>
             </Grid>
           </Border>
 
@@ -107,20 +104,29 @@
               <Border BorderBrush="{DynamicResource HairBrush}" BorderThickness="0,1,0,0"
                       Margin="0,12,0,10"/>
 
-              <TextBlock Text="本月剩余" Style="{StaticResource FieldLabelTight}"/>
-              <TextBlock x:Name="MonthlyLeftText" FontSize="13"
-                         Foreground="{DynamicResource TextPrimaryBrush}"/>
-              <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
+              <StackPanel x:Name="MonthlyRow" Visibility="Collapsed">
+                <TextBlock Text="本月剩余" Style="{StaticResource FieldLabelTight}"/>
+                <TextBlock x:Name="MonthlyLeftText" FontSize="13"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <ProgressBar x:Name="MonthlyBar" Style="{StaticResource MeterBar}"/>
+              </StackPanel>
 
-              <StackPanel x:Name="DailyRow" Margin="0,12,0,0">
+              <StackPanel x:Name="DailyRow" Margin="0,12,0,0" Visibility="Collapsed">
                 <TextBlock Text="今日剩余" Style="{StaticResource FieldLabelTight}"/>
                 <TextBlock x:Name="DailyLeftText" FontSize="13"
                            Foreground="{DynamicResource TextPrimaryBrush}"/>
                 <ProgressBar x:Name="DailyBar" Style="{StaticResource MeterBar}"/>
               </StackPanel>
 
-              <Button x:Name="GotoPlanButton" Content="看套餐与价格" HorizontalAlignment="Left"
-                      Style="{StaticResource SmallButton}" Margin="0,14,0,0" Click="GotoPlan_Click"/>
+              <TextBlock x:Name="UsageStatus" Style="{StaticResource Hint}" Margin="0"
+                         AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>
+              <!-- v208：高 DPI 下卡片内层可能少分到一个物理像素，给按钮描边和键盘焦点环留出底部空间。 -->
+              <WrapPanel Margin="0,12,0,4">
+                <Button x:Name="UsageRefreshButton" Content="刷新用量" MinWidth="82"
+                        Style="{StaticResource SmallButton}" Click="RefreshUsage_Click"/>
+                <Button x:Name="GotoPlanButton" Content="看套餐与价格" Margin="0"
+                        Style="{StaticResource SmallButton}" Click="GotoPlan_Click"/>
+              </WrapPanel>
             </StackPanel>
           </Border>
 
@@ -130,10 +136,13 @@
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="登录设备" Style="{StaticResource CardTitle}"/>
                 <TextBlock x:Name="DeviceCountText" Grid.Column="1" Style="{StaticResource Hint}"
                            Margin="0" VerticalAlignment="Center"/>
+                <Button x:Name="RefreshButton" Grid.Column="2" Content="刷新设备" Style="{StaticResource SmallButton}"
+                        Margin="12,0,0,4" Click="Refresh_Click"/>
               </Grid>
               <TextBlock x:Name="DeviceLimitHint" Style="{StaticResource Hint}" Margin="0,0,0,4"
                          Text="换新电脑前，先移除不用的设备，把名额空出来。"/>

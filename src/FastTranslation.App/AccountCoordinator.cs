@@ -20,6 +20,7 @@ public sealed class AccountCoordinator
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private AccountSession? _session;
+    private long _sessionGeneration;
 
     public AccountCoordinator(
         AccountApiClient client,
@@ -34,6 +35,7 @@ public sealed class AccountCoordinator
             ? DeviceIdentity.LoadOrCreate(secrets)
             : deviceFingerprint;
         _deviceName = DeviceIdentity.MachineName;
+        UsageRefresh = new AccountUsageRefresh(this);
     }
 
     public AccountSession? Session => _session;
@@ -41,6 +43,9 @@ public sealed class AccountCoordinator
     public bool IsSignedIn => _session is not null;
 
     public string BaseUrl => _client.BaseUrl;
+
+    internal AccountUsageRefresh UsageRefresh { get; }
+    internal long SessionGeneration => Interlocked.Read(ref _sessionGeneration);
 
     /// <summary>网关按设备记日额度，所以它必须看到和登录时相同的指纹——否则每次翻译
     /// 都会落到一个新的匿名设备行上。</summary>
@@ -386,6 +391,7 @@ public sealed class AccountCoordinator
     {
         if (_session is not { } session) return AccountApiResult<T>.Fail(AccountErrorCode.NotSignedIn);
 
+        var generation = SessionGeneration;
         var first = await call(session.AccessToken).ConfigureAwait(true);
         if (first.Error?.Code != AccountErrorCode.Unauthorized) return first;
 
@@ -393,7 +399,8 @@ public sealed class AccountCoordinator
         try
         {
             var current = _session;
-            if (current is null) return AccountApiResult<T>.Fail(AccountErrorCode.NotSignedIn);
+            if (current is null || SessionGeneration != generation)
+                return AccountApiResult<T>.Fail(AccountErrorCode.NotSignedIn);
             if (!ReferenceEquals(current, session))
             {
                 // 另一个调用方趁这次等待期间刷新过了——直接用新令牌重试就行
@@ -401,7 +408,7 @@ public sealed class AccountCoordinator
             }
             var failure = await RefreshAsync(current, cancellationToken).ConfigureAwait(true);
             if (failure is not null) return AccountApiResult<T>.Fail(failure.Code, failure.Message);
-            return _session is { } renewed
+            return SessionGeneration == generation && _session is { } renewed
                 ? await call(renewed.AccessToken).ConfigureAwait(true)
                 : AccountApiResult<T>.Fail(AccountErrorCode.NotSignedIn);
         }
@@ -419,7 +426,14 @@ public sealed class AccountCoordinator
 
     private void SetSession(AccountSession? session)
     {
+        // 刷新令牌失败时可能恢复同一个快照，重复发变更通知会让页面立刻重发失败请求。
+        if (ReferenceEquals(_session, session)) return;
+        var previous = _session?.Profile;
         _session = session;
+        var current = session?.Profile;
+        var identityChanged = previous?.Id != current?.Id;
+        if (identityChanged) Interlocked.Increment(ref _sessionGeneration);
+        if (identityChanged || previous?.Plan != current?.Plan) UsageRefresh.Reset();
         Changed?.Invoke();
     }
 }
