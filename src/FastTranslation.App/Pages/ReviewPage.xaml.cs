@@ -345,7 +345,9 @@ public partial class ReviewPage : UserControl
         {
             GradeBar.IsHitTestVisible = true;
             _grading = false;
-            _revealed = false;
+            // v210: 不能在这里清 _revealed。评分失败时按钮已经重新启用，答案也还在屏上，
+            // 清掉后鼠标点四个按钮都会静默返回，看起来像卡死（按空格才能救回来）。
+            // 成功推进时 RenderCard 自己会把新卡重置成未显示答案。
         }
     }
 

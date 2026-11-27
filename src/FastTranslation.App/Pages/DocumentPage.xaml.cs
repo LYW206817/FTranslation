@@ -379,6 +379,9 @@ public partial class DocumentPage : UserControl
         }
     }
 
+    /// <summary>登出时由 App 调用：取消正在跑的作业；收尾仍走 RunAsync 的 finally。</summary>
+    public void CancelRunning() => RunOnUi(() => _cts?.Cancel());
+
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         // 取消后断点留着，下次对同一份文件再点开始会从已译完的地方接着译。

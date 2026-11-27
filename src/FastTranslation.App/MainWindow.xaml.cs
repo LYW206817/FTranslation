@@ -361,6 +361,9 @@ public partial class MainWindow : Window
     // App 不必知道页面是否已经构造过——窗口藏在托盘里时作业照样能跑完，只是没人画它。
     public void PresentDocument(DocumentJobResult result) => _documentPage?.Present(result);
 
+    /// <summary>登出时取消正在跑的文档作业；页面还没构造说明也没作业在跑。</summary>
+    public void CancelDocumentRun() => _documentPage?.CancelRunning();
+
     public void ReportDocumentError(string message) => _documentPage?.ReportError(message);
 
     public void ReportDocumentProgress(double fraction, int done, int total) =>

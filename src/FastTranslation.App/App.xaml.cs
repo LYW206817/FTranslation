@@ -301,17 +301,22 @@ public partial class App : Application, IResultPresenter
             _ocrProvider,
             _translation,
             () => _settings,
-            result => OnUiThread(() => _imageWindow?.ShowResult(
-                result.JpegBytes,
-                CaptureCaption(result),
-                result.SourceText.Length > 0 ? result.SourceText : null,
-                showActions: result.JpegBytes is not null,
-                new ImageNoteContext(
-                    result.TargetText ?? string.Empty,
-                    result.SourceLanguage,
-                    result.TargetLanguage,
-                    result.Model),
-                result.PicturePending)),
+            result => OnUiThread(() =>
+            {
+                // 登出后迟到的回包不能再把结果窗盖到登录窗上。
+                if (_account is not { IsSignedIn: true }) return;
+                _imageWindow?.ShowResult(
+                    result.JpegBytes,
+                    CaptureCaption(result),
+                    result.SourceText.Length > 0 ? result.SourceText : null,
+                    showActions: result.JpegBytes is not null,
+                    new ImageNoteContext(
+                        result.TargetText ?? string.Empty,
+                        result.SourceLanguage,
+                        result.TargetLanguage,
+                        result.Model),
+                    result.PicturePending);
+            }),
             message => OnUiThread(() =>
             {
                 // v146：等待窗已经开着了，失败必须在这里收掉转圈；只发气泡时
@@ -1885,6 +1890,10 @@ public partial class App : Application, IResultPresenter
         }
 
         _hasEnteredSignedInWindow = false;
+        // v210: 登出先收尾会话型任务。语音按秒计费、窗口还压在登录窗之上；
+        // 文档会继续跑；截图回包会重新把浮窗盖到登录窗上。
+        EndSpeechSession(null);
+        _mainWindow?.CancelDocumentRun();
         _toolbar?.Hide();
         _card?.Hide();
         _imageWindow?.Hide();
@@ -1964,6 +1973,13 @@ public partial class App : Application, IResultPresenter
     // 前一条 WS 会话继续按秒计费却再也停不下来。
     private bool _speechStarting;
 
+    // v210: 会话代次。结束/重启都会递增，启动流程在每个 await 之后核对它，
+    // 避免预检期间用户关窗/登出后浮窗自己回来继续计费。
+    private long _speechGeneration;
+
+    // v210: 设备连续失效会并发触发两次重建，两个采集线程共用非线程安全的重采样器。
+    private int _speechCaptureRestarting;
+
     private void RunSpeechTranslation()
     {
         // v110: 截图选框期间不能开语音、也不能把已收起的语音浮窗叫回来——它是 Topmost，
@@ -2022,9 +2038,18 @@ public partial class App : Application, IResultPresenter
     private async Task StartSpeechSessionCoreAsync(bool resume)
     {
         var account = _account!;
+        var generation = Interlocked.Increment(ref _speechGeneration);
         // 额度预检必须查服务端会查的每一个桶（月度 + 免费档的日额度），
         // 判定收在 SpeechQuotaGate 里，免得窗口开了、会话建了才开始 429
         var usage = await account.ReadUsageAsync(CancellationToken.None).ConfigureAwait(true);
+        // v210: 预检是一次网络往返；这期间用户可能关掉浮窗、登出或切号。
+        // 旧流程恢复后照样新建浮窗并开始计费，看起来像「关了又自己回来」。
+        if (generation != Volatile.Read(ref _speechGeneration)
+            || !ReferenceEquals(_account, account)
+            || !account.IsSignedIn)
+        {
+            return;
+        }
         if (!usage.Succeeded || usage.Value is null)
         {
             _tray?.ShowBalloon("语音翻译", "暂时读不到额度信息，请稍后再试");
@@ -2072,14 +2097,28 @@ public partial class App : Application, IResultPresenter
         _speechTransport = transport;
         _speechSubtitles = subtitles;
         _speechCoordinator = coordinator;
+        // v210: 事件可能来自已经被替换掉的旧会话（暂停后很快继续），必须核对身份，
+        // 否则旧会话的失败/用量会作用到新会话上。
         coordinator.TranscriptUpdated += line => Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
-            () => _speechWindow?.ShowLine(line, _settings.SpeechShowSource, _settings.SpeechMaxSentences));
-        coordinator.Failed += message => Dispatcher.BeginInvoke(() => EndSpeechSession(message));
+            () =>
+            {
+                if (!ReferenceEquals(_speechCoordinator, coordinator)) return;
+                _speechWindow?.ShowLine(line, _settings.SpeechShowSource, _settings.SpeechMaxSentences);
+            });
+        coordinator.Failed += message => Dispatcher.BeginInvoke(() =>
+        {
+            if (!ReferenceEquals(_speechCoordinator, coordinator)) return;
+            EndSpeechSession(message);
+        });
         // 服务端按 max(秒,MinBilledSeconds)×CharsPerSecond 记额度，这里必须同口径换算成「已用 N 字符」
         coordinator.UsageObserved += seconds => Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
-            () => _speechWindow?.SetUsage((long)(Math.Max(seconds, SpeechQuotaGate.MinBilledSeconds) * SpeechQuotaGate.CharsPerSecond)));
+            () =>
+            {
+                if (!ReferenceEquals(_speechCoordinator, coordinator)) return;
+                _speechWindow?.SetUsage((long)(Math.Max(seconds, SpeechQuotaGate.MinBilledSeconds) * SpeechQuotaGate.CharsPerSecond));
+            });
 
         StartSpeechCapture();
 
@@ -2100,15 +2139,25 @@ public partial class App : Application, IResultPresenter
         _speechCapture = capture;
         capture.Started += format =>
         {
+            if (!ReferenceEquals(_speechCapture, capture)) return;
             _speechResampler = new AudioResampler(format.SampleRate, format.Channels);
         };
-        capture.DataAvailable += block => PumpSpeechAudio(block);
+        capture.DataAvailable += block =>
+        {
+            // 旧采集线程收尾前还可能再送一块数据，不能灌进新会话。
+            if (!ReferenceEquals(_speechCapture, capture)) return;
+            PumpSpeechAudio(block);
+        };
         // v79: 切换默认播放设备时旧回环会话必然失效——重建采集而不是结束会话，
         // 用户感知只是字幕停顿一秒多
-        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(
-            () => Observe(RestartSpeechCaptureAsync(), "切换音频设备后恢复失败"));
+        capture.DeviceInvalidated += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (!ReferenceEquals(_speechCapture, capture)) return;
+            Observe(RestartSpeechCaptureAsync(), "切换音频设备后恢复失败");
+        });
         capture.Failed += ex => Dispatcher.BeginInvoke(() =>
         {
+            if (!ReferenceEquals(_speechCapture, capture)) return;
             // 用户只需要知道「声音没采到」，WASAPI 的英文异常留给诊断日志。
             Trace($"speech capture failed: {ex.GetType().Name}: {ex.Message}");
             EndSpeechSession("系统声音采集失败，请检查音频设备后重试。");
@@ -2119,22 +2168,32 @@ public partial class App : Application, IResultPresenter
     private async Task RestartSpeechCaptureAsync()
     {
         if (_speechCoordinator is null) return;
-        var stale = _speechCapture;
-        _speechCapture = null;
-        _speechResampler = null;
-        if (stale is not null)
+        // 蓝牙耳机/扩展坞切换端点会连续触发 DeviceInvalidated；没有防重入时
+        // 两个任务各自在 1.5 秒后建一条采集，前一条线程和 COM 对象就泄漏了。
+        if (Interlocked.Exchange(ref _speechCaptureRestarting, 1) == 1) return;
+        try
         {
-            // 同上：UI 线程不能等 Join(2s)，设备切换时窗口会假死
-            _ = Task.Run(() =>
+            var stale = _speechCapture;
+            _speechCapture = null;
+            _speechResampler = null;
+            if (stale is not null)
             {
-                stale.Stop();
-                stale.Dispose();
-            });
+                // 同上：UI 线程不能等 Join(2s)，设备切换时窗口会假死
+                _ = Task.Run(() =>
+                {
+                    stale.Stop();
+                    stale.Dispose();
+                });
+            }
+            // 给音频引擎留出端点切换的时间；设备失效后立刻重开常常拿不到新端点
+            await Task.Delay(1500).ConfigureAwait(true);
+            if (_speechCoordinator is null) return;
+            StartSpeechCapture();
         }
-        // 给音频引擎留出端点切换的时间；设备失效后立刻重开常常拿不到新端点
-        await Task.Delay(1500).ConfigureAwait(true);
-        if (_speechCoordinator is null) return;
-        StartSpeechCapture();
+        finally
+        {
+            Volatile.Write(ref _speechCaptureRestarting, 0);
+        }
     }
 
     // 免费档的日额度通常比月度先到顶。只报「本月还能讲几分钟」会让人在开场被拒时
@@ -2264,6 +2323,8 @@ public partial class App : Application, IResultPresenter
 
     private void EndSpeechSession(string? error, bool paused = false)
     {
+        // v210: 结束即作废所有在途启动/恢复流程，预检回来时不再建新会话。
+        Interlocked.Increment(ref _speechGeneration);
         var coordinator = _speechCoordinator;
         var resampler = _speechResampler;
         var subtitles = _speechSubtitles;

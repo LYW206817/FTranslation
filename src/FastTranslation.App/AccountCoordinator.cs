@@ -117,7 +117,14 @@ public sealed class AccountCoordinator
 
     private async Task<AccountError?> RefreshAsync(AccountSession current, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await _client.RefreshAsync(current.RefreshToken, cancellationToken).ConfigureAwait(true);
+        // v210: 等网络期间可能已经登出或切号（SetSession 换身份时代次 +1）。
+        // 旧结果不能复活旧会话，也不能把新账号清掉。
+        if (SessionGeneration != generation)
+        {
+            return result.Succeeded ? null : result.Error;
+        }
         if (result.Succeeded)
         {
             Apply(result.Value!);
@@ -173,9 +180,11 @@ public sealed class AccountCoordinator
     public async Task<AccountApiResult<AccountAction>> ResetPasswordAsync(
         string email, string code, string newPassword, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await _client.ResetPasswordAsync(email, code, newPassword, cancellationToken)
             .ConfigureAwait(true);
-        if (result.Succeeded)
+        // v210: 重置期间用户可能已经登录了另一个账号，不能把人家的会话清掉。
+        if (result.Succeeded && SessionGeneration == generation)
         {
             _store.Clear();
             SetSession(null);
@@ -189,10 +198,11 @@ public sealed class AccountCoordinator
     public async Task<AccountApiResult<AccountAction>> DeleteAccountAsync(
         string password, string confirmation, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await WithSessionAsync(
             token => _client.DeleteAccountAsync(token, password, confirmation, cancellationToken),
             cancellationToken).ConfigureAwait(true);
-        if (result.Succeeded)
+        if (result.Succeeded && SessionGeneration == generation)
         {
             _store.Clear();
             SetSession(null);
@@ -220,9 +230,10 @@ public sealed class AccountCoordinator
     /// </summary>
     public async Task<AccountApiResult<AccountRedeem>> RedeemAsync(string code, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await WithSessionAsync(
             token => _client.RedeemAsync(token, code, cancellationToken), cancellationToken).ConfigureAwait(true);
-        if (result.Succeeded && _session is { } session)
+        if (result.Succeeded && SessionGeneration == generation && _session is { } session)
         {
             var updated = session with { Profile = result.Value!.Profile };
             _store.Save(updated);
@@ -238,9 +249,10 @@ public sealed class AccountCoordinator
     /// </summary>
     public async Task<AccountApiResult<AccountProfile>> RefreshProfileAsync(CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await WithSessionAsync(
             token => _client.GetProfileAsync(token, cancellationToken), cancellationToken).ConfigureAwait(true);
-        if (result.Succeeded && _session is { } session)
+        if (result.Succeeded && SessionGeneration == generation && _session is { } session)
         {
             var updated = session with { Profile = result.Value! };
             _store.Save(updated);
@@ -277,10 +289,11 @@ public sealed class AccountCoordinator
     public async Task<AccountApiResult<AccountProfile>> UpdateDisplayNameAsync(
         string displayName, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await WithSessionAsync(
             token => _client.UpdateProfileAsync(token, displayName, cancellationToken),
             cancellationToken).ConfigureAwait(true);
-        if (result.Succeeded && _session is { } session)
+        if (result.Succeeded && SessionGeneration == generation && _session is { } session)
         {
             var updated = session with { Profile = result.Value! };
             _store.Save(updated);
@@ -297,11 +310,12 @@ public sealed class AccountCoordinator
     public async Task<AccountApiResult<AccountSignIn>> ChangePasswordAsync(
         string currentPassword, string newPassword, CancellationToken cancellationToken)
     {
+        var generation = SessionGeneration;
         var result = await WithSessionAsync(
             token => _client.ChangePasswordAsync(
                 token, currentPassword, newPassword, _deviceFingerprint, _deviceName, cancellationToken),
             cancellationToken).ConfigureAwait(true);
-        if (result.Succeeded)
+        if (result.Succeeded && SessionGeneration == generation)
         {
             Apply(result.Value!);
         }
