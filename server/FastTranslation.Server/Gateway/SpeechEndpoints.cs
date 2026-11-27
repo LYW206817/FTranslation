@@ -4,6 +4,7 @@ using FastTranslation.Server.Api;
 using FastTranslation.Server.Domain;
 using FastTranslation.Server.Storage;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Hosting;
 
 namespace FastTranslation.Server.Gateway;
 
@@ -24,7 +25,8 @@ public static class SpeechEndpoints
 
     private static async Task SpeechAsync(HttpContext context, ClaimsPrincipal principal,
         AccountStore store, ServerDatabase database, GatewayOptions gateway, GatewayRateLimiter limiter,
-        SpeechSessionLimiter sessions, GatewayBudgetGuard budget, GatewayDiagnostics diagnostics)
+        SpeechSessionLimiter sessions, GatewayBudgetGuard budget, GatewayDiagnostics diagnostics,
+        IHostApplicationLifetime appLifetime)
     {
         diagnostics.RecordSpeechRequest();
 
@@ -128,7 +130,11 @@ public static class SpeechEndpoints
 
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
             var speechGateway = new DashScopeSpeechGateway(gateway.Speech, gateway.ApiKey);
-            using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            // v210: Kestrel 停机不会主动取消已升级的连接（要等满 ShutdownTimeout，默认 30 秒），
+            // 而 systemd 20 秒就 SIGKILL——不联动 ApplicationStopping 的话，正在语音时重启
+            // 会跳过收尾：上游收不到 finish-task，尾段用量也不结算。
+            using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                context.RequestAborted, appLifetime.ApplicationStopping);
             var authorizer = WatchSessionAsync(store, diagnostics, userId, principal.GetSessionId(), connectionLifetime);
             try
             {
