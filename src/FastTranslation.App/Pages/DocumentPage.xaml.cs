@@ -179,7 +179,13 @@ public partial class DocumentPage : UserControl
     {
         if (_running)
         {
-            ReportError("正在翻译，请先取消或等它跑完");
+            // v210: 运行中换文件不能走 ReportError——那个入口会 EndRun 并释放 CTS，
+            // 旧作业既停不下来，又能被再开一份并发扣费。这里只提示，不动正在跑的作业。
+            RunOnUi(() =>
+            {
+                ErrorCard.Visibility = Visibility.Visible;
+                ErrorText.Text = "正在翻译，请先取消或等它跑完";
+            });
             return;
         }
 
@@ -388,6 +394,9 @@ public partial class DocumentPage : UserControl
         CancelButton.Visibility = Visibility.Collapsed;
         StartButton.IsEnabled = _path is not null;
         RetryButton.IsEnabled = true;
+        // v210: 先取消再释放。只 Dispose 不会取消作业，旧作业会继续跑、
+        // 继续扣额度，却再也停不下来。
+        _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
     }
