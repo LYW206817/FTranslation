@@ -40,6 +40,7 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<ServerOptions>().Payme
 builder.Services.AddSingleton<PaymentQrProvider>();
 builder.Services.AddSingleton<GatewayRateLimiter>();
 builder.Services.AddSingleton<GatewayRequestCapacity>();
+builder.Services.AddSingleton<GatewayUserCapacity>();
 builder.Services.AddSingleton<GatewayBudgetGuard>();
 builder.Services.AddSingleton<SpeechSessionLimiter>();
 builder.Services.AddSingleton<GatewayDiagnostics>();

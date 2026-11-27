@@ -5,6 +5,9 @@
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="FastTranslation.Server.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <!-- Microsoft.Data.Sqlite 10.0.0 传递依赖的 e_sqlite3 原生库是 2.1.11，带 GHSA-2m69-gcr7-jv3q
          （高危）。显式引用同一 2.1 线的最新补丁版，覆盖传递依赖；RID 发布时 NuGet 审计会因此报错。 -->

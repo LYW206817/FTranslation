@@ -28,6 +28,9 @@ public class ServerFactory : WebApplicationFactory<Program>
     /// <summary>默认放宽管理限流，避免同一测试类的 admin 调用互相挤掉；限流测试单独覆写。</summary>
     protected virtual int AdminRequestsPerMinute => 1000;
 
+    /// <summary>默认放宽认证限流；改密限流测试会把它压到很小。</summary>
+    protected virtual int AuthRequestsPerMinute => 1000;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_wechatQrPath)!);
@@ -41,7 +44,7 @@ public class ServerFactory : WebApplicationFactory<Program>
             ["Server:SigningKey"] = Convert.ToBase64String(Encoding.UTF8.GetBytes("integration-test-signing-key-32b!")),
             ["Server:RequireEmailVerification"] = "false",
             ["Server:AdminToken"] = AdminToken,
-            ["Server:AuthRequestsPerMinute"] = "1000",
+            ["Server:AuthRequestsPerMinute"] = AuthRequestsPerMinute.ToString(),
             ["Server:AdminRequestsPerMinute"] = AdminRequestsPerMinute.ToString(),
             ["Server:AccessTokenMinutes"] = "30",
             ["Server:Payment:WeChatQrPath"] = _wechatQrPath,

@@ -63,6 +63,12 @@ public class GatewayFactory : WebApplicationFactory<Program>
 
     protected virtual int RequestsPerMinute => 1000;
 
+    /// <summary>单账号并发名额；并发测试会把它压到 1。</summary>
+    protected virtual int MaxConcurrentPerUser => 3;
+
+    /// <summary>读包超时；慢速请求测试会把它压到 1 秒。</summary>
+    protected virtual int BodyReadTimeoutSeconds => 30;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -83,6 +89,8 @@ public class GatewayFactory : WebApplicationFactory<Program>
             ["Server:Gateway:DailyBudgetMicros"] = DailyBudgetMicros.ToString(),
             ["Server:Gateway:PaidDailyBudgetMicros"] = PaidDailyBudgetMicros.ToString(),
             ["Server:Gateway:RequestsPerMinute"] = RequestsPerMinute.ToString(),
+            ["Server:Gateway:MaxConcurrentPerUser"] = MaxConcurrentPerUser.ToString(),
+            ["Server:Gateway:BodyReadTimeoutSeconds"] = BodyReadTimeoutSeconds.ToString(),
         }));
 
         builder.ConfigureTestServices(services =>

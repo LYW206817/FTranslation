@@ -110,6 +110,39 @@ public class RedeemStoreTests : IDisposable
         Assert.True(store.Find("FT-4G7M-2XQP-9HKV-3WTA")!.IsRevoked);
     }
 
+    [Fact]
+    public void Redeem_ExtendsThePlanAndConsumesTheCodeInOneStep()
+    {
+        var (store, database) = Open();
+        var buyer = SeedUser(database);
+        var code = RedeemCode.Generate();
+        store.CreateCodes([code], PlanTier.Light, 30, "batch", database.NowUnix);
+
+        var (_, status) = store.Redeem(code, buyer, database.NowUnix);
+
+        Assert.Equal(RedeemStatus.Applied, status);
+        Assert.True(store.Find(code)!.IsRedeemed);
+        Assert.Equal((int)PlanTier.Light, ReadPlanValue(database, buyer));
+    }
+
+    [Fact]
+    public void Redeem_LeavesTheCodeOpenWhenItWouldDowngrade()
+    {
+        var (store, database) = Open();
+        var buyer = SeedUser(database);
+        SetPlan(database, buyer, PlanTier.Max, database.NowUnix + 30 * 86_400L);
+        var code = RedeemCode.Generate();
+        store.CreateCodes([code], PlanTier.Light, 30, "batch", database.NowUnix);
+
+        var (record, status) = store.Redeem(code, buyer, database.NowUnix);
+
+        // 更便宜的码不得缩短生效中的高档订阅，而且必须在同一事务里回滚，码保持可兑。
+        Assert.Equal(RedeemStatus.Downgrade, status);
+        Assert.NotNull(record);
+        Assert.False(store.Find(code)!.IsRedeemed);
+        Assert.Equal((int)PlanTier.Max, ReadPlanValue(database, buyer));
+    }
+
     /// <summary>redeemed_by 是真正的外键,所以兑现需要一个存在的买家。</summary>
     private static Guid SeedUser(ServerDatabase database)
     {
@@ -132,6 +165,26 @@ public class RedeemStoreTests : IDisposable
         var database = new ServerDatabase(_path);
         database.Initialize();
         return (new RedeemStore(database), database);
+    }
+
+    private static void SetPlan(ServerDatabase database, Guid userId, PlanTier plan, long? expiresAt)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE users SET plan = $plan, plan_expires_at = $expiresAt WHERE id = $id";
+        command.Parameters.AddWithValue("$plan", (int)plan);
+        command.Parameters.AddWithValue("$expiresAt", expiresAt is { } value ? value : DBNull.Value);
+        command.Parameters.AddWithValue("$id", userId.ToString());
+        command.ExecuteNonQuery();
+    }
+
+    private static int ReadPlanValue(ServerDatabase database, Guid userId)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT plan FROM users WHERE id = $id";
+        command.Parameters.AddWithValue("$id", userId.ToString());
+        return Convert.ToInt32(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public void Dispose()

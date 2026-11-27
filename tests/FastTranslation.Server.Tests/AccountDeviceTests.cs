@@ -137,6 +137,29 @@ public class AccountDeviceTests : IClassFixture<ServerFactory>
     }
 
     [Fact]
+    public async Task RevivingARemovedDeviceNeedsAFreeSlot()
+    {
+        var email = UniqueEmail();
+        var client = _factory.CreateClient();
+        await RegisterAsync(client, email, "fp-a");
+        (await LoginAsync(email, "fp-b", "b")).EnsureSuccessStatusCode();
+        (await LoginAsync(email, "fp-c", "c")).EnsureSuccessStatusCode();
+
+        // 移除 b，空出的名额由 d 占掉，此时活跃仍是 3 台。
+        var list = await GetDevicesAsync(client, "fp-a");
+        var b = Assert.Single(list.Devices, device => device.Name == "b");
+        (await DeleteAsync(client, b.Id, "fp-a")).EnsureSuccessStatusCode();
+        (await LoginAsync(email, "fp-d", "d")).EnsureSuccessStatusCode();
+
+        // 重新登录被删的 b 等于复活一台设备，必须重新占用名额；修前会被静默复活成第 4 台。
+        var revive = await LoginAsync(email, "fp-b", "b");
+
+        Assert.Equal(HttpStatusCode.BadRequest, revive.StatusCode);
+        Assert.Equal("device_limit_reached",
+            (await revive.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
+    }
+
+    [Fact]
     public async Task Devices_RemovalFreesASlotAndRevokesTheRemovedSession()
     {
         var email = UniqueEmail();

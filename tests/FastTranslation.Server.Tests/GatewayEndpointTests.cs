@@ -41,6 +41,15 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         return client.SendAsync(request);
     }
 
+    /// <summary>带自定义 translation_options 的聊天请求，用来验证术语表也计入额度。</summary>
+    private static Task<HttpResponseMessage> ChatWithOptionsAsync(HttpClient client, int chars, object translationOptions) =>
+        client.PostAsJsonAsync("/v1/chat/completions", new
+        {
+            model = "qwen-mt-flash",
+            messages = new[] { new { role = "user", content = new string('a', chars) } },
+            translation_options = translationOptions,
+        });
+
     private async Task<HttpClient> SignedInClientAsync(PlanTier plan, string? device = null, int? planDays = null)
     {
         var client = _factory.CreateClient();
@@ -120,6 +129,44 @@ public class GatewayEndpointTests : IClassFixture<GatewayFactory>
         var after = await ReadUsageAsync(client);
         Assert.Equal(before.UsedMonthlyChars + 120, after.UsedMonthlyChars);
         Assert.Equal(before.RemainingMonthlyChars - 120, after.RemainingMonthlyChars);
+    }
+
+    [Fact]
+    public async Task Chat_ChargesGlossaryOptions()
+    {
+        // 免费档日额度 2,000：先花掉 1,900，只剩 100。
+        var client = await SignedInClientAsync(PlanTier.Free);
+        (await ChatAsync(client, 1_900)).EnsureSuccessStatusCode();
+
+        // 正文只有 1 字符，但 500 字的术语表必须一起计入额度——否则夹带大术语表
+        // 就能用几乎为零的额度烧上游。修前这条会以 200 通过。
+        var withGlossary = await ChatWithOptionsAsync(client, 1,
+            new { source_lang = "en", target_lang = "zh", domains = new string('d', 500) });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, withGlossary.StatusCode);
+        Assert.Equal("daily_quota_exhausted", withGlossary.Headers.GetValues("X-FT-Quota-Reason").Single());
+    }
+
+    [Fact]
+    public async Task RefreshResponse_KeepsTheFreeDailyUsage()
+    {
+        var client = _factory.CreateClient();
+        var email = $"gw-refresh-{Guid.NewGuid():N}@example.com";
+        var register = await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email, "password123", null, "fp-" + Guid.NewGuid().ToString("N"), "pc"));
+        register.EnsureSuccessStatusCode();
+        var auth = (await register.Content.ReadFromJsonAsync<AuthResponse>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+        (await ChatAsync(client, 120)).EnsureSuccessStatusCode();
+
+        using var fresh = _factory.CreateClient();
+        var refresh = await fresh.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(auth.RefreshToken));
+        refresh.EnsureSuccessStatusCode();
+        var refreshed = (await refresh.Content.ReadFromJsonAsync<AuthResponse>())!;
+
+        // 修前 refresh 固定按 deviceId=null 读用量，这里会得到 0。
+        Assert.Equal(120, (int?)refreshed.Usage.UsedDailyChars);
     }
 
     [Fact]

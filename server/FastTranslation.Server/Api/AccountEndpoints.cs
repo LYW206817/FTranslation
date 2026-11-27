@@ -20,7 +20,7 @@ public static class AccountEndpoints
         group.MapPost("/devices", RegisterDevice);
         group.MapDelete("/devices/{id:guid}", RemoveDevice);
         group.MapPatch("/profile", UpdateProfile);
-        group.MapPost("/password", ChangePassword);
+        group.MapPost("/password", ChangePassword).RequireRateLimiting(RateLimiting.AuthPolicy);
         // 注销是不可逆的破坏性操作，单独挂认证限流，避免拿着有效令牌反复试密码。
         group.MapPost("/delete", DeleteAccount).RequireRateLimiting(RateLimiting.AuthPolicy);
     }
@@ -125,9 +125,11 @@ public static class AccountEndpoints
         }
 
         var next = request.NewPassword ?? string.Empty;
-        if (next.Length < 8)
+        // v210: 与注册/重置共用同一套规则（含最大长度）；原实现只查长度下限，
+        // 也没有限流，拿到有效令牌就能无限次猜当前密码。
+        if (CredentialRules.ValidatePassword(next) is { } passwordError)
         {
-            return Results.BadRequest(new ErrorResponse("password_too_short"));
+            return Results.BadRequest(new ErrorResponse(passwordError));
         }
 
         if (PasswordHasher.Verify(next, user.PasswordHash))

@@ -1,4 +1,5 @@
 using FastTranslation.Server.Domain;
+using Microsoft.Data.Sqlite;
 
 namespace FastTranslation.Server.Storage;
 
@@ -59,7 +60,13 @@ public sealed class RedeemStore(ServerDatabase database)
     public RedeemCodeRecord? Find(string code)
     {
         using var connection = database.Open();
+        return Find(connection, null, code);
+    }
+
+    private static RedeemCodeRecord? Find(SqliteConnection connection, SqliteTransaction? transaction, string code)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             SELECT code, plan, days, note, created_at, redeemed_by, redeemed_at, revoked_at
             FROM redeem_codes WHERE code = $code
@@ -86,7 +93,14 @@ public sealed class RedeemStore(ServerDatabase database)
     public bool TryClaim(string code, Guid userId, long now)
     {
         using var connection = database.Open();
+        return TryClaim(connection, null, code, userId, now);
+    }
+
+    private static bool TryClaim(
+        SqliteConnection connection, SqliteTransaction? transaction, string code, Guid userId, long now)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             UPDATE redeem_codes SET redeemed_by = $userId, redeemed_at = $now
             WHERE code = $code AND redeemed_at IS NULL AND revoked_at IS NULL
@@ -95,6 +109,60 @@ public sealed class RedeemStore(ServerDatabase database)
         command.Parameters.AddWithValue("$now", now);
         command.Parameters.AddWithValue("$code", code);
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// v210: 核销与加时在同一立即写事务里完成。原实现先单独提交占码、再另开事务加时：
+    /// 中间崩溃就是「码已用、天没到」；并发兑换时降档判定又基于事务外的旧快照，
+    /// 低档码可以覆盖刚升级的高档。
+    /// </summary>
+    public (RedeemCodeRecord? Record, RedeemStatus Status) Redeem(string code, Guid userId, long now)
+    {
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+
+        var record = Find(connection, transaction, code);
+        if (record is null)
+        {
+            transaction.Rollback();
+            return (null, RedeemStatus.CodeMissing);
+        }
+        if (record.IsRedeemed)
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.CodeUsed);
+        }
+        if (record.IsRevoked)
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.CodeRevoked);
+        }
+
+        if (AccountStore.ReadPlan(connection, transaction, userId) is not { } plan)
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.AccountMissing);
+        }
+        // 在写锁下重做降档判定，事务外的旧快照不再参与。
+        if (Entitlement.IsSubscriptionActive(plan.Plan, plan.ExpiresAt, now) && plan.Plan > record.Plan)
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.Downgrade);
+        }
+
+        if (!TryClaim(connection, transaction, code, userId, now))
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.CodeUsed);
+        }
+        if (!AccountStore.ExtendPlan(connection, transaction, userId, record.Plan, record.Days, now))
+        {
+            transaction.Rollback();
+            return (record, RedeemStatus.AccountMissing);
+        }
+
+        transaction.Commit();
+        return (record, RedeemStatus.Applied);
     }
 
     /// <summary>
@@ -194,4 +262,15 @@ public sealed class RedeemStore(ServerDatabase database)
         using var reader = command.ExecuteReader();
         return reader.Read() ? (reader.GetInt32(0), reader.GetInt32(1)) : (0, 0);
     }
+}
+
+/// <summary>兑换结果。<see cref="Applied"/> 之外的每一种都保证码没有被消费。</summary>
+public enum RedeemStatus
+{
+    Applied,
+    CodeMissing,
+    CodeUsed,
+    CodeRevoked,
+    Downgrade,
+    AccountMissing,
 }

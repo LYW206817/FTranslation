@@ -246,12 +246,14 @@ public static class AuthEndpoints
 
         var accessToken = tokens.CreateAccessToken(user.Id, user.Email, Plans.ToWire(user.Plan), out var expiresAt, sessionId);
 
+        // v210: 刷新令牌里有设备 id 就按设备读日用量。原实现硬传 null，免费档
+        // 每次刷新后日用量都会被刷成 0/2000，客户端与服务端展示不一致。
         return Results.Ok(new AuthResponse(
             accessToken,
             refreshToken,
             SecondsUntil(expiresAt, database),
             ToAccountDto(user, database),
-            ToUsageDto(store.ReadUsage(user.Id, null), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix))));
+            ToUsageDto(store.ReadUsage(user.Id, owner.DeviceId), Entitlement.EffectiveTier(user.Plan, user.PlanExpiresAt, database.NowUnix))));
     }
 
     private static IResult Logout(ClaimsPrincipal principal, AccountStore store)

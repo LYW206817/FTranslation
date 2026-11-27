@@ -51,43 +51,23 @@ public static class RedeemEndpoints
             return Results.Json(new ErrorResponse("account_disabled"), statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var record = codes.Find(code);
-        if (record is null)
+        var (_, status) = codes.Redeem(code, user.Id, database.NowUnix);
+        switch (status)
         {
-            return Results.NotFound(new ErrorResponse("redeem_code_invalid"));
+            case RedeemStatus.CodeMissing:
+                return Results.NotFound(new ErrorResponse("redeem_code_invalid"));
+            case RedeemStatus.CodeUsed:
+                return Results.Conflict(new ErrorResponse("redeem_code_used"));
+            // 用 410 而非 404：码存在但被作废了。若报成“码错误”，会让买家
+            // 回去找卖家，却无法证明自己输入无误。
+            case RedeemStatus.CodeRevoked:
+                return Results.Json(new ErrorResponse("redeem_code_revoked"), statusCode: StatusCodes.Status410Gone);
+            // 不能让客户吃亏：更便宜的码不得缩短正在生效的订阅。事务已在内部回滚，码仍然可用。
+            case RedeemStatus.Downgrade:
+                return Results.BadRequest(new ErrorResponse("redeem_plan_downgrade"));
+            case RedeemStatus.AccountMissing:
+                return Results.NotFound(new ErrorResponse("account_missing"));
         }
-
-        if (record.IsRedeemed)
-        {
-            return Results.Conflict(new ErrorResponse("redeem_code_used"));
-        }
-
-        // 用 410 而非 404：码存在但被作废了。若报成“码错误”，会让买家
-        // 回去找卖家，却无法证明自己输入无误。
-        if (record.IsRevoked)
-        {
-            return Results.Json(new ErrorResponse("redeem_code_revoked"), statusCode: StatusCodes.Status410Gone);
-        }
-
-        var now = database.NowUnix;
-
-        // 不能让客户吃亏：更便宜的码不得缩短正在生效的
-        // 订阅。这一步在占用码之前检查，所以码之后仍然可用。
-        if (Entitlement.IsSubscriptionActive(user.Plan, user.PlanExpiresAt, now) && user.Plan > record.Plan)
-        {
-            return Results.BadRequest(new ErrorResponse("redeem_plan_downgrade"));
-        }
-
-        if (!codes.TryClaim(code, user.Id, now))
-        {
-            // 在上面的读取与这次占用之间，别人先兑换了。
-            return Results.Conflict(new ErrorResponse("redeem_code_used"));
-        }
-
-        // 从客户当前所在的位置往后接。降级在上面已被拒绝，所以能走到这里的
-        // 兑换都是同档或升级——而升级时重置到“今天”会让买家
-        // 为已经拥有的天数重复付费。加时在 SQL 里原子完成，并发兑换不会互相覆盖。
-        accounts.ExtendPlan(user.Id, record.Plan, record.Days, now);
 
         var updated = accounts.FindUserById(user.Id);
         if (updated is null)
@@ -97,7 +77,7 @@ public static class RedeemEndpoints
         var usage = accounts.ReadUsage(user.Id, null);
         return Results.Ok(new RedeemResponse(
             AuthEndpoints.ToAccountDto(updated, database),
-            AuthEndpoints.ToUsageDto(usage, record.Plan)));
+            AuthEndpoints.ToUsageDto(usage, Entitlement.EffectiveTier(updated.Plan, updated.PlanExpiresAt, database.NowUnix))));
     }
 }
 

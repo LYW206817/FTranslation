@@ -22,6 +22,7 @@ public static class GatewayEndpoints
     public const string RequestIdHeaderName = "X-FT-Request-Id";
     public const string RequestOutcomeHeaderName = "X-FT-Request-Outcome";
     private static readonly object OperationKey = new();
+    private static readonly string[] GlossaryKeys = ["terms", "tm_list", "domains"];
 
     // v130: 绝对上限之外再按输入长度收紧。翻译输出通常与输入同量级，给 2 倍余量；
     // 极短文本至少留 64 token，否则「你好」这类请求会被自己的长度上限误杀。
@@ -34,6 +35,8 @@ public static class GatewayEndpoints
 
     private readonly record struct Reservation(Guid UserId, Guid DeviceId, Guid QuotaId, long EstimatedCostMicros, string Source);
     private readonly record struct BillableUsage(int Chars, string Model, int TokensIn, int TokensOut, long CostMicros);
+
+    internal enum BodyReadStatus { Ok, TooLarge, TimedOut }
 
     public static void MapGatewayEndpoints(this IEndpointRouteBuilder app)
     {
@@ -61,8 +64,21 @@ public static class GatewayEndpoints
         // v199: 大请求在读取与解码前就需要占用名额，否则账号限频保护不到读包的内存。
         var limiter = services.GetRequiredService<GatewayRateLimiter>();
         var capacity = services.GetRequiredService<GatewayRequestCapacity>();
-        if (!limiter.TryAcquire(context.User.GetUserId(), gateway.RequestsPerMinute) || !capacity.TryEnter())
+        var userCapacity = services.GetRequiredService<GatewayUserCapacity>();
+        var userId = context.User.GetUserId();
+        if (!limiter.TryAcquire(userId, gateway.RequestsPerMinute))
         {
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
+        }
+        // v210: 单账号并发名额先于全站名额，洪水账号只能占自己那一小份；
+        // 全站名额被别处占满时不把该账号的计数带出去，所以两者失败都要回滚。
+        if (!userCapacity.TryEnter(userId, gateway.MaxConcurrentPerUser))
+        {
+            return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
+        }
+        if (!capacity.TryEnter())
+        {
+            userCapacity.Exit(userId);
             return Fail(diagnostics, StatusCodes.Status429TooManyRequests, "rate_limited");
         }
 
@@ -83,7 +99,11 @@ public static class GatewayEndpoints
             }
             return await next(invocation);
         }
-        finally { capacity.Exit(); }
+        finally
+        {
+            capacity.Exit();
+            userCapacity.Exit(userId);
+        }
     }
 
     private static async Task<IResult> ChatCompletions(
@@ -97,10 +117,14 @@ public static class GatewayEndpoints
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxChatBodyBytes, ct);
-        if (tooLarge)
+        var (body, bodyStatus) = await ReadBodyAsync(context, gateway.MaxChatBodyBytes, gateway.BodyReadTimeoutSeconds, ct);
+        if (bodyStatus == BodyReadStatus.TooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
+        if (bodyStatus == BodyReadStatus.TimedOut)
+        {
+            return Fail(diagnostics, StatusCodes.Status408RequestTimeout, "body_timeout");
         }
         if (ReadObject(body) is not { } root)
         {
@@ -147,6 +171,7 @@ public static class GatewayEndpoints
             ["stream"] = false,
         };
         var estimateChars = Encoding.UTF8.GetByteCount(message ?? string.Empty);
+        var chargeChars = chars;
         if (root.TryGetProperty("translation_options", out var translationOptions))
         {
             if (translationOptions.ValueKind != JsonValueKind.Object)
@@ -158,9 +183,12 @@ public static class GatewayEndpoints
                 .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal);
             payload["translation_options"] = options;
             estimateChars += Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(options));
+            // v210: 术语表/翻译记忆随请求发给上游并按输入计费，但原实现只按正文长度扣额度：
+            // 1 字符正文夹带 240 KB 术语即可用近乎为零的额度烧掉整桶预算。
+            chargeChars += GlossaryChars(translationOptions);
         }
         var refusal = Intent(context, principal, store, database, gateway, budget, diagnostics,
-            Pricing.QuotaChars(model, chars), Pricing.EstimateTextCostMicros(model, estimateChars, outputTokens), out var reservation);
+            Pricing.QuotaChars(model, chargeChars), Pricing.EstimateTextCostMicros(model, estimateChars, outputTokens), out var reservation);
         if (refusal is not null)
         {
             return refusal;
@@ -177,7 +205,7 @@ public static class GatewayEndpoints
                     tokensIn = reportedIn;
                     tokensOut = reportedOut;
                 }
-                return Measure(model, Pricing.QuotaChars(model, chars), tokensIn, tokensOut);
+                return Measure(model, Pricing.QuotaChars(model, chargeChars), tokensIn, tokensOut);
             }, ct);
     }
 
@@ -198,10 +226,14 @@ public static class GatewayEndpoints
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
-        if (tooLarge)
+        var (body, bodyStatus) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, gateway.BodyReadTimeoutSeconds, ct);
+        if (bodyStatus == BodyReadStatus.TooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
+        if (bodyStatus == BodyReadStatus.TimedOut)
+        {
+            return Fail(diagnostics, StatusCodes.Status408RequestTimeout, "body_timeout");
         }
         if (body is null || ReadObject(body) is not { } root)
         {
@@ -262,10 +294,14 @@ public static class GatewayEndpoints
         [FromServices] DashScopeGateway upstream,
         CancellationToken ct)
     {
-        var (body, tooLarge) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, ct);
-        if (tooLarge)
+        var (body, bodyStatus) = await ReadBodyAsync(context, gateway.MaxImageBodyBytes, gateway.BodyReadTimeoutSeconds, ct);
+        if (bodyStatus == BodyReadStatus.TooLarge)
         {
             return Fail(diagnostics, StatusCodes.Status413PayloadTooLarge, "body_too_large");
+        }
+        if (bodyStatus == BodyReadStatus.TimedOut)
+        {
+            return Fail(diagnostics, StatusCodes.Status408RequestTimeout, "body_timeout");
         }
         if (body is null || ReadObject(body) is not { } root)
         {
@@ -553,37 +589,84 @@ public static class GatewayEndpoints
         return true;
     }
 
-    private static async Task<(string? Body, bool TooLarge)> ReadBodyAsync(
+    /// <summary>
+    /// 计入额度的术语表字符数。只数 terms/tm_list/domains 的序列化内容：
+    /// source_lang/target_lang 是固定短串，计进去会让每个普通请求都多扣几十字符。
+    /// 按序列化长度而不是逐字段之和，空字符串洪泛也会按 JSON 结构如实计入。
+    /// </summary>
+    private static int GlossaryChars(JsonElement translationOptions)
+    {
+        var total = 0;
+        foreach (var name in GlossaryKeys)
+        {
+            if (translationOptions.TryGetProperty(name, out var value)
+                && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            {
+                total += JsonSerializer.Serialize(value).Length;
+            }
+        }
+        return total;
+    }
+
+    private static async Task<(string? Body, BodyReadStatus Status)> ReadBodyAsync(
         HttpContext context,
         int maxBytes,
+        int timeoutSeconds,
         CancellationToken ct)
     {
         if (context.Request.ContentLength is { } declared && declared > maxBytes)
         {
-            return (null, true);
+            return (null, BodyReadStatus.TooLarge);
         }
 
+        return await ReadBodyWithTimeoutAsync(context.Request.Body, maxBytes, timeoutSeconds, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 读请求体的核心逻辑，独立出来是为了能用一条慢速流直接测超时（TestServer 会先缓冲整包，
+    /// 走 HTTP 测不到滴流）。
+    /// </summary>
+    internal static async Task<(string? Body, BodyReadStatus Status)> ReadBodyWithTimeoutAsync(
+        Stream body,
+        int maxBytes,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
         // 不用 ReadToEnd：Content-Length 可以缺失（chunked），必须在读的过程中就截断，
         // 否则一个声明不了长度的大请求仍会把整份 body 读进内存。
         await using var buffer = new MemoryStream();
         var chunk = new byte[8 * 1024];
-        int read;
-        while ((read = await context.Request.Body.ReadAsync(chunk, ct).ConfigureAwait(false)) > 0)
+        // v210: 慢速滴流能让一条请求占着并发名额近半小时，到点就放弃。
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (timeoutSeconds > 0)
         {
-            if (buffer.Length + read > maxBytes)
+            timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        }
+
+        try
+        {
+            int read;
+            while ((read = await body.ReadAsync(chunk.AsMemory(), timeout.Token).ConfigureAwait(false)) > 0)
             {
-                return (null, true);
+                if (buffer.Length + read > maxBytes)
+                {
+                    return (null, BodyReadStatus.TooLarge);
+                }
+                buffer.Write(chunk, 0, read);
             }
-            buffer.Write(chunk, 0, read);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (null, BodyReadStatus.TimedOut);
         }
 
         if (buffer.Length == 0)
         {
-            return (null, false);
+            return (null, BodyReadStatus.Ok);
         }
 
-        var body = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
-        return string.IsNullOrWhiteSpace(body) ? (null, false) : (body, false);
+        var text = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        return (string.IsNullOrWhiteSpace(text) ? null : text, BodyReadStatus.Ok);
     }
 
     private static IResult Fail(GatewayDiagnostics diagnostics, int status, string error)

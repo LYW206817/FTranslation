@@ -149,6 +149,26 @@ public sealed class AccountStore(ServerDatabase database)
         return command.ExecuteNonQuery() > 0;
     }
 
+    /// <summary>
+    /// 在调用方事务里读取账号档位与到期时间，供兑换时在写锁下重做降档判定。
+    /// 返回 null 表示账号不存在。
+    /// </summary>
+    internal static (PlanTier Plan, long? ExpiresAt)? ReadPlan(
+        SqliteConnection connection, SqliteTransaction? transaction, Guid userId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT plan, plan_expires_at FROM users WHERE id = $id";
+        command.Parameters.AddWithValue("$id", userId.ToString("D"));
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return ((PlanTier)reader.GetInt32(0), reader.IsDBNull(1) ? null : reader.GetInt64(1));
+    }
+
     /// <summary>禁用与会话吊销同事务提交，解禁只恢复登录能力。</summary>
     public bool SetDisabled(Guid userId, bool disabled)
     {
@@ -278,7 +298,7 @@ public sealed class AccountStore(ServerDatabase database)
         using (var find = connection.CreateCommand())
         {
             find.Transaction = transaction;
-            find.CommandText = "SELECT id, user_id, fingerprint, name, created_at, last_seen_at FROM devices WHERE user_id = $userId AND fingerprint = $fp";
+            find.CommandText = "SELECT id, user_id, fingerprint, name, created_at, last_seen_at, deleted_at FROM devices WHERE user_id = $userId AND fingerprint = $fp";
             find.Parameters.AddWithValue("$userId", userId.ToString("D"));
             find.Parameters.AddWithValue("$fp", normalized);
 
@@ -286,7 +306,16 @@ public sealed class AccountStore(ServerDatabase database)
             if (reader.Read())
             {
                 var existing = ReadDevice(reader);
+                var wasDeleted = !reader.IsDBNull(6);
                 reader.Close();
+
+                // v210: 复活软删设备同样要占活跃名额。原实现直接把 deleted_at 置回 NULL，
+                // 满 3 台后反复「移除→登录」就能无限挂机，绕过付费共享与按设备的日额度。
+                if (wasDeleted && CountActiveDevices(connection, transaction, userId) >= Plans.MaxDevicesPerAccount)
+                {
+                    transaction.Rollback();
+                    return new DeviceResult(false, null, "device_limit_reached");
+                }
 
                 // v143：网关侧每次调用 RegisterDevice 都不带客户端名（传空串）；
                 // 无条件覆盖会把用户在客户端设置过的设备名抹掉，这里只在有新名字时更新。
@@ -309,16 +338,7 @@ public sealed class AccountStore(ServerDatabase database)
             }
         }
 
-        int count;
-        using (var count_ = connection.CreateCommand())
-        {
-            count_.Transaction = transaction;
-            count_.CommandText = "SELECT COUNT(*) FROM devices WHERE user_id = $userId AND deleted_at IS NULL";
-            count_.Parameters.AddWithValue("$userId", userId.ToString("D"));
-            count = Convert.ToInt32(count_.ExecuteScalar(), CultureInfo.InvariantCulture);
-        }
-
-        if (count >= Plans.MaxDevicesPerAccount)
+        if (CountActiveDevices(connection, transaction, userId) >= Plans.MaxDevicesPerAccount)
         {
             transaction.Rollback();
             return new DeviceResult(false, null, "device_limit_reached");
@@ -1122,6 +1142,15 @@ public sealed class AccountStore(ServerDatabase database)
         reader.GetString(3),
         reader.GetInt64(4),
         reader.GetInt64(5));
+
+    private static int CountActiveDevices(SqliteConnection connection, SqliteTransaction transaction, Guid userId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT COUNT(*) FROM devices WHERE user_id = $userId AND deleted_at IS NULL";
+        command.Parameters.AddWithValue("$userId", userId.ToString("D"));
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
 }
 
 public sealed record DeviceResult(bool Succeeded, DeviceRecord? Device, string? Error);

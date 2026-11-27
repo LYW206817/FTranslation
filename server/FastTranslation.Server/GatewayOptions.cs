@@ -50,6 +50,19 @@ public sealed class GatewayOptions
     /// <summary>HTTP 网关的全站并发上限，从读取请求体开始计算。</summary>
     public int MaxConcurrentRequests { get; set; } = 16;
 
+    /// <summary>
+    /// v210: 单账号同时占用的网关名额上限。没有它时一个零额度账号并发发起
+    /// <see cref="MaxConcurrentRequests"/> 条慢速读包请求就能占满全站名额，
+    /// 其余所有用户一起 429。
+    /// </summary>
+    public int MaxConcurrentPerUser { get; set; } = 3;
+
+    /// <summary>
+    /// v210: 读取请求体的时限。慢速滴流（略高于 Kestrel 最低速率）能让一条请求
+    /// 占着名额近半小时；到点直接放弃并回 408。
+    /// </summary>
+    public int BodyReadTimeoutSeconds { get; set; } = 30;
+
     /// <summary>允许转发的最大文本长度，与客户端自身的 5000 字符上限一致。</summary>
     public int MaxRequestChars { get; set; } = 5_000;
 
