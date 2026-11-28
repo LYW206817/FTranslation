@@ -48,6 +48,21 @@ public class ScrollViewerWheelTests
     }
 
     [Fact]
+    public void AdvanceSmoothOffset_ConvergesAndSnapsAtThreshold()
+    {
+        var first = ScrollViewerWheel.AdvanceSmoothOffset(0, 100, 1.0 / 120.0);
+        Assert.True(first > 0 && first < 100);
+
+        var second = ScrollViewerWheel.AdvanceSmoothOffset(first, 100, 1.0 / 120.0);
+        Assert.True(second > first && second < 100);
+
+        // 距离目标小于 0.5 DIP 时直接吸附，结束动画
+        Assert.Equal(100, ScrollViewerWheel.AdvanceSmoothOffset(99.6, 100, 1.0 / 120.0));
+        // 零时间增量保持原位
+        Assert.Equal(20, ScrollViewerWheel.AdvanceSmoothOffset(20, 100, 0));
+    }
+
+    [Fact]
     public void ForwardEnabled_ForwardsWheelFromPasswordBoxContentHostToOuterScrollViewer()
     {
         RunInSta(() =>
