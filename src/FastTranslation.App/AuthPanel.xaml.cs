@@ -50,7 +50,6 @@ public sealed partial class AuthPanel : UserControl
         {
             CardShell.BorderThickness = new Thickness(0);
             CardShell.CornerRadius = new CornerRadius(0);
-            CardShell.Effect = null;
             CardShell.Width = double.NaN;
             CardShell.HorizontalAlignment = HorizontalAlignment.Stretch;
             AppHeader.Visibility = Visibility.Visible;

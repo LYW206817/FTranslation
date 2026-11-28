@@ -121,8 +121,7 @@
               <Border x:Name="bd" Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="8" Padding="{TemplateBinding Padding}"
-                      Effect="{x:Null}">
+                      CornerRadius="8" Padding="{TemplateBinding Padding}">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
             </Grid>
@@ -133,7 +132,6 @@
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource BrandFillBrush}"/>
-                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="root" Property="RenderTransform">
                   <Setter.Value>
                     <TranslateTransform Y="1"/>
@@ -143,7 +141,6 @@
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource WindowBgBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
-                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="bd" Property="TextElement.Foreground" Value="{DynamicResource TextMutedBrush}"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
@@ -172,7 +169,7 @@
                    如果 Padding 留在 Border 上，蓝色底会缩在描边里面一圈 -->
               <Border x:Name="bd" BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="10" Effect="{DynamicResource NavGlowEffect}">
+                      CornerRadius="10">
                 <Grid>
                   <Border x:Name="fill" Background="{DynamicResource BrandGradientBrush}" CornerRadius="9"/>
                   <!-- 顶部高光：一条 20% 白的细边，给纯色按钮一点厚度 -->
@@ -191,7 +188,6 @@
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandPressedBrush}"/>
-                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="root" Property="RenderTransform">
                   <Setter.Value>
                     <TranslateTransform Y="1"/>
@@ -201,7 +197,6 @@
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource HairStrongBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairStrongBrush}"/>
-                <Setter TargetName="bd" Property="Effect" Value="{x:Null}"/>
                 <Setter TargetName="gloss" Property="Visibility" Value="Collapsed"/>
                 <!-- v68：禁用态底色是 HairStrong，比 TextMuted 深一档的浅色，
                      用 TextMuted 只有 2.28:1，改用 TextSecondary 是 4.18:1 -->
@@ -545,7 +540,6 @@
                            Value="True">
                 <Setter TargetName="ring" Property="BorderBrush" Value="Transparent"/>
                 <Setter TargetName="fill" Property="Background" Value="{DynamicResource BrandGradientBrush}"/>
-                <Setter TargetName="fill" Property="Effect" Value="{DynamicResource NavGlowEffect}"/>
                 <Setter Property="Foreground" Value="{DynamicResource OnBrandTextBrush}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
               </DataTrigger>
@@ -572,21 +566,13 @@
     </Style>
 
 
-    <!-- v85 改掉 v61 的判断：当年去掉投影的理由是"浅底上一圈灰外发光会显脏"。雾光布局的底
-         不是纯白而是一片冷雾渐变，卡片不带影子就贴不住纸面；脏的根源是**中性灰**影子，
-         所以阴影色相跟着 Shadow 令牌走，落在蓝底上是加深而不是发灰。 -->
-    <!-- v98 试过但已回退：WPF 的 Effect 连子树一起投影，所以想把影子拆到一张没有子元素的
-         底板上（FtCard + CardShell 两层）。实测更糟——底板会在卡片四边和四角露出一圈残影，
-         圆角写死和 TemplatedParent 绑定两种写法结果一样，回退到单 Border 带 Effect。
-         用量环与进度条的观感差异要另找办法，不要再走这条路。 -->
-    <!-- v144：内容卡统一 12px 圆角 + 1px Hair 描边。16px 与侧栏浮卡、按钮不是一套圆角语言，
-         无描边又让白卡在浅色背景上只剩阴影一条边界。 -->
+    <!-- v212：去掉 DropShadowEffect——D3D9On12 上每张大卡的模糊着色器会把滚动拖到 ~24 fps；
+         改用 1px Hair 描边在雾底上立出清晰边界。 -->
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
-      <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
       <Setter Property="Padding" Value="18,16,18,18"/>
       <Setter Property="Margin" Value="0,0,0,16"/>
     </Style>
@@ -604,29 +590,20 @@
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
-    <!-- 主内容区的大卡：没有默认内边距，标题栏/正文/底栏各自由页面摆位。
-         v99 去掉 ClipToBounds：矩形裁剪发生在 Effect 之后，会把投影伸出盒外的部分全切掉，
-         只在圆角与方角之间留下四块三角残影（用户反馈）。卡内贴边色块要自己收圆角，
-         或另包一层带 ClipToBounds 的内 Border 去裁——裁剪和投影不能同一个 Border 兼。
-         也别走「把 Effect 拆到无子元素的底板」：v98 末实测会在卡片边缘留一圈残影并已回退。 -->
     <Style x:Key="CardSurface" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
-      <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}"/>
     </Style>
 
-    <!-- 顶栏那几枚白色标签（语言、模型、积分）。影子比卡片轻一档，
-         它们是贴在纸面上的小标签，不该和卡片抢层次。
-         v92：圆角 20 → 10。20 在 28 高的框上已经收成胶囊，和按钮（10）、
-         输入框（8–10）不是一套语言；10 让它们读成同一族的圆角方框。 -->
     <Style x:Key="TopPill" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="10"/>
       <Setter Property="Padding" Value="12,5"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
-      <Setter Property="Effect" Value="{DynamicResource GlassShadowEffect}"/>
     </Style>
 
     <Style x:Key="PillDot" TargetType="Ellipse">
@@ -643,7 +620,7 @@
          宽度随所选语言自适应，与右侧模型药丸/其他页头药丸保持同一高度与比例。 -->
     <Style x:Key="PillComboBox" TargetType="{x:Type local:FtComboBox}"
            BasedOn="{StaticResource {x:Type local:FtComboBox}}">
-      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Padding" Value="12,5"/>
       <Setter Property="FontSize" Value="12"/>
@@ -653,7 +630,7 @@
           <ControlTemplate TargetType="{x:Type local:FtComboBox}">
             <Grid>
               <Border x:Name="bd" Background="{TemplateBinding Background}"
-                      CornerRadius="10" Effect="{DynamicResource GlassShadowEffect}"/>
+                      CornerRadius="10"/>
               <!-- 悬停描边叠在底板之上不占布局，避免把药丸撑高 2px 后与兄弟 TopPill 不齐 -->
               <Border x:Name="outline" BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"

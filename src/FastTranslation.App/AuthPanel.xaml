@@ -35,7 +35,6 @@
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource HairBrush}"/>
-                <Setter TargetName="bd" Property="Effect" Value="{DynamicResource GlassShadowEffect}"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
               </Trigger>
@@ -65,7 +64,7 @@
        装饰雾光放进 ClipToBounds 的内层 Grid，外层 Border 只管描边与阴影，避免四角出现裁切残影。 -->
   <Border x:Name="CardShell" Background="{DynamicResource SurfaceBrush}"
           BorderBrush="{DynamicResource HairBrush}" BorderThickness="1"
-          CornerRadius="12" Effect="{DynamicResource CardShadowEffect}"
+          CornerRadius="12"
           Width="460" HorizontalAlignment="Center">
     <Grid>
       <!-- 顶部冷雾渐变：跟着当前主题 BrandFill 自动变色，向下淡出进 SurfaceBrush -->
@@ -85,8 +84,7 @@
         <StackPanel x:Name="AppHeader" Margin="0,0,0,18" HorizontalAlignment="Center" Visibility="Collapsed">
           <Border Width="46" Height="46" CornerRadius="12" HorizontalAlignment="Center"
                   Background="{DynamicResource SurfaceBrush}"
-                  BorderBrush="{DynamicResource HairBrush}" BorderThickness="1"
-                  Effect="{DynamicResource GlassShadowEffect}">
+                  BorderBrush="{DynamicResource HairBrush}" BorderThickness="1">
             <Image Width="28" Height="28" Source="/logo.png"
                    RenderOptions.BitmapScalingMode="HighQuality"/>
           </Border>

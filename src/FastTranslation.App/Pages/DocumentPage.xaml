@@ -67,7 +67,7 @@
           <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="32">
             <Border Width="74" Height="74" CornerRadius="22" HorizontalAlignment="Center"
                     Background="{DynamicResource TileGradientBrush}"
-                    Effect="{DynamicResource CardShadowEffect}">
+                    BorderBrush="{DynamicResource HairBrush}" BorderThickness="1">
               <TextBlock Text="&#xE8A5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                          FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center"
                          Foreground="{DynamicResource BrandBrush}"/>

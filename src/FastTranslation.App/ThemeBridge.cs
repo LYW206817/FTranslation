@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 using FastTranslation.Platform.Windows;
 
 namespace FastTranslation.App;
@@ -72,12 +71,7 @@ internal static class ThemeBridge
         Set(r, "GlassBrush", c.Glass);
         Set(r, "GlassEdgeBrush", c.GlassEdge);
         Set(r, "WarmBrush", c.Warm);
-        // 投影强度的系数按主题分两档：深色底下黑影子本来就显眼，同样的 alpha 会糊成一团。
         var dark = ThemePalette.Current == AppTheme.Dark;
-        SetDropShadow(r, "CardShadowEffect", c.Shadow, dark ? 0.70 : 0.85, 34, 9);
-        SetDropShadow(r, "GlassShadowEffect", c.Shadow, dark ? 0.60 : 0.70, 30, 7);
-        // 侧栏活动项与主按钮下面那圈品牌色辉光，颜色跟着强调色走，不能写死在 XAML 里。
-        SetDropShadow(r, "NavGlowEffect", c.Brand, dark ? 0.30 : 0.34, 18, 6);
 
         // v189：自定义无边框标题栏的右上角磨砂控制胶囊与悬停色，随深浅主题切换保持通透与对比。
         Set(r, "TitleBarGlassBrush", dark ? "#8A1F242C" : "#9EFFFFFF");
@@ -161,29 +155,6 @@ internal static class ThemeBridge
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0, color.R, color.G, color.B), 1));
         brush.Freeze();
         resources[key] = brush;
-    }
-
-    /// <summary>
-    /// 投影。颜色与 alpha 都来自 Shadow 令牌，alpha 再乘一个「这一层该有多重」的系数：
-    /// 同一条 Shadow 要同时支撑窗口里的大卡、侧栏浮卡和按钮下面那圈辉光，
-    /// 只用 alpha 的话三者会一样重。RenderingBias 取 Performance——这些影子铺满整窗，
-    /// 质量档在大尺寸模糊上换不来肉眼可见的差别。
-    /// </summary>
-    private static void SetDropShadow(
-        ResourceDictionary resources, string key, string hex, double weight, double blur, double depth)
-    {
-        var color = Parse(hex);
-        var effect = new DropShadowEffect
-        {
-            Color = Color.FromRgb(color.R, color.G, color.B),
-            Opacity = color.A / 255d * weight,
-            BlurRadius = blur,
-            ShadowDepth = depth,
-            Direction = 270,
-            RenderingBias = RenderingBias.Performance,
-        };
-        effect.Freeze();
-        resources[key] = effect;
     }
 
     private static void Set(ResourceDictionary resources, string key, string hex)

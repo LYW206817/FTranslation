@@ -48,22 +48,20 @@ public partial class NotesPage : UserControl
             _search = SearchBox.Text.Trim();
             _ = LoadAsync();
         };
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Activate(); else Deactivate(); };
+        Unloaded += (_, _) => Deactivate();
     }
 
-    private void OnLoaded(object _, RoutedEventArgs e)
+    private void Activate()
     {
         if (!_subscribed)
         {
             _account.Changed += OnAccountChanged;
             _subscribed = true;
         }
-        // 页面是缓存的，所以回到某层书架时不能显示服务端已经没有的内容
-        _ = LoadAsync();
     }
 
-    private void OnUnloaded(object _, RoutedEventArgs e)
+    private void Deactivate()
     {
         if (_subscribed)
         {

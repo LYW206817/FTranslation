@@ -41,14 +41,13 @@ public partial class PlanPage : UserControl
     {
         InitializeComponent();
         _account = account;
-        // v111：与账号页同一个坑——页面缓存会在导航间卸载/重新挂载，只在 Loaded 时订阅，
-        // 否则从本页兑换激活码后，页面会一直停在未登录/旧套餐状态。
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
+        // 页面常驻在 PageHost 里靠 Visibility 切换：订阅跟着可见性走，避免后台页空刷。
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Activate(); else Deactivate(); };
+        Unloaded += (_, _) => Deactivate();
         Render();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void Activate()
     {
         if (!_subscribed)
         {
@@ -59,7 +58,7 @@ public partial class PlanPage : UserControl
         Render();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void Deactivate()
     {
         if (!_subscribed) return;
         _account.Changed -= OnAccountChanged;
@@ -77,10 +76,10 @@ public partial class PlanPage : UserControl
 
     internal void RevealPricing()
     {
-        // 主窗口延后挂载页面，等布局完成再计算价格卡在滚动视口里的位置。
         _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
-            if (!IsLoaded) return;
+            if (!IsVisible) return;
+            PlanScroll.UpdateLayout();
             var top = PricingCard.TranslatePoint(new Point(), PlanScroll).Y;
             _ = SubscribeTitle.Focus();
             PlanScroll.ScrollToVerticalOffset(PlanScroll.VerticalOffset + top);
@@ -91,7 +90,7 @@ public partial class PlanPage : UserControl
     // 必须重绘价格卡并重新询问用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
-        if (!IsLoaded) return;
+        if (!IsVisible) return;
         Render();
         _account.UsageRefresh.EnsureLoaded();
     });

@@ -34,11 +34,9 @@ public partial class AccountPage : UserControl
         SupportEmailText.Text = SupportEmail;
         SignedOutPanel.Initialize(account);
         SignedOutPanel.Authenticated += OnAuthenticated;
-        // v111：页面是缓存并反复挂载/卸载的。订阅必须跟着 Loaded/Unloaded 成对走，
-        // 否则切走一次（Unloaded）就永远收不到登录/登出事件——用户登录后仍停在未登录
-        // 面板、只能手动刷新，根因就在这里。
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
+        // 页面常驻在 PageHost 里靠 Visibility 切换：订阅跟着可见性走，避免后台页空刷。
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Activate(); else Deactivate(); };
+        Unloaded += (_, _) => Deactivate();
         Render();
     }
 
@@ -50,7 +48,7 @@ public partial class AccountPage : UserControl
         _ = LoadDevicesAsync();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void Activate()
     {
         if (!_subscribed)
         {
@@ -58,12 +56,10 @@ public partial class AccountPage : UserControl
             _account.UsageRefresh.Changed += RenderUsage;
             _subscribed = true;
         }
-        // 订阅建立之前会话可能已经变了（启动恢复是异步的）：补一次重绘；
-        // 网络数据由宿主的 Reload 拉取，这里不重复发请求。
         Render();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void Deactivate()
     {
         if (!_subscribed) return;
         _account.Changed -= OnAccountChanged;
@@ -84,7 +80,7 @@ public partial class AccountPage : UserControl
     // 所以迟到的账号变更还要再问一次用量
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
-        if (!IsLoaded) return;
+        if (!IsVisible) return;
         var changedAccount = _renderedSession != _account.SessionGeneration;
         Render();
         _account.UsageRefresh.EnsureLoaded();

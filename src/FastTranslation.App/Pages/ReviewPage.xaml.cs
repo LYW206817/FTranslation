@@ -43,7 +43,6 @@ public partial class ReviewPage : UserControl
     private bool _syncingPicks;
     private bool _subscribed;
     private Window? _host;
-    private bool _loaded;
 
     /// <summary>用户想改去单词本时触发；导航由外壳负责。</summary>
     public event Action? NotesRequested;
@@ -56,13 +55,15 @@ public partial class ReviewPage : UserControl
         InitializeComponent();
         _account = account;
         PickList.ItemsSource = _picks;
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
+        // 快捷键挂在主窗口上，必须随页面可见性装卸，否则切到别页后空格/数字键仍会被本页截走。
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Activate(); else Deactivate(); };
+        Loaded += (_, _) => { if (IsVisible) Activate(); };
+        Unloaded += (_, _) => Deactivate();
     }
 
     private bool InSession => _session is { IsFinished: false };
 
-    private void OnLoaded(object _, RoutedEventArgs e)
+    private void Activate()
     {
         if (!_subscribed)
         {
@@ -77,16 +78,16 @@ public partial class ReviewPage : UserControl
             _host = host;
             host.PreviewKeyDown += OnHostPreviewKeyDown;
         }
-
-        if (!_loaded)
-        {
-            _loaded = true;
-            Reload();
-        }
     }
 
-    private void OnUnloaded(object _, RoutedEventArgs e)
+    private void Deactivate()
     {
+        if (_subscribed)
+        {
+            _account.Changed -= OnAccountChanged;
+            _subscribed = false;
+        }
+
         if (_host is not null)
         {
             _host.PreviewKeyDown -= OnHostPreviewKeyDown;
@@ -96,7 +97,7 @@ public partial class ReviewPage : UserControl
 
     private void OnAccountChanged() => Dispatcher.BeginInvoke(() =>
     {
-        if (IsLoaded && !InSession) Reload();
+        if (IsVisible && !InSession) Reload();
     });
 
     /// <summary>

@@ -112,7 +112,7 @@
            1px 白描边模拟玻璃边缘的反光。v189 起从窗顶 14px 处起算，与右上控制胶囊顶部对齐。 -->
       <Border Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Margin="14,14,0,14"
               Background="{DynamicResource GlassBrush}" BorderBrush="{DynamicResource GlassEdgeBrush}"
-              BorderThickness="1" CornerRadius="14" Effect="{DynamicResource GlassShadowEffect}">
+              BorderThickness="1" CornerRadius="14">
         <DockPanel Margin="10,16,10,12">
           <!-- 品牌区：应用自己的图标（v86 换掉原来的渐变方块 + 「译」字，那个方块只是
                没有 logo 时的占位）。图标是 256 那一档，26px 在 200% 缩放下仍然是满分辨率。 -->
@@ -128,8 +128,8 @@
           <!-- 底部区块：取词开关 + 账号 -->
           <StackPanel DockPanel.Dock="Bottom">
             <Border Height="1" Background="{DynamicResource HairBrush}" Margin="6,8,6,10"/>
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="11" Padding="10,6"
-                    Effect="{DynamicResource GlassShadowEffect}">
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource HairBrush}"
+                    BorderThickness="1" CornerRadius="11" Padding="10,6">
               <CheckBox x:Name="CaptureToggle" Style="{StaticResource ToggleSwitch}" Content="取词已开启"
                         IsChecked="True" Checked="CaptureToggle_Changed" Unchecked="CaptureToggle_Changed"/>
             </Border>
@@ -321,10 +321,10 @@
           </StackPanel>
         </Border>
 
-        <!-- 页面宿主：一个 ContentControl，页面是按需创建的 UserControl。
-             页面自己不带底色（Transparent），底下的雾色由窗口提供——换页时整块渐变不闪。 -->
-        <ContentControl Grid.Column="1" Grid.Row="1" x:Name="PageHost"
-                        Background="Transparent" Margin="20,0,14,14"/>
+        <!-- v212：常驻 Grid 宿主，页面保留在视觉树里只切 Visibility，
+             避免 ContentControl 换页反复卸载/重挂载整棵视觉树与重解 DynamicResource。 -->
+        <Grid Grid.Column="1" Grid.Row="1" x:Name="PageHost"
+              Background="Transparent" Margin="20,0,14,14"/>
       </Grid>
     </Grid>
     <Image x:Name="ThemeTransitionOverlay" Stretch="Fill"

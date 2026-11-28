@@ -59,6 +59,7 @@ public partial class MainWindow : Window
         _speechPage?.SetState(text, isError);
     }
     private MainPageId _current = MainPageId.Home;
+    private UserControl? _activePage;
     private bool _suppressCaptureToggle;
     private bool _ready;
     private bool _loginLocked;
@@ -209,11 +210,13 @@ public partial class MainWindow : Window
         foreach (var id in Enum.GetValues<MainPageId>())
         {
             if (id == _current) continue;
-            // 量一遍而不是塞进 PageHost：塞进去会真的画出来，用户会看到页面自己翻。
-            // 只量不画就够——模板实例化与首次排版正是切页那一 nib 的大头。
             var page = Build(id);
+            if (page.Parent is not null) continue;
+            // Collapsed 元素会跳过 Measure，先量一遍预热模板再以隐藏态挂进 PageHost。
             page.Measure(size);
             page.Arrange(new Rect(size));
+            page.Visibility = Visibility.Collapsed;
+            PageHost.Children.Add(page);
         }
         _prebuildDone = true;
     }
@@ -388,7 +391,7 @@ public partial class MainWindow : Window
     }
 
     internal (string? Theme, string? Accent) ActiveAppearanceSettings(AppSettings saved) =>
-        _settingsPage is { IsLoaded: true } settings
+        _settingsPage is { IsVisible: true } settings
             ? (settings.PreviewThemeSetting, settings.PreviewAccentSetting)
             : (saved.Theme, saved.Accent);
 
@@ -479,12 +482,8 @@ public partial class MainWindow : Window
     private void ShowPricing()
     {
         ShowPage(MainPageId.Plan);
-        // 与换页使用相同的优先级排队，等 PageHost 已挂载目标页再定位价格卡。
-        _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-        {
-            if (_current == MainPageId.Plan && PageHost.Content is PlanPage plan)
-                plan.RevealPricing();
-        });
+        if (_current == MainPageId.Plan && _activePage is PlanPage plan)
+            plan.RevealPricing();
     }
 
     private PlanPage Plan()
@@ -525,24 +524,30 @@ public partial class MainWindow : Window
         // 重建同一个页面会丢掉里面已经输入的内容，所以缓存页面只做刷新——而这次刷新
         // 同时也是首次访问的加载，这就是它在 Build 之后也跑的原因：刚构造出来的页面
         // 还从没读过任何东西。
-        if (_current == page && PageHost.Content is not null)
+        if (_current == page && _activePage is not null)
         {
             RefreshPage(page);
             return;
         }
 
+        var previous = _activePage;
         _current = page;
-        var content = Build(page);
-
-        // v88：先把侧栏选中态改掉，内容推到下一帧再挂。换页要重画整个内容区（全屏 2548×1400
-        // 物理像素），首帧 40–110ms；两件事同一帧做，点击反馈要等这一大块画完才出现，手感就是
-        // 「点了没反应」。拆开后点下去当帧只重画侧栏那一条，内容晚一帧到。
-        SyncSidebar();
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        var next = Build(page);
+        if (next.Parent is null)
         {
-            // 连点多页时队列里会堆几个挂载：只让最后一次生效，否则会闪回中间的页。
-            if (_current == page) PageHost.Content = content;
-        });
+            next.Visibility = Visibility.Collapsed;
+            PageHost.Children.Add(next);
+        }
+
+        // 先隐藏旧页再亮新页，让离开设置页的外观预览回退在目标页展示前完成。
+        if (previous is not null && !ReferenceEquals(previous, next))
+        {
+            previous.Visibility = Visibility.Collapsed;
+        }
+        next.Visibility = Visibility.Visible;
+        _activePage = next;
+
+        SyncSidebar();
         RefreshPage(page);
     }
 

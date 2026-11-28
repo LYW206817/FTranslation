@@ -63,7 +63,15 @@ public partial class SettingsPage : UserControl
         ReloadFromSettings();
 
         _saveHintTimer.Tick += (_, _) => HideSaveHint();
-        // 页面是缓存的：切页面/取消离开时把预览过的外观退回已保存的那一套
+        // 页面常驻在 PageHost 里靠 Visibility 切换：切走或关窗时把预览过的外观退回已保存的那一套
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is false)
+            {
+                HideSaveHint();
+                RevertAppearance();
+            }
+        };
         Unloaded += (_, _) =>
         {
             HideSaveHint();
@@ -332,8 +340,8 @@ public partial class SettingsPage : UserControl
 
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 构造与 ReloadFromSettings 里设 SelectedIndex 也会走到这里，那时还没上树或在回填，别预览
-        if (IsLoaded && !_reloading) PreviewAppearance();
+        // 构造与 ReloadFromSettings 里设 SelectedIndex 也会走到这里，那时还没显示或在回填，别预览
+        if (IsVisible && !_reloading) PreviewAppearance();
     }
 
     private void AccentChip_Click(object sender, RoutedEventArgs e)
